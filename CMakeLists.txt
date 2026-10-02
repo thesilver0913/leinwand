@@ -18,6 +18,8 @@ else()
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+add_subdirectory(src/core)
+add_subdirectory(src/geometry)
 add_subdirectory(src/render)
 if(LEINWAND_BUILD_APP)
   add_subdirectory(src/app)

@@ -12,12 +12,12 @@
 #include <memory>
 #include <string>
 
-#include "render/test_scene.h"
+#include "render/document_renderer.h"
+#include "render/test_document.h"
 #include "render/vulkan_canvas.h"
 
 namespace {
 
-using leinwand::render::TestScene;
 using leinwand::render::View;
 using leinwand::render::VulkanCanvas;
 
@@ -35,8 +35,9 @@ class CanvasRenderer : public QQuickRhiItemRenderer {
 
   void synchronize(QQuickRhiItem* rhi_item) override {
     auto* item = static_cast<CanvasItem*>(rhi_item);
-    if (!scene_ || scene_->path_count() != item->pathCount()) {
-      scene_ = std::make_unique<TestScene>(item->pathCount());
+    if (path_count_ != item->pathCount()) {
+      path_count_ = item->pathCount();
+      document_ = leinwand::render::MakeTestDocument(path_count_);
     }
     const double dpr = item->window()->effectiveDevicePixelRatio();
     view_ = {item->panX() * dpr, item->panY() * dpr, item->zoom() * dpr};
@@ -72,7 +73,7 @@ class CanvasRenderer : public QQuickRhiItemRenderer {
     QElapsedTimer timer;
     timer.start();
     const VkImageLayout final_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    if (canvas_->Draw(*scene_, view_, target, final_layout)) {
+    if (canvas_->Draw(renderer_, document_, view_, target, final_layout)) {
       // Skia changed the layout behind QRhi's back; tell it.
       texture->setNativeLayout(final_layout);
     } else {
@@ -106,7 +107,9 @@ class CanvasRenderer : public QQuickRhiItemRenderer {
   }
 
   std::unique_ptr<VulkanCanvas> canvas_;
-  std::unique_ptr<TestScene> scene_;
+  leinwand::render::DocumentRenderer renderer_;
+  leinwand::core::Document document_;
+  int path_count_ = -1;
   View view_;
   bool failed_ = false;
   QString error_;

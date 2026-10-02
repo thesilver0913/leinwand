@@ -13,7 +13,7 @@
 #include "include/gpu/vk/VulkanBackendContext.h"
 #include "include/gpu/vk/VulkanExtensions.h"
 #include "include/gpu/vk/VulkanMutableTextureState.h"
-#include "render/test_scene_impl.h"
+#include "render/document_renderer_impl.h"
 #include "render/vma_allocator.h"
 
 namespace leinwand::render {
@@ -80,8 +80,8 @@ std::unique_ptr<VulkanCanvas> VulkanCanvas::Create(const VulkanDevice& device, s
   return std::unique_ptr<VulkanCanvas>(new VulkanCanvas(std::move(impl)));
 }
 
-bool VulkanCanvas::Draw(const TestScene& scene, const View& view, const VulkanTarget& target,
-                        VkImageLayout final_layout) {
+bool VulkanCanvas::Draw(DocumentRenderer& renderer, const core::Document& document,
+                        const View& view, const VulkanTarget& target, VkImageLayout final_layout) {
   GrVkImageInfo info;
   info.fImage = target.image;
   info.fImageTiling = VK_IMAGE_TILING_OPTIMAL;
@@ -99,7 +99,7 @@ bool VulkanCanvas::Draw(const TestScene& scene, const View& view, const VulkanTa
                                      kRGBA_8888_SkColorType, nullptr, nullptr);
   if (!surface) return false;
 
-  scene.impl().Draw(surface->getCanvas(), view);
+  renderer.impl().Draw(surface->getCanvas(), document, view, target.width, target.height);
 
   const skgpu::MutableTextureState state =
       skgpu::MutableTextureStates::MakeVulkan(final_layout, impl_->queue_family_index);
