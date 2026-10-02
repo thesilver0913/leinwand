@@ -1,0 +1,52 @@
+# 実装時の合意事項
+
+実装の途中で決めたこと、守ること、知っておくべき制約をまとめる。仕様書(spec.md)には「何を作るか」を、このファイルには「どう作るか」で合意したことを書く。決めた理由や計測値は [m0-verification.md](m0-verification.md) にある。
+
+新しく決めたら、日付と経緯(どのマイルストーンで決めたか)を付けて追記する。仕様書と食い違う内容を書くときは、先に仕様書を直すか、食い違いを報告して確認を取る。
+
+## ビルドと依存ライブラリ
+
+| 項目 | 合意 | 決めた時期 |
+| --- | --- | --- |
+| Qt | 6.8 系(LTS)。CI は `6.8.*`、手元は 6.8.3。インストールは aqtinstall(Qt アカウント不要)か公式インストーラー | M0 |
+| vcpkg | マニフェストモード。ベースラインは `vcpkg.json` の `builtin-baseline`(2026.07.29)で固定する | M0 |
+| Skia | vcpkg の `skia`。既定のフィーチャーは外し、`jpeg`、`pdf`、`png`、`vulkan` だけを使う。文字関係(HarfBuzz、ICU、FreeType)はフェーズ2で足す | M0 |
+| KDDockWidgets | v2.4.1 を CMake の FetchContent でソースから取り込み、`prototypes/dock/patches/kddw-indicators.patch` を当てる。vcpkg は使わない(vcpkg が別の Qt をビルドしてしまうため) | M0 |
+| CMake | Windows では単体で入れた CMake 4.x を使う。Visual Studio 同梱の 3.31 は vcpkg の一部のソースアーカイブを展開できない | M0 |
+| 開発環境の用意 | Windows は `tools/setup-windows.ps1`。`-CheckOnly` で不足の確認だけができる | M0 |
+
+## 描画(render)
+
+- キャンバスは `QQuickRhiItem` で作る。Skia(Ganesh)は Qt Quick が作った `VkDevice` とキューをそのまま使い、新しく作らない。
+- Skia はアイテムの描画先テクスチャを毎フレームラップして描き、最後に `SHADER_READ_ONLY_OPTIMAL` へ遷移させる。変えたレイアウトは `QRhiTexture::setNativeLayout` で QRhi に伝える。
+- vcpkg の Skia には内部の Vulkan メモリアロケーターがないので、`src/render/vma_allocator.*`(VMA)を渡す。
+- PDF を作るときは JPEG のエンコーダーとデコーダーを渡す(`SkPDF::JPEG::MetadataWithCallbacks()`)。渡さないと Skia が PDF を作らない。
+- QRhi のヘッダーは Qt 6.8 では `Qt6::GuiPrivate` 経由でしか使えない。Qt のバージョンを上げるときは、この部分の API の変化を確かめる。
+- 画面外オブジェクトの除外と、描画結果のタイルキャッシュは M1 の描画設計に最初から入れる。M0 の計測で、パス数に比例して CPU 時間が増えることがわかったため(1万パスで 7.2ms、5万パスで 24ms)。
+
+## UI とドッキング
+
+- パネルのドッキングは KDDockWidgets の Qt Quick 版を使う。見た目は `ViewFactory` のサブクラスで、Spectrum のスタイルを当てた QML に差し替える。
+- Illustrator に合わせて、パネルグループはタブを常に表示し、タブがあるときはタイトルバーを隠す(`Flag_AlwaysShowTabs`、`Flag_HideTitleBarWhenTabsVisible`)。
+- `InternalFlag_DisableTranslucency` を立てて、ドロップ表示をウィンドウ内に描く(パッチが必要)。Windows の Vulkan では半透明ウィンドウが黒くなるため。
+- ドラッグ中はフローティングウィンドウ全体の不透明度を下げ、下のドロップ表示が見えるようにする。今はすべてのフローティングウィンドウが半透明になるので、ドラッグ中のものだけにするのが今後の課題。
+- KDDockWidgets がドロップ表示を型名で探すため、差し替える QML のファイル名は `ClassicIndicator.qml` にする。
+- パッチは KDDockWidgets 本体への提案を検討する。取り込まれたら FetchContent のバージョンを上げ、パッチを外す。
+
+## デザイン
+
+- Spectrum 2 のトークンは `@adobe/spectrum-tokens` 15.5.0、アイコンは `@adobe/spectrum-css-workflow-icons` 5.0.0 を基準にする。
+- トークンは M5 でビルド時に Qt のテーマ定義へ変換する。それまでの試作では、使う値を手で写す(出典のトークン名をコメントに書く)。
+- ワークフローアイコンの SVG は色を CSS 変数(`var(--iconPrimary, #222)`)で指定しており、Qt の SVG は読めない。テーマごとに色を置き換えたものを用意する(M5 でトークンの変換と一緒に自動化する)。
+- UI フォントの Source Sans 3 と源ノ角ゴシックは OS に入っていない前提で、アプリに同梱する。
+
+## ライセンス
+
+- Leinwand のソースは GPL-3.0-or-later。ただし KDDockWidgets(GPL-2.0-only OR GPL-3.0-only)を組み込んだ配布物は、全体として GPLv3 でのみ配布できる。
+- 他のプロジェクトのコードから派生したファイルには、元のライセンス表記と著作権表示を残す(例: KDDockWidgets の QML から派生したファイル)。
+- 配布物に同梱する著作権表示(NOTICE)には、Skia(BSD-3-Clause)、VMA(MIT)、KDDockWidgets、Spectrum のトークンとアイコン(Apache-2.0)を含める。
+
+## コードの書式
+
+- clang-format は Google スタイルをもとに、1行100桁(`.clang-format`)。CI の Ubuntu の clang-format(18)と手元の LLVM(23)で判定が違う場合は、CI に合わせる。
+- `prototypes/` は M0 の検証用。M1 以降、使うものは `src/` に移し、残りは消す。

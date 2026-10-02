@@ -58,7 +58,7 @@ UIはQt Quickで組む。パネルやツールバーはQML、ドキュメント�
 
 - キャンバス: Skiaの描画結果をQt Quickのシーングラフに1つの描画ノードとして組み込む。SkiaとQt Quickで同じGPUバックエンドを共有できるかをフェーズ1で検証する。
 - 選択枠・ハンドル・ガイドなどのオーバーレイもSkia側で描く。QMLの要素にするとズーム時の追従が遅れるため。
-- ドッキングパネル: Qt Quickには標準機能がない。第一候補はKDDockWidgets(KDAB製、Qt Quick対応、GPL 2.0 または GPL 3.0)。LeinwandがGPLv3なのでライセンス上は組み込める。見た目をSpectrumに合わせられるかをフェーズ1で試し、難しければ自作する。
+- ドッキングパネル: Qt Quickには標準機能がない。KDDockWidgets(KDAB製、Qt Quick対応、GPL 2.0 または GPL 3.0)を使う。M0で見た目をSpectrumに合わせられることを確かめた。ただしWindowsのVulkanでは半透明ウィンドウが黒くなるため、ドロップ表示をウィンドウ内に描くパッチを当てて使う。KDDockWidgetsを組み込んだ配布物は、全体としてGPLv3でのみ配布できる。詳細は [m0-verification.md](m0-verification.md) と [implementation-notes.md](implementation-notes.md)。
 - テキスト入力: キャンバス上の文字編集は独自のテキストエンジン(5章)で行い、IMEとの橋渡しだけQtの入力メソッドAPIを使う。
 
 **描画バックエンド: GPU**
@@ -946,6 +946,7 @@ UIのデザイン言語はAdobeの[Spectrum](https://spectrum.adobe.com/)に準�
 | 公開とライセンス | GitHubでソース公開。GPLv3またはそれ以降 | 1 |
 | 技術スタック | C++ + Skia + Qt(LGPLv3、動的リンク) | 2 |
 | UIフレームワーク | Qt Quick(QML) | 2 |
+| ドッキングパネル | KDDockWidgets。パッチを当てて使う(M0で決定) | 2 |
 | 描画バックエンド | 最初からGPU。Vulkanが第一候補 | 2 |
 | カラー | モデルは最初からCMYK・スポットカラー対応。表示と編集UIはRGBから | 3 |
 | 保存形式 | 拡張子 .lwd。ZIPコンテナ内にJSON | 3 |
@@ -975,10 +976,10 @@ UIのデザイン言語はAdobeの[Spectrum](https://spectrum.adobe.com/)に準�
 
 **未決事項と確認事項**
 
-- [ ] ドッキングパネルは自作か、既存ライブラリか(第一候補はKDDockWidgets。フェーズ1で試して決める)
+- [x] ドッキングパネルは自作か、既存ライブラリか → KDDockWidgetsにパッチを当てて使う(2026-10-02、M0の検証3)
 
 * [ ] Illustrator実機との照合: ショートカットとペンツールの操作表(4.2)、メニューとパネルの構成(7.1、7.2)
-* [ ] Skiaの描画をQt Quickのシーングラフへ組み込む方法の検証(フェーズ1)
+* [x] Skiaの描画をQt Quickのシーングラフへ組み込む方法の検証 → QQuickRhiItem に、Qt Quick と同じ VkDevice で Skia が描く方式で成立(2026-10-02、M0の検証1)
 * [ ] PDFiumから取り出せる描画オブジェクトの範囲の確認(ソフトマスク、メッシュグラデーション)
 * [ ] FontsourceのCDNのフォントで、日本語のグリフと縦組み用のOpenType機能がそろうかの検証
 * [ ] FontsourceとGoogle FontsのAPIの利用条件の確認
