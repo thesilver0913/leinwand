@@ -4,20 +4,24 @@
 #include <rhi/qrhi.h>
 
 #include <QElapsedTimer>
+#include <QHoverEvent>
+#include <QKeyEvent>
 #include <QMouseEvent>
 #include <QQuickWindow>
 #include <QVulkanInstance>
 #include <QWheelEvent>
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <string>
 
-#include "render/test_scene.h"
+#include "render/document_renderer.h"
+#include "render/overlay.h"
+#include "render/test_document.h"
 #include "render/vulkan_canvas.h"
 
 namespace {
 
-using leinwand::render::TestScene;
 using leinwand::render::View;
 using leinwand::render::VulkanCanvas;
 
@@ -35,11 +39,12 @@ class CanvasRenderer : public QQuickRhiItemRenderer {
 
   void synchronize(QQuickRhiItem* rhi_item) override {
     auto* item = static_cast<CanvasItem*>(rhi_item);
-    if (!scene_ || scene_->path_count() != item->pathCount()) {
-      scene_ = std::make_unique<TestScene>(item->pathCount());
-    }
+    // A snapshot: copying the document shares all of its (immutable) nodes.
+    document_ = item->document();
     const double dpr = item->window()->effectiveDevicePixelRatio();
-    view_ = {item->panX() * dpr, item->panY() * dpr, item->zoom() * dpr};
+    const View& view = item->view();
+    view_ = {view.pan_x * dpr, view.pan_y * dpr, view.zoom * dpr};
+    overlay_ = item->overlay(dpr);
 
     if (!error_.isEmpty()) {
       QMetaObject::invokeMethod(item, "reportError", Qt::QueuedConnection, Q_ARG(QString, error_));
@@ -72,7 +77,7 @@ class CanvasRenderer : public QQuickRhiItemRenderer {
     QElapsedTimer timer;
     timer.start();
     const VkImageLayout final_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    if (canvas_->Draw(*scene_, view_, target, final_layout)) {
+    if (canvas_->Draw(renderer_, document_, view_, overlay_, target, final_layout)) {
       // Skia changed the layout behind QRhi's back; tell it.
       texture->setNativeLayout(final_layout);
     } else {
@@ -106,8 +111,10 @@ class CanvasRenderer : public QQuickRhiItemRenderer {
   }
 
   std::unique_ptr<VulkanCanvas> canvas_;
-  std::unique_ptr<TestScene> scene_;
+  leinwand::render::DocumentRenderer renderer_;
+  leinwand::core::Document document_;
   View view_;
+  leinwand::render::Overlay overlay_;
   bool failed_ = false;
   QString error_;
   int frames_ = 0;
@@ -115,48 +122,248 @@ class CanvasRenderer : public QQuickRhiItemRenderer {
   QElapsedTimer interval_;
 };
 
+int CountObjects(const leinwand::core::Document& document) {
+  int count = 0;
+  leinwand::core::VisitObjects(document, [&](const leinwand::core::Object&) { ++count; });
+  return count;
+}
+
 }  // namespace
 
 CanvasItem::CanvasItem(QQuickItem* parent) : QQuickRhiItem(parent) {
   setAcceptedMouseButtons(Qt::LeftButton | Qt::MiddleButton);
+  setAcceptHoverEvents(true);
+  setFlag(ItemIsFocusScope);
+  setActiveFocusOnTab(true);
+  loadShowcase();
 }
+
+CanvasItem::~CanvasItem() = default;
 
 QQuickRhiItemRenderer* CanvasItem::createRenderer() { return new CanvasRenderer; }
 
-void CanvasItem::setPathCount(int count) {
-  if (count == path_count_) return;
-  path_count_ = count;
-  emit pathCountChanged();
+leinwand::render::Overlay CanvasItem::overlay(double pixel_ratio) const {
+  const leinwand::editor::Overlay o = editor_->overlay();
+  return {o.selection, o.bounding_box, o.marquee, pixel_ratio};
+}
+
+QString CanvasItem::undoAction() const {
+  return QString::fromStdString(editor_->history().undo_action());
+}
+
+QString CanvasItem::redoAction() const {
+  return QString::fromStdString(editor_->history().redo_action());
+}
+
+void CanvasItem::SetDocument(leinwand::core::Document document) {
+  editor_ = std::make_unique<leinwand::editor::Editor>(std::move(document));
+  object_count_ = CountObjects(editor_->document());
+  fit_pending_ = true;
+  if (width() > 0 && height() > 0) fitArtboard();
+  emit documentChanged();
+  update();
+}
+
+void CanvasItem::EditorChanged() {
+  object_count_ = CountObjects(editor_->document());
+  emit documentChanged();
+  update();
+}
+
+void CanvasItem::loadShowcase() { SetDocument(leinwand::render::MakeShowcaseDocument()); }
+
+void CanvasItem::loadTestDocument(int pathCount) {
+  SetDocument(leinwand::render::MakeTestDocument(pathCount));
+}
+
+void CanvasItem::SetView(const View& view, bool by_user) {
+  if (by_user) fit_pending_ = false;
+  view_ = view;
+  emit viewChanged();
   update();
 }
 
 void CanvasItem::setZoom(double zoom) {
-  if (zoom == zoom_) return;
-  zoom_ = zoom;
-  emit viewChanged();
-  update();
+  if (zoom != view_.zoom) SetView({view_.pan_x, view_.pan_y, zoom});
 }
 
 void CanvasItem::setPanX(double x) {
-  if (x == pan_x_) return;
-  pan_x_ = x;
-  emit viewChanged();
-  update();
+  if (x != view_.pan_x) SetView({x, view_.pan_y, view_.zoom});
 }
 
 void CanvasItem::setPanY(double y) {
-  if (y == pan_y_) return;
-  pan_y_ = y;
-  emit viewChanged();
-  update();
+  if (y != view_.pan_y) SetView({view_.pan_x, y, view_.zoom});
 }
 
-void CanvasItem::zoomAt(double x, double y, double factor) {
-  pan_x_ = x - (x - pan_x_) * factor;
-  pan_y_ = y - (y - pan_y_) * factor;
-  zoom_ *= factor;
-  emit viewChanged();
-  update();
+void CanvasItem::fitArtboard() {
+  const auto& artboards = editor_->document().artboards;
+  if (artboards.empty() || width() <= 0 || height() <= 0) return;
+  SetView(View::Fit(artboards.front().bounds, width(), height()), /*by_user=*/false);
+}
+
+void CanvasItem::actualSize() {
+  SetView(view_.ZoomedAt({width() / 2, height() / 2}, 1.0 / view_.zoom));
+}
+
+void CanvasItem::zoomIn() {
+  SetView(view_.ZoomedAt({width() / 2, height() / 2}, View::NextZoomIn(view_.zoom) / view_.zoom));
+}
+
+void CanvasItem::zoomOut() {
+  SetView(view_.ZoomedAt({width() / 2, height() / 2}, View::NextZoomOut(view_.zoom) / view_.zoom));
+}
+
+void CanvasItem::undo() {
+  editor_->Undo();
+  EditorChanged();
+}
+
+void CanvasItem::redo() {
+  editor_->Redo();
+  EditorChanged();
+}
+
+void CanvasItem::selectAll() {
+  editor_->SelectAll();
+  EditorChanged();
+}
+
+void CanvasItem::deselect() {
+  editor_->Deselect();
+  EditorChanged();
+}
+
+void CanvasItem::deleteSelection() {
+  editor_->Delete();
+  EditorChanged();
+}
+
+void CanvasItem::group() {
+  editor_->Group();
+  EditorChanged();
+}
+
+void CanvasItem::ungroup() {
+  editor_->Ungroup();
+  EditorChanged();
+}
+
+void CanvasItem::arrange(int how) {
+  using leinwand::core::Arrange;
+  static constexpr Arrange kOrder[] = {Arrange::kBringToFront, Arrange::kBringForward,
+                                       Arrange::kSendBackward, Arrange::kSendToBack};
+  if (how < 0 || how > 3) return;
+  editor_->Arrange(kOrder[how]);
+  EditorChanged();
+}
+
+void CanvasItem::setTool(int tool) {
+  if (tool < 0 || tool > 5 || tool == this->tool()) return;
+  editor_->SetTool(static_cast<leinwand::editor::Tool>(tool));
+  tool_dragging_ = false;
+  emit toolChanged();
+  EditorChanged();
+}
+
+QVariantMap CanvasItem::selectionInfo() const {
+  QVariantMap map;
+  const auto info = editor_->Info();
+  map["valid"] = info.has_value();
+  if (!info) return map;
+  map["x"] = info->bounds.left;
+  map["y"] = info->bounds.top;
+  map["width"] = info->bounds.width();
+  map["height"] = info->bounds.height();
+  map["rotation"] = info->rotation;
+  if (!info->shape) {
+    map["shape"] = QString();
+    return map;
+  }
+  std::visit(
+      [&](const auto& s) {
+        using T = std::decay_t<decltype(s)>;
+        using namespace leinwand::core;
+        if constexpr (std::is_same_v<T, RectangleShape>) {
+          map["shape"] = QStringLiteral("rectangle");
+          map["shapeWidth"] = s.width;
+          map["shapeHeight"] = s.height;
+          map["cornerRadius"] = s.corners[0].radius;
+          map["cornerKind"] = static_cast<int>(s.corners[0].kind);
+        } else if constexpr (std::is_same_v<T, EllipseShape>) {
+          map["shape"] = QStringLiteral("ellipse");
+          map["shapeWidth"] = s.width;
+          map["shapeHeight"] = s.height;
+          map["pieStart"] = s.pie_start;
+          map["pieEnd"] = s.pie_end;
+        } else if constexpr (std::is_same_v<T, PolygonShape>) {
+          map["shape"] = QStringLiteral("polygon");
+          map["sides"] = s.sides;
+          map["radius"] = s.radius;
+          map["polygonCornerRadius"] = s.corner_radius;
+        } else if constexpr (std::is_same_v<T, StarShape>) {
+          map["shape"] = QStringLiteral("star");
+          map["points"] = s.points;
+          map["outerRadius"] = s.outer_radius;
+          map["innerRadius"] = s.inner_radius;
+        } else {
+          map["shape"] = QStringLiteral("line");
+          map["length"] = s.length;
+        }
+      },
+      *info->shape);
+  return map;
+}
+
+void CanvasItem::setBounds(double x, double y, double width, double height) {
+  if (width <= 0 || height <= 0) return;
+  editor_->SetBounds(leinwand::core::Rect::FromXYWH(x, y, width, height));
+  EditorChanged();
+}
+
+void CanvasItem::setRotation(double degrees) {
+  editor_->SetRotation(degrees);
+  EditorChanged();
+}
+
+void CanvasItem::setShapeValue(const QString& key, double value) {
+  const auto info = editor_->Info();
+  if (!info || !info->shape) return;
+  leinwand::core::ShapeParams params = *info->shape;
+  const double size = std::max(value, 0.0);
+  const int count = std::clamp(static_cast<int>(std::lround(value)), 3, 1000);
+  std::visit(
+      [&](auto& s) {
+        using T = std::decay_t<decltype(s)>;
+        using namespace leinwand::core;
+        if constexpr (std::is_same_v<T, RectangleShape>) {
+          if (key == "width") s.width = size;
+          if (key == "height") s.height = size;
+          for (auto& corner : s.corners) {
+            if (key == "cornerRadius") corner.radius = size;
+            if (key == "cornerKind") {
+              corner.kind = static_cast<CornerKind>(std::clamp(static_cast<int>(value), 0, 2));
+            }
+          }
+        } else if constexpr (std::is_same_v<T, EllipseShape>) {
+          if (key == "width") s.width = size;
+          if (key == "height") s.height = size;
+          if (key == "pieStart") s.pie_start = value;
+          if (key == "pieEnd") s.pie_end = value;
+        } else if constexpr (std::is_same_v<T, PolygonShape>) {
+          if (key == "sides") s.sides = count;
+          if (key == "radius") s.radius = size;
+          if (key == "polygonCornerRadius") s.corner_radius = size;
+        } else if constexpr (std::is_same_v<T, StarShape>) {
+          if (key == "points") s.points = count;
+          if (key == "outerRadius") s.outer_radius = size;
+          if (key == "innerRadius") s.inner_radius = size;
+        } else {
+          if (key == "length") s.length = size;
+        }
+      },
+      params);
+  editor_->SetShape(params);
+  EditorChanged();
 }
 
 void CanvasItem::reportStats(double fps, double drawMs) {
@@ -171,18 +378,203 @@ void CanvasItem::reportError(const QString& error) {
   emit errorChanged();
 }
 
-void CanvasItem::wheelEvent(QWheelEvent* event) {
-  const double steps = event->angleDelta().y() / 120.0;
-  zoomAt(event->position().x(), event->position().y(), std::pow(1.2, steps));
+leinwand::core::Point CanvasItem::ToDocument(QPointF position) const {
+  return view_.ToDocument({position.x(), position.y()});
 }
 
-void CanvasItem::mousePressEvent(QMouseEvent* event) { last_mouse_ = event->position(); }
+double CanvasItem::PickRadius() const { return 4.0 / view_.zoom; }
+
+namespace {
+
+leinwand::editor::Modifiers ToolModifiers(Qt::KeyboardModifiers modifiers) {
+  return {.shift = modifiers.testFlag(Qt::ShiftModifier),
+          .alt = modifiers.testFlag(Qt::AltModifier)};
+}
+
+}  // namespace
+
+void CanvasItem::geometryChange(const QRectF& newGeometry, const QRectF& oldGeometry) {
+  QQuickRhiItem::geometryChange(newGeometry, oldGeometry);
+  if (fit_pending_ && newGeometry.width() > 0 && newGeometry.height() > 0) fitArtboard();
+}
+
+void CanvasItem::wheelEvent(QWheelEvent* event) {
+  // Touchpads report pixels; mouse wheels report angles (120 per notch).
+  const QPointF pixels = event->pixelDelta().isNull() ? QPointF(event->angleDelta()) / 120.0 * 40.0
+                                                      : QPointF(event->pixelDelta());
+  if (event->modifiers() & Qt::AltModifier) {
+    // Some systems turn Alt+wheel into a horizontal wheel; accept either axis.
+    const double steps = (event->angleDelta().y() + event->angleDelta().x()) / 120.0;
+    SetView(view_.ZoomedAt({event->position().x(), event->position().y()}, std::pow(1.25, steps)));
+  } else if (event->modifiers() & Qt::ControlModifier) {
+    SetView({view_.pan_x + pixels.y() + pixels.x(), view_.pan_y, view_.zoom});
+  } else {
+    SetView({view_.pan_x + pixels.x(), view_.pan_y + pixels.y(), view_.zoom});
+  }
+  event->accept();
+}
+
+void CanvasItem::keyPressEvent(QKeyEvent* event) {
+  modifiers_ = event->modifiers();
+  if (tool_dragging_ && (event->key() == Qt::Key_Shift || event->key() == Qt::Key_Alt)) {
+    // Modifiers change the drag (constrain, copy) even when the mouse is still.
+    editor_->PointerMove(ToDocument(last_mouse_), ToolModifiers(modifiers_));
+    EditorChanged();
+  }
+  if (event->isAutoRepeat() && event->key() == Qt::Key_Space) return;
+  // Up and down while drawing a polygon or star change its sides or points.
+  if (tool_dragging_ && (event->key() == Qt::Key_Up || event->key() == Qt::Key_Down)) {
+    editor_->AdjustToolCount(event->key() == Qt::Key_Up ? 1 : -1);
+    EditorChanged();
+    event->accept();
+    return;
+  }
+  // Arrow keys nudge by the keyboard increment (1 pt; Shift: 10 pt).
+  const double step = event->modifiers().testFlag(Qt::ShiftModifier) ? 10.0 : 1.0;
+  switch (event->key()) {
+    case Qt::Key_Space:
+      space_held_ = true;  // Temporary hand tool.
+      UpdateCursor(last_mouse_);
+      break;
+    case Qt::Key_Left:
+      editor_->Nudge(-step, 0);
+      EditorChanged();
+      break;
+    case Qt::Key_Right:
+      editor_->Nudge(step, 0);
+      EditorChanged();
+      break;
+    case Qt::Key_Up:
+      editor_->Nudge(0, -step);
+      EditorChanged();
+      break;
+    case Qt::Key_Down:
+      editor_->Nudge(0, step);
+      EditorChanged();
+      break;
+    case Qt::Key_Delete:
+    case Qt::Key_Backspace:
+      deleteSelection();
+      break;
+    case Qt::Key_Escape:
+      editor_->CancelDrag();
+      tool_dragging_ = false;
+      EditorChanged();
+      break;
+    default:
+      QQuickRhiItem::keyPressEvent(event);
+      return;
+  }
+  event->accept();
+}
+
+void CanvasItem::keyReleaseEvent(QKeyEvent* event) {
+  modifiers_ = event->modifiers();
+  if (tool_dragging_ && (event->key() == Qt::Key_Shift || event->key() == Qt::Key_Alt)) {
+    editor_->PointerMove(ToDocument(last_mouse_), ToolModifiers(modifiers_));
+    EditorChanged();
+  }
+  if (event->key() == Qt::Key_Space && !event->isAutoRepeat()) {
+    space_held_ = false;
+    UpdateCursor(last_mouse_);
+    event->accept();
+    return;
+  }
+  QQuickRhiItem::keyReleaseEvent(event);
+}
+
+void CanvasItem::mousePressEvent(QMouseEvent* event) {
+  forceActiveFocus();
+  last_mouse_ = event->position();
+  modifiers_ = event->modifiers();
+  if (event->button() == Qt::MiddleButton || (event->button() == Qt::LeftButton && space_held_)) {
+    panning_ = true;
+  } else if (event->button() == Qt::LeftButton) {
+    tool_dragging_ = true;
+    editor_->PointerDown(ToDocument(event->position()), ToolModifiers(modifiers_), PickRadius());
+    EditorChanged();
+  }
+  UpdateCursor(event->position());
+  event->accept();
+}
 
 void CanvasItem::mouseMoveEvent(QMouseEvent* event) {
   const QPointF delta = event->position() - last_mouse_;
   last_mouse_ = event->position();
-  pan_x_ += delta.x();
-  pan_y_ += delta.y();
-  emit viewChanged();
-  update();
+  modifiers_ = event->modifiers();
+  if (panning_) {
+    SetView({view_.pan_x + delta.x(), view_.pan_y + delta.y(), view_.zoom});
+  } else if (tool_dragging_) {
+    editor_->PointerMove(ToDocument(event->position()), ToolModifiers(modifiers_));
+    EditorChanged();
+  }
+}
+
+void CanvasItem::mouseReleaseEvent(QMouseEvent* event) {
+  modifiers_ = event->modifiers();
+  if (tool_dragging_) {
+    editor_->PointerUp(ToDocument(event->position()), ToolModifiers(modifiers_));
+    tool_dragging_ = false;
+    EditorChanged();
+  }
+  panning_ = false;
+  UpdateCursor(event->position());
+}
+
+void CanvasItem::hoverMoveEvent(QHoverEvent* event) {
+  // Qt Quick re-sends hover events every frame while the cursor rests on the
+  // item; only a real move needs a new hit test.
+  if (event->position() == last_mouse_ && event->modifiers() == modifiers_) return;
+  last_mouse_ = event->position();
+  modifiers_ = event->modifiers();
+  UpdateCursor(event->position());
+}
+
+void CanvasItem::UpdateCursor(QPointF position) {
+  if (panning_) {
+    setCursor(Qt::ClosedHandCursor);
+    return;
+  }
+  if (space_held_) {
+    setCursor(Qt::OpenHandCursor);
+    return;
+  }
+  if (tool_dragging_) return;  // Keep the cursor the drag started with.
+  if (editor_->tool() != leinwand::editor::Tool::kSelection) {
+    setCursor(Qt::CrossCursor);
+    return;
+  }
+  using leinwand::editor::Handle;
+  using Kind = leinwand::editor::Hover::Kind;
+  const auto hover = editor_->HoverAt(ToDocument(position), PickRadius());
+  switch (hover.kind) {
+    case Kind::kHandle:
+      switch (hover.handle) {
+        case Handle::kTopLeft:
+        case Handle::kBottomRight:
+          setCursor(Qt::SizeFDiagCursor);
+          return;
+        case Handle::kTopRight:
+        case Handle::kBottomLeft:
+          setCursor(Qt::SizeBDiagCursor);
+          return;
+        case Handle::kTop:
+        case Handle::kBottom:
+          setCursor(Qt::SizeVerCursor);
+          return;
+        case Handle::kLeft:
+        case Handle::kRight:
+          setCursor(Qt::SizeHorCursor);
+          return;
+      }
+      return;
+    case Kind::kRotate:
+      // Qt has no rotate cursor; a custom one comes with the icon set (M7).
+      setCursor(Qt::CrossCursor);
+      return;
+    case Kind::kObject:
+    case Kind::kNothing:
+      unsetCursor();
+      return;
+  }
 }

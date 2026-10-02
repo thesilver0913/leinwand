@@ -63,5 +63,5 @@ qt_add_resources(leinwand-dock-prototype dock_qml
 
 target_include_directories(leinwand-dock-prototype PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(leinwand-dock-prototype PRIVATE
-  render Qt6::Gui Qt6::GuiPrivate Qt6::Quick KDAB::kddockwidgets
+  editor render Qt6::Gui Qt6::GuiPrivate Qt6::Quick KDAB::kddockwidgets
 )

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
+#include <QQuickStyle>
 #include <QQuickWindow>
 #include <QSurfaceFormat>
 
@@ -9,6 +10,9 @@ int main(int argc, char* argv[]) {
   QQuickWindow::setGraphicsApi(QSGRendererInterface::Vulkan);
 
   QGuiApplication app(argc, argv);
+  // Fusion follows the palette fully, so the Spectrum colors set in Main.qml
+  // apply to every control. Spectrum components replace it in M5.
+  QQuickStyle::setStyle(QStringLiteral("Fusion"));
   // --no-vsync: measure throughput beyond the display refresh rate.
   if (QCoreApplication::arguments().contains(QStringLiteral("--no-vsync"))) {
     QSurfaceFormat format = QSurfaceFormat::defaultFormat();

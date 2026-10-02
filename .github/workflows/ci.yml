@@ -60,5 +60,10 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      # Pinned to the version developers use locally (LLVM 23.1.2): releases
+      # format some constructs differently, which the runner's own
+      # clang-format (18) disagreed with.
+      - name: Install clang-format
+        run: pipx install clang-format==23.1.2
       - name: clang-format
-        run: find src tests -name '*.cpp' -o -name '*.h' | xargs clang-format --dry-run --Werror
+        run: find src tests prototypes -name '*.cpp' -o -name '*.h' | xargs clang-format --dry-run --Werror
