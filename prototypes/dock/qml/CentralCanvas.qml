@@ -4,5 +4,5 @@ import LeinwandCanvas
 
 CanvasItem {
     anchors.fill: parent
-    pathCount: 10000
+    Component.onCompleted: loadTestDocument(10000)
 }

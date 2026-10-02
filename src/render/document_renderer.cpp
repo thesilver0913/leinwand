@@ -10,9 +10,11 @@
 
 #include "geometry/bezier.h"
 #include "include/core/SkBlendMode.h"
+#include "include/core/SkBlurTypes.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkColor.h"
 #include "include/core/SkImageInfo.h"
+#include "include/core/SkMaskFilter.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkPathBuilder.h"
 #include "include/core/SkSurface.h"
@@ -247,9 +249,24 @@ void DocumentRenderer::Impl::Draw(SkCanvas* canvas, const core::Document& docume
   const Rect visible{-view.pan_x / view.zoom, -view.pan_y / view.zoom,
                      (width - view.pan_x) / view.zoom, (height - view.pan_y) / view.zoom};
 
-  SkPaint artboard;
-  artboard.setColor(SK_ColorWHITE);
-  for (const auto& board : document.artboards) canvas->drawRect(ToSk(board.bounds), artboard);
+  // Artboards: a soft shadow on the pasteboard, white paper, and a hairline
+  // border. Shadow and border keep their size in view pixels at any zoom.
+  const float px = static_cast<float>(1.0 / view.zoom);
+  SkPaint shadow;
+  shadow.setColor(SkColorSetARGB(90, 0, 0, 0));
+  shadow.setMaskFilter(SkMaskFilter::MakeBlur(kNormal_SkBlurStyle, 3 * px));
+  SkPaint paper;
+  paper.setColor(SK_ColorWHITE);
+  SkPaint border;
+  border.setColor(SkColorSetARGB(60, 0, 0, 0));
+  border.setStyle(SkPaint::kStroke_Style);
+  border.setStrokeWidth(0);  // Hairline: one device pixel wide.
+  for (const auto& board : document.artboards) {
+    const SkRect rect = ToSk(board.bounds);
+    canvas->drawRect(rect.makeOffset(0, 2 * px), shadow);
+    canvas->drawRect(rect, paper);
+    canvas->drawRect(rect, border);
+  }
 
   for (const auto& layer : document.layers) DrawLayer(canvas, *layer, visible);
   canvas->restore();

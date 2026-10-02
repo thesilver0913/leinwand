@@ -22,6 +22,7 @@ add_executable(render_tests
   skia_features_test.cpp
   render/document_renderer_test.cpp
   render/image_compare.cpp
+  render/view_test.cpp
 )
 target_link_libraries(render_tests PRIVATE render unofficial::skia::skia Catch2::Catch2WithMain)
 target_compile_definitions(render_tests PRIVATE

@@ -10,22 +10,28 @@ Window {
     visible: true
     title: "Leinwand"
 
-    // --bench: animate zoom and pan for 10 s, print the averages, then quit.
+    // --paths=N: show N generated blobs instead of the showcase document.
+    // --bench: animate zoom and pan over the blobs for 10 s, print the
+    // averages, then quit.
     readonly property bool bench: Qt.application.arguments.indexOf("--bench") >= 0
-    property var samples: []
-
-    // --paths=N: number of test paths (default 10000).
     readonly property int pathsArg: {
         const arg = Qt.application.arguments.find(a => a.startsWith("--paths="))
-        return arg ? parseInt(arg.substring(8)) : 10000
+        return arg ? parseInt(arg.substring(8)) : (bench ? 10000 : 0)
     }
+    property var samples: []
 
     CanvasItem {
         id: canvas
         anchors.fill: parent
-        pathCount: window.pathsArg
+        focus: true
         onStatsChanged: if (window.bench) window.samples.push([fps, drawMs])
+        Component.onCompleted: if (window.pathsArg > 0) loadTestDocument(window.pathsArg)
     }
+
+    Shortcut { sequence: "Ctrl+0"; onActivated: canvas.fitArtboard() }
+    Shortcut { sequence: "Ctrl+1"; onActivated: canvas.actualSize() }
+    Shortcut { sequences: ["Ctrl+=", "Ctrl++"]; onActivated: canvas.zoomIn() }
+    Shortcut { sequence: "Ctrl+-"; onActivated: canvas.zoomOut() }
 
     FrameAnimation {
         running: window.bench
@@ -42,20 +48,21 @@ Window {
         interval: 10000
         onTriggered: {
             const avg = i => window.samples.reduce((s, v) => s + v[i], 0) / window.samples.length
-            console.log("bench paths=" + canvas.pathCount + " fps=" + avg(0).toFixed(1)
+            console.log("bench paths=" + canvas.objectCount + " fps=" + avg(0).toFixed(1)
                         + " drawMs=" + avg(1).toFixed(2))
             Qt.quit()
         }
     }
 
+    // Stand-in for the status bar (spec 7.1) until the real UI arrives (M5).
     Text {
-        anchors { left: parent.left; top: parent.top; margins: 8 }
+        anchors { left: parent.left; bottom: parent.bottom; margins: 8 }
         color: "white"
         style: Text.Outline
         text: canvas.error !== ""
               ? qsTr("Canvas error: %1").arg(canvas.error)
-              : qsTr("%1 paths  %2 fps  draw %3 ms  zoom %4")
-                    .arg(canvas.pathCount).arg(canvas.fps.toFixed(1))
-                    .arg(canvas.drawMs.toFixed(2)).arg(canvas.zoom.toFixed(2))
+              : qsTr("%1%  %2 objects  %3 fps  draw %4 ms")
+                    .arg((canvas.zoom * 100).toFixed(2)).arg(canvas.objectCount)
+                    .arg(canvas.fps.toFixed(1)).arg(canvas.drawMs.toFixed(2))
     }
 }

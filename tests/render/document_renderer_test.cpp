@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "image_compare.h"
+#include "render/test_document.h"
 
 using namespace leinwand::core;
 using leinwand::render::DocumentRenderer;
@@ -204,6 +205,19 @@ TEST_CASE("Replacing an object is picked up despite the path cache") {
   CHECK(Near(PixelAt(renderer.RenderRaster(document, kSize, kSize, {}), 50, 50), 255, 0, 0));
   document = DocumentWith({Shape(Rectangle(0, 0, 100, 100), {kBlue})});
   CHECK(Near(PixelAt(renderer.RenderRaster(document, kSize, kSize, {}), 50, 50), 0, 0, 255));
+}
+
+TEST_CASE("The showcase document matches its baseline image") {
+  // 800x600 pt at quarter scale. The hidden layer is a full-artboard red
+  // rectangle; it must not show anywhere.
+  DocumentRenderer renderer;
+  const auto pixels =
+      renderer.RenderRaster(leinwand::render::MakeShowcaseDocument(), 200, 150, View{0, 0, 0.25});
+  CHECK(leinwand::testing::MatchesBaseline("render/showcase", pixels, 200, 150));
+  // Top-left corner of the artboard is blank paper, not the hidden red.
+  const std::size_t corner = (2 * 200 + 2) * 4;
+  CHECK(pixels[corner] > 240);
+  CHECK(pixels[corner + 1] > 240);
 }
 
 TEST_CASE("A mixed scene matches its baseline image") {

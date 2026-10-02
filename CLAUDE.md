@@ -52,7 +52,7 @@ Adobe Illustrator 相当を最終目標とする、デスクトップ向けベ�
 2. 1万個のパスを表示して、ズームとパンが滑らかに動くか → 60Hz で成立。
 3. KDDockWidgets の見た目を Spectrum に合わせられるか → パッチを当てて採用。
 
-M0 は完了。M1(モデルと描画)を進めている。core のドキュメントモデル、geometry、render の描画と画面外の除外まで入った。実装で合意したことは `docs/implementation-notes.md` にまとめる。
+M0 と M1(モデルと描画)は完了。次は M2(選択と変形、コマンドと取り消し)。実装で合意したことは `docs/implementation-notes.md` にまとめる。
 
 ## 未検証の前提(鵜呑みにしないこと)
 

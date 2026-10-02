@@ -6,6 +6,7 @@ find_package(VulkanMemoryAllocator CONFIG REQUIRED)
 add_library(render STATIC
   document_renderer.cpp
   test_document.cpp
+  view.cpp
   vma_allocator.cpp
   vulkan_canvas.cpp
 )
