@@ -13,7 +13,7 @@ History::History(EditorState initial) { steps_.push_back({"", std::move(initial)
 
 void History::Push(std::string action, EditorState state) {
   steps_.resize(index_ + 1);
-  steps_.push_back({std::move(action), std::move(state)});
+  steps_.push_back({std::move(action), std::move(state), next_revision_++});
   index_ = steps_.size() - 1;
   Trim();
 }
@@ -25,6 +25,7 @@ void History::Amend(std::string action, EditorState state) {
   }
   steps_.resize(index_ + 1);
   steps_[index_].state = std::move(state);
+  steps_[index_].revision = next_revision_++;
 }
 
 void History::SetSelection(IdSet selection) {

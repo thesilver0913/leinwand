@@ -17,4 +17,8 @@ namespace leinwand::testing {
 bool MatchesBaseline(const std::string& name, const std::vector<std::uint8_t>& pixels, int width,
                      int height);
 
+// The fraction of pixels that differ by more than 8 in any channel between
+// two images of the same size (premultiplied RGBA8).
+double DifferingFraction(const std::vector<std::uint8_t>& a, const std::vector<std::uint8_t>& b);
+
 }  // namespace leinwand::testing

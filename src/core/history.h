@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -45,6 +46,11 @@ class History {
   void Undo();
   void Redo();
 
+  // Identifies the current document state: changes with every edit, undo
+  // and redo, but not with selection changes. A saved revision tells
+  // whether there are unsaved changes.
+  std::uint64_t revision() const { return steps_[index_].revision; }
+
   // Keeps at most `limit` undo steps (0 means unlimited; spec 7.3).
   void SetLimit(std::size_t limit);
 
@@ -52,12 +58,14 @@ class History {
   struct Step {
     std::string action;  // The edit that produced `state`.
     EditorState state;
+    std::uint64_t revision = 0;
   };
   void Trim();
 
   std::vector<Step> steps_;
   std::size_t index_ = 0;
   std::size_t limit_ = 0;
+  std::uint64_t next_revision_ = 1;
 };
 
 }  // namespace leinwand::core

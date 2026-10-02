@@ -14,12 +14,15 @@
 #include "include/core/SkBlurTypes.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkColor.h"
+#include "include/core/SkData.h"
 #include "include/core/SkImageInfo.h"
 #include "include/core/SkMaskFilter.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkPathBuilder.h"
+#include "include/core/SkStream.h"
 #include "include/core/SkSurface.h"
 #include "include/effects/SkDashPathEffect.h"
+#include "include/encode/SkPngEncoder.h"
 #include "render/document_renderer_impl.h"
 
 namespace leinwand::render {
@@ -195,8 +198,12 @@ void DocumentRenderer::Impl::Draw(SkCanvas* canvas, const core::Document& docume
   outline_ = overlay && overlay->outline;
 
   const auto& bg = settings.pasteboard;
-  canvas->clear(SkColor4f{static_cast<float>(bg.r), static_cast<float>(bg.g),
-                          static_cast<float>(bg.b), 1.0f});
+  if (settings.artwork_only) {
+    canvas->clear(settings.transparent ? SK_ColorTRANSPARENT : SK_ColorWHITE);
+  } else {
+    canvas->clear(SkColor4f{static_cast<float>(bg.r), static_cast<float>(bg.g),
+                            static_cast<float>(bg.b), 1.0f});
+  }
   canvas->save();
   canvas->translate(static_cast<float>(view.pan_x), static_cast<float>(view.pan_y));
   canvas->scale(static_cast<float>(view.zoom), static_cast<float>(view.zoom));
@@ -218,6 +225,7 @@ void DocumentRenderer::Impl::Draw(SkCanvas* canvas, const core::Document& docume
   border.setStyle(SkPaint::kStroke_Style);
   border.setStrokeWidth(0);  // Hairline: one device pixel wide.
   for (const auto& board : document.artboards) {
+    if (settings.artwork_only) break;
     const SkRect rect = ToSk(board.bounds);
     canvas->drawRect(rect.makeOffset(0, 2 * px), shadow);
     canvas->drawRect(rect, paper);
@@ -281,6 +289,17 @@ void DocumentRenderer::Impl::DrawObject(SkCanvas* canvas, const core::ObjectPtr&
     }
     for (auto it = group->children.begin(); it != end; ++it) DrawObject(canvas, *it, local);
     canvas->restore();
+  } else if (std::holds_alternative<core::PreservedObject>(*object)) {
+    // A placeholder: a frame with a cross, as for missing content.
+    SkPaint line;
+    line.setColor(SkColorSetARGB(160, 0x80, 0x80, 0x80));
+    line.setStyle(SkPaint::kStroke_Style);
+    line.setStrokeWidth(0);
+    line.setAntiAlias(true);
+    canvas->drawPath(entry.path, line);
+    const SkRect frame = entry.path.getBounds();
+    canvas->drawLine(frame.left(), frame.top(), frame.right(), frame.bottom(), line);
+    canvas->drawLine(frame.right(), frame.top(), frame.left(), frame.bottom(), line);
   } else if (outline_) {
     SkPaint line;
     line.setColor(SK_ColorBLACK);
@@ -308,7 +327,9 @@ void DocumentRenderer::Impl::DrawShape(SkCanvas* canvas, const core::Object& obj
       canvas->drawPath(path, paint);
       continue;
     }
-    const auto& stroke = std::get<core::Stroke>(*it);
+    const auto* stroke_item = std::get_if<core::Stroke>(&*it);
+    if (!stroke_item) continue;  // Unknown items (from a newer version) are not drawn.
+    const auto& stroke = *stroke_item;
     if (stroke.width <= 0.0) continue;
     if (!SetPaintColor(paint, stroke.paint, stroke.opacity, *document_)) continue;
     paint.setBlendMode(ToSk(stroke.blend_mode));
@@ -529,5 +550,34 @@ std::vector<std::uint8_t> DocumentRenderer::RenderRaster(const core::Document& d
 }
 
 DocumentRenderer::Stats DocumentRenderer::last_stats() const { return impl_->stats; }
+
+std::vector<std::uint8_t> DocumentRenderer::ExportPng(const core::Document& document,
+                                                      const core::Rect& area, double scale,
+                                                      bool transparent) {
+  const int width = static_cast<int>(std::ceil(area.width() * scale));
+  const int height = static_cast<int>(std::ceil(area.height() * scale));
+  // Skia's raster limit, and a sanity bound on memory (about 1 GB).
+  if (width <= 0 || height <= 0 || width > 32767 || height > 32767 ||
+      static_cast<double>(width) * height > 2.5e8) {
+    return {};
+  }
+  RenderSettings settings;
+  settings.artwork_only = true;
+  settings.transparent = transparent;
+  DocumentRenderer renderer(settings);
+  const SkImageInfo info =
+      SkImageInfo::Make(width, height, kRGBA_8888_SkColorType, kPremul_SkAlphaType);
+  sk_sp<SkSurface> surface = SkSurfaces::Raster(info);
+  if (!surface) return {};
+  const View view{-area.left * scale, -area.top * scale, scale};
+  renderer.impl_->Draw(surface->getCanvas(), document, view, width, height, nullptr);
+  SkPixmap pixmap;
+  if (!surface->peekPixels(&pixmap)) return {};
+  SkDynamicMemoryWStream stream;
+  if (!SkPngEncoder::Encode(&stream, pixmap, {})) return {};
+  const sk_sp<SkData> data = stream.detachAsData();
+  const auto* bytes = static_cast<const std::uint8_t*>(data->data());
+  return {bytes, bytes + data->size()};
+}
 
 }  // namespace leinwand::render

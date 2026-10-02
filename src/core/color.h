@@ -50,6 +50,7 @@ struct Swatch {
   std::string name;
   Kind kind = Kind::kProcess;
   ProcessColor color;
+  std::string unknown_fields;  // See ObjectCommon::unknown_fields.
   friend bool operator==(const Swatch&, const Swatch&) = default;
 };
 

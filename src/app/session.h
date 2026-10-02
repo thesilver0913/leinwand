@@ -5,12 +5,16 @@
 
 #include <QColor>
 #include <QObject>
+#include <QTimer>
+#include <QUrl>
 #include <QVariantList>
 #include <QVariantMap>
+#include <cstdint>
 #include <memory>
 
 #include "core/document.h"
 #include "editor/editor.h"
+#include "io/import_report.h"
 
 class LayersModel;
 class QQmlEngine;
@@ -53,6 +57,19 @@ class Session : public QObject {
   // The canvas showing the document (a CanvasItem), for zoom and view
   // commands from the window; null until the layout has made it.
   Q_PROPERTY(QObject* canvas READ canvas NOTIFY canvasChanged)
+  // The file: its path (empty until saved as .lwd), the name for the title
+  // bar, and whether there are unsaved changes.
+  Q_PROPERTY(QString filePath READ filePath NOTIFY fileChanged)
+  Q_PROPERTY(QString displayName READ displayName NOTIFY fileChanged)
+  Q_PROPERTY(bool dirty READ dirty NOTIFY documentChanged)
+  // What the last import could not take over (spec 6.3): {kind, action
+  // ("preserved", "approximated", "converted", "discarded"), count, ids}.
+  Q_PROPERTY(QVariantList importReport READ importReport NOTIFY importReportChanged)
+  // Why the last file operation failed, for the message box.
+  Q_PROPERTY(QString error READ error NOTIFY errorChanged)
+  // Recovery files left by a session that did not close normally:
+  // {path, original (the file it was, if any), time}.
+  Q_PROPERTY(QVariantList recoveryFiles READ recoveryFiles CONSTANT)
 
  public:
   explicit Session(QObject* parent = nullptr);
@@ -85,6 +102,32 @@ class Session : public QObject {
   void setSmartGuides(bool on);
   QObject* canvas() const { return canvas_; }
   void SetCanvas(QObject* canvas);
+  QString filePath() const { return file_path_; }
+  QString displayName() const { return display_name_; }
+  bool dirty() const;
+  QVariantList importReport() const { return import_report_; }
+  QString error() const { return error_; }
+  QVariantList recoveryFiles() const { return recovery_files_; }
+
+  // Files (spec 3.3, 6). URLs from file dialogs or local paths. Each returns
+  // false and sets `error` on failure.
+  Q_INVOKABLE void newDocument();
+  Q_INVOKABLE bool open(const QUrl& url);          // .lwd, or .svg (imported).
+  Q_INVOKABLE bool openPath(const QString& path);  // A command-line argument.
+  Q_INVOKABLE bool save();                         // To filePath; false if there is none.
+  Q_INVOKABLE bool saveAs(const QUrl& url);
+  // Export the first artboard (spec 6.1, 6 "PNG").
+  Q_INVOKABLE QVariantList svgExportIssues() const;
+  Q_INVOKABLE bool exportSvg(const QUrl& url);
+  Q_INVOKABLE bool exportPng(const QUrl& url, double scale, bool transparent);
+  // Opens a recovery file as an unsaved document; it is deleted once the
+  // document is saved or closed.
+  Q_INVOKABLE bool restore(const QString& path);
+  Q_INVOKABLE void discardRecovery(const QString& path);
+  // Selects the objects of an import report row.
+  Q_INVOKABLE void selectReported(const QVariantList& ids);
+  // Removes this session's recovery file (on a normal close).
+  Q_INVOKABLE void closeCleanly();
 
   Q_INVOKABLE void loadShowcase();
   Q_INVOKABLE void loadTestDocument(int pathCount);
@@ -152,13 +195,33 @@ class Session : public QObject {
   void canvasChanged();
   // A new document was loaded (the canvas fits it into view).
   void documentReplaced();
+  void fileChanged();
+  void importReportChanged();
+  void errorChanged();
 
  private:
   void SetDocument(leinwand::core::Document document);
+  bool Fail(const QString& message);
+  void SetReport(const leinwand::io::ImportReport& report);
+  void Autosave();
+  void RemoveRecovery();
 
   std::unique_ptr<leinwand::editor::Editor> editor_;
   std::unique_ptr<LayersModel> layers_;
   int object_count_ = 0;
-  int view_tool_ = -1;
-  QObject* canvas_ = nullptr;  // 12 hand, 13 zoom; -1: an editor tool.
+  int view_tool_ = -1;  // 12 hand, 13 zoom; -1: an editor tool.
+  QObject* canvas_ = nullptr;
+
+  // The file (spec 3.3).
+  QString file_path_;     // Empty: never saved as .lwd.
+  QString display_name_;  // For the title: the file name, or "Untitled-1".
+  std::uint64_t saved_revision_ = 0;
+  QVariantList import_report_;
+  QString error_;
+  // Autosave (spec 3.3, "自動保存と復元").
+  QTimer* autosave_ = nullptr;
+  QString recovery_path_;
+  std::uint64_t autosaved_revision_ = 0;
+  QVariantList recovery_files_;  // Found at start.
+  int untitled_ = 0;
 };

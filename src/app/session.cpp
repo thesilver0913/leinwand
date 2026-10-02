@@ -1,15 +1,28 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "session.h"
 
+#include <QCoreApplication>
+#include <QDateTime>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QQmlEngine>
+#include <QStandardPaths>
+#include <QThreadPool>
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <limits>
 #include <variant>
 
 #include "core/style.h"
 #include "editor/number_input.h"
+#include "io/lwd.h"
+#include "io/svg.h"
 #include "layers_model.h"
+#include "render/document_renderer.h"
 #include "render/test_document.h"
 
 namespace {
@@ -42,10 +55,90 @@ QColor ToQColor(const std::optional<Color>& paint, const leinwand::core::Documen
                           static_cast<float>(rgb->b));
 }
 
+constexpr const char* kAppVersion = "Leinwand " LEINWAND_VERSION;
+constexpr int kAutosaveMs = 2 * 60 * 1000;  // Spec 3.3: every 2 minutes.
+
+QString RecoveryDir() {
+  return QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
+         QStringLiteral("/recovery");
+}
+
+// A path from a file dialog's URL, or the string itself.
+QString LocalPath(const QUrl& url) {
+  return url.isLocalFile() ? url.toLocalFile() : url.toString();
+}
+
+std::filesystem::path FsPath(const QString& path) {
+  return std::filesystem::path(path.toStdWString());
+}
+
+bool WriteBytes(const QString& path, const std::vector<std::uint8_t>& bytes) {
+  QFile file(path);
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+  return file.write(reinterpret_cast<const char*>(bytes.data()),
+                    static_cast<qint64>(bytes.size())) == static_cast<qint64>(bytes.size());
+}
+
+// The first artboard, at most 512 px on its longer side (spec 3.1).
+std::vector<std::uint8_t> Thumbnail(const leinwand::core::Document& document) {
+  if (document.artboards.empty()) return {};
+  const auto area = document.artboards.front().bounds;
+  const double longer = std::max(area.width(), area.height());
+  if (longer <= 0) return {};
+  return leinwand::render::DocumentRenderer::ExportPng(document, area, std::min(1.0, 512 / longer),
+                                                       false);
+}
+
+QString ActionName(leinwand::io::ReportAction action) {
+  switch (action) {
+    case leinwand::io::ReportAction::kPreserved:
+      return QStringLiteral("preserved");
+    case leinwand::io::ReportAction::kApproximated:
+      return QStringLiteral("approximated");
+    case leinwand::io::ReportAction::kConverted:
+      return QStringLiteral("converted");
+    case leinwand::io::ReportAction::kDiscarded:
+      return QStringLiteral("discarded");
+  }
+  return {};
+}
+
+QVariantList ReportRows(const leinwand::io::ImportReport& report) {
+  QVariantList rows;
+  for (const auto& row : report.rows) {
+    QVariantList ids;
+    for (const auto& id : row.object_ids) ids.append(QString::fromStdString(id));
+    rows.append(QVariantMap{{"kind", QString::fromStdString(row.kind)},
+                            {"action", ActionName(row.action)},
+                            {"count", row.count},
+                            {"ids", ids}});
+  }
+  return rows;
+}
+
 }  // namespace
 
 Session::Session(QObject* parent) : QObject(parent), layers_(std::make_unique<LayersModel>(this)) {
   g_instance = this;
+  // Recovery files from earlier sessions that did not close normally.
+  const QDir dir(RecoveryDir());
+  const auto entries = dir.entryInfoList({QStringLiteral("*.lwd")}, QDir::Files, QDir::Time);
+  for (const QFileInfo& info : entries) {
+    QFile sidecar(info.absoluteFilePath() + QStringLiteral(".json"));
+    QString original;
+    if (sidecar.open(QIODevice::ReadOnly)) {
+      original = QJsonDocument::fromJson(sidecar.readAll()).object().value("original").toString();
+    }
+    recovery_files_.append(QVariantMap{
+        {"path", info.absoluteFilePath()}, {"original", original}, {"time", info.lastModified()}});
+  }
+  recovery_path_ = dir.absoluteFilePath(QStringLiteral("session-%1-%2.lwd")
+                                            .arg(QCoreApplication::applicationPid())
+                                            .arg(QDateTime::currentMSecsSinceEpoch()));
+  autosave_ = new QTimer(this);
+  autosave_->setInterval(kAutosaveMs);
+  connect(autosave_, &QTimer::timeout, this, &Session::Autosave);
+  autosave_->start();
   loadShowcase();
 }
 
@@ -66,10 +159,191 @@ void Session::SetDocument(leinwand::core::Document document) {
   editor_ = std::make_unique<leinwand::editor::Editor>(std::move(document));
   editor_->SetSmartGuides(guides);
   view_tool_ = -1;
+  saved_revision_ = autosaved_revision_ = editor_->history().revision();
+  if (!import_report_.isEmpty()) SetReport({});
   Changed();
   emit toolChanged();
   emit documentReplaced();
 }
+
+bool Session::dirty() const { return editor_->history().revision() != saved_revision_; }
+
+bool Session::Fail(const QString& message) {
+  error_ = message;
+  emit errorChanged();
+  return false;
+}
+
+void Session::SetReport(const leinwand::io::ImportReport& report) {
+  import_report_ = ReportRows(report);
+  emit importReportChanged();
+}
+
+void Session::newDocument() {
+  RemoveRecovery();
+  SetDocument(leinwand::core::NewDocument(tr("Layer 1").toStdString()));
+  file_path_.clear();
+  display_name_ = tr("Untitled-%1").arg(++untitled_);
+  emit fileChanged();
+}
+
+bool Session::open(const QUrl& url) {
+  const QString path = LocalPath(url);
+  const QFileInfo info(path);
+  if (info.suffix().compare(QStringLiteral("svg"), Qt::CaseInsensitive) == 0) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) return Fail(tr("Could not read %1.").arg(info.fileName()));
+    const QByteArray xml = file.readAll();
+    auto result = leinwand::io::ImportSvg(std::string_view(xml.constData(), xml.size()));
+    if (!result.document) {
+      return Fail(tr("%1 is not a readable SVG file (%2).")
+                      .arg(info.fileName(), QString::fromStdString(result.error)));
+    }
+    RemoveRecovery();
+    SetDocument(std::move(*result.document));
+    // Imported: saving asks for a .lwd file name.
+    file_path_.clear();
+    display_name_ = info.fileName();
+    emit fileChanged();
+    SetReport(result.report);
+    return true;
+  }
+  auto result = leinwand::io::LoadLwd(FsPath(path));
+  switch (result.error) {
+    case leinwand::io::LoadError::kNone:
+      break;
+    case leinwand::io::LoadError::kNotFound:
+      return Fail(tr("Could not read %1.").arg(info.fileName()));
+    case leinwand::io::LoadError::kNotLeinwand:
+      return Fail(tr("%1 is not a Leinwand document.").arg(info.fileName()));
+    case leinwand::io::LoadError::kNewerVersion:
+      return Fail(tr("%1 was made with a newer version of Leinwand (format %2). Update Leinwand "
+                     "to open it.")
+                      .arg(info.fileName(), QString::fromStdString(result.message)));
+    case leinwand::io::LoadError::kCorrupt:
+      return Fail(tr("%1 is damaged and cannot be opened (%2).")
+                      .arg(info.fileName(), QString::fromStdString(result.message)));
+  }
+  RemoveRecovery();
+  SetDocument(std::move(*result.document));
+  file_path_ = info.absoluteFilePath();
+  display_name_ = info.fileName();
+  emit fileChanged();
+  SetReport(result.report);
+  return true;
+}
+
+bool Session::openPath(const QString& path) {
+  return open(QUrl::fromLocalFile(QFileInfo(path).absoluteFilePath()));
+}
+
+bool Session::save() {
+  if (file_path_.isEmpty()) return false;
+  return saveAs(QUrl::fromLocalFile(file_path_));
+}
+
+bool Session::saveAs(const QUrl& url) {
+  QString path = LocalPath(url);
+  if (QFileInfo(path).suffix().isEmpty()) path += QStringLiteral(".lwd");
+  const auto& document = editor_->document();
+  std::string error;
+  if (!leinwand::io::SaveLwd(FsPath(path), document, kAppVersion, Thumbnail(document), &error)) {
+    return Fail(tr("Could not save %1 (%2). The file on disk was not changed.")
+                    .arg(QFileInfo(path).fileName(), QString::fromStdString(error)));
+  }
+  file_path_ = QFileInfo(path).absoluteFilePath();
+  display_name_ = QFileInfo(path).fileName();
+  saved_revision_ = editor_->history().revision();
+  RemoveRecovery();  // Saved: nothing to recover.
+  emit fileChanged();
+  emit documentChanged();
+  return true;
+}
+
+QVariantList Session::svgExportIssues() const {
+  leinwand::io::ImportReport issues;
+  leinwand::io::ExportSvg(editor_->document(), {}, &issues);
+  return ReportRows(issues);
+}
+
+bool Session::exportSvg(const QUrl& url) {
+  const QString path = LocalPath(url);
+  const std::string svg = leinwand::io::ExportSvg(editor_->document());
+  if (!WriteBytes(path, std::vector<std::uint8_t>(svg.begin(), svg.end()))) {
+    return Fail(tr("Could not write %1.").arg(QFileInfo(path).fileName()));
+  }
+  return true;
+}
+
+bool Session::exportPng(const QUrl& url, double scale, bool transparent) {
+  const QString path = LocalPath(url);
+  const auto& document = editor_->document();
+  if (document.artboards.empty()) return Fail(tr("The document has no artboard to export."));
+  const auto png = leinwand::render::DocumentRenderer::ExportPng(
+      document, document.artboards.front().bounds, scale, transparent);
+  if (png.empty()) return Fail(tr("The image would be too large at this resolution."));
+  if (!WriteBytes(path, png))
+    return Fail(tr("Could not write %1.").arg(QFileInfo(path).fileName()));
+  return true;
+}
+
+bool Session::restore(const QString& path) {
+  auto result = leinwand::io::LoadLwd(FsPath(path));
+  if (!result.document) return Fail(tr("The recovery file could not be read."));
+  QString original;
+  for (const QVariant& entry : recovery_files_) {
+    const QVariantMap map = entry.toMap();
+    if (map.value("path").toString() == path) original = map.value("original").toString();
+  }
+  RemoveRecovery();
+  SetDocument(std::move(*result.document));
+  // Unsaved: the recovered state is newer than any file.
+  saved_revision_ = ~std::uint64_t{0};
+  // Keep writing to the same recovery file until the document is saved.
+  recovery_path_ = path;
+  file_path_ = original;
+  display_name_ = original.isEmpty() ? tr("Recovered") : QFileInfo(original).fileName();
+  emit fileChanged();
+  emit documentChanged();
+  return true;
+}
+
+void Session::discardRecovery(const QString& path) {
+  QFile::remove(path);
+  QFile::remove(path + QStringLiteral(".json"));
+}
+
+void Session::selectReported(const QVariantList& ids) {
+  leinwand::core::IdSet set;
+  for (const QVariant& id : ids) set.insert(id.toString().toStdString());
+  editor_->Select(set);
+  Changed();
+}
+
+void Session::Autosave() {
+  if (!dirty() || editor_->history().revision() == autosaved_revision_) return;
+  autosaved_revision_ = editor_->history().revision();
+  QDir().mkpath(RecoveryDir());
+  // A snapshot: the model is immutable, so the copy can be written on another
+  // thread while editing goes on (spec 3.3).
+  const leinwand::core::Document snapshot = editor_->document();
+  const std::filesystem::path path = FsPath(recovery_path_);
+  const QString sidecar = recovery_path_ + QStringLiteral(".json");
+  const QByteArray info = QJsonDocument(QJsonObject{{"original", file_path_}}).toJson();
+  QThreadPool::globalInstance()->start([snapshot, path, sidecar, info] {
+    leinwand::io::SaveLwd(path, snapshot, kAppVersion, {}, nullptr);
+    QFile file(sidecar);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) file.write(info);
+  });
+}
+
+void Session::RemoveRecovery() {
+  QThreadPool::globalInstance()->waitForDone();
+  discardRecovery(recovery_path_);
+  autosaved_revision_ = 0;
+}
+
+void Session::closeCleanly() { RemoveRecovery(); }
 
 void Session::Changed() {
   object_count_ = CountObjects(editor_->document());

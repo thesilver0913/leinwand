@@ -27,6 +27,20 @@ bool WritePng(const fs::path& path, const SkPixmap& pixmap) {
 
 }  // namespace
 
+double DifferingFraction(const std::vector<std::uint8_t>& a, const std::vector<std::uint8_t>& b) {
+  if (a.size() != b.size() || a.empty()) return 1.0;
+  int differing = 0;
+  for (std::size_t i = 0; i < a.size(); i += 4) {
+    for (int c = 0; c < 4; ++c) {
+      if (std::abs(int{a[i + c]} - int{b[i + c]}) > 8) {
+        ++differing;
+        break;
+      }
+    }
+  }
+  return static_cast<double>(differing) / static_cast<double>(a.size() / 4);
+}
+
 bool MatchesBaseline(const std::string& name, const std::vector<std::uint8_t>& pixels, int width,
                      int height) {
   const SkImageInfo info =

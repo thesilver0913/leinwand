@@ -49,3 +49,21 @@ target_compile_definitions(render_tests PRIVATE
   LEINWAND_TEST_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}/test-output"
 )
 catch_discover_tests(render_tests)
+
+# File formats; SVG results are compared by rendering them.
+find_package(nlohmann_json CONFIG REQUIRED)
+add_executable(io_tests
+  io/lwd_test.cpp
+  io/svg_syntax_test.cpp
+  io/svg_test.cpp
+  render/image_compare.cpp
+)
+target_include_directories(io_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(io_tests PRIVATE
+  io render unofficial::skia::skia nlohmann_json::nlohmann_json Catch2::Catch2WithMain
+)
+target_compile_definitions(io_tests PRIVATE
+  LEINWAND_TESTDATA_DIR="${PROJECT_SOURCE_DIR}/testdata"
+  LEINWAND_TEST_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}/test-output"
+)
+catch_discover_tests(io_tests)

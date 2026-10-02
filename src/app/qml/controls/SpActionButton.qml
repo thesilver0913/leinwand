@@ -52,24 +52,31 @@ T.AbstractButton {
         }
     }
 
-    contentItem: Row {
-        spacing: 4
-        anchors.centerIn: parent
-        SpIcon {
-            visible: root.iconName !== ""
-            name: root.iconName
-            size: root.iconSize
-            anchors.verticalCenter: parent.verticalCenter
-            color: root.enabled ? (root.hovered || root.checked ? Spectrum.neutralContentColorHover
-                                                                : Spectrum.neutralContentColorDefault)
-                                : Spectrum.disabledContentColor
-        }
-        Text {
-            visible: root.text !== ""
-            text: root.text
-            anchors.verticalCenter: parent.verticalCenter
-            color: root.enabled ? Spectrum.neutralContentColorDefault : Spectrum.disabledContentColor
-            font { family: Spectrum.fontFamily; pixelSize: Spectrum.fontSize75 }
+    // The control stretches contentItem over the whole button; the row sits
+    // centred inside it.
+    contentItem: Item {
+        implicitWidth: row.implicitWidth
+        implicitHeight: row.implicitHeight
+        Row {
+            id: row
+            spacing: 4
+            anchors.centerIn: parent
+            SpIcon {
+                visible: root.iconName !== ""
+                name: root.iconName
+                size: root.iconSize
+                anchors.verticalCenter: parent.verticalCenter
+                color: root.enabled ? (root.hovered || root.checked ? Spectrum.neutralContentColorHover
+                                                                    : Spectrum.neutralContentColorDefault)
+                                    : Spectrum.disabledContentColor
+            }
+            Text {
+                visible: root.text !== ""
+                text: root.text
+                anchors.verticalCenter: parent.verticalCenter
+                color: root.enabled ? Spectrum.neutralContentColorDefault : Spectrum.disabledContentColor
+                font { family: Spectrum.fontFamily; pixelSize: Spectrum.fontSize75 }
+            }
         }
     }
 }

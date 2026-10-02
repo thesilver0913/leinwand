@@ -58,6 +58,9 @@ int main(int argc, char* argv[]) {
   QQuickWindow::setGraphicsApi(QSGRendererInterface::Vulkan);
 
   QGuiApplication app(argc, argv);
+  // Names the settings and data folders (autosave recovery files).
+  QCoreApplication::setOrganizationName(QStringLiteral("Leinwand"));
+  QCoreApplication::setApplicationName(QStringLiteral("Leinwand"));
   // The Spectrum components are built on Qt Quick Templates; the few stock
   // controls left (scroll bars, tooltips) use Fusion, which follows the
   // palette set from the Spectrum tokens.

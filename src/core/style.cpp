@@ -135,7 +135,10 @@ Document RemoveSwatch(const Document& document, const std::string& id) {
     for (auto& item : a) {
       std::visit(
           [&](auto& paintable) {
-            if (auto color = plain(paintable.paint)) paintable.paint = *color;
+            using T = std::decay_t<decltype(paintable)>;
+            if constexpr (!std::is_same_v<T, UnknownAppearanceItem>) {
+              if (auto color = plain(paintable.paint)) paintable.paint = *color;
+            }
           },
           item);
     }

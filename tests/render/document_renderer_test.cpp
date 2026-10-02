@@ -291,3 +291,20 @@ TEST_CASE("A mixed scene matches its baseline image") {
   const auto pixels = Render(document);
   CHECK(leinwand::testing::MatchesBaseline("render/mixed_scene", pixels, kSize, kSize));
 }
+
+TEST_CASE("PNG export renders the area at the requested scale") {
+  const Document document = DocumentWith({Shape(Rectangle(20, 20, 80, 80), {kRed})});
+  const auto png = DocumentRenderer::ExportPng(
+      document, leinwand::core::Rect::FromXYWH(0, 0, 100, 50), 2.0, false);
+  REQUIRE(png.size() > 24);
+  CHECK(png[1] == 'P');
+  CHECK(png[2] == 'N');
+  // IHDR: width and height, big-endian, at bytes 16 and 20.
+  auto be32 = [&](size_t at) {
+    return (png[at] << 24) | (png[at + 1] << 16) | (png[at + 2] << 8) | png[at + 3];
+  };
+  CHECK(be32(16) == 200);
+  CHECK(be32(20) == 100);
+  CHECK(DocumentRenderer::ExportPng(document, leinwand::core::Rect::FromXYWH(0, 0, 0, 10), 1, false)
+            .empty());
+}

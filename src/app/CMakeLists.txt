@@ -9,6 +9,7 @@ qt_add_qml_module(leinwand
   URI Leinwand
   QML_FILES
     qml/Main.qml
+    qml/AppMenuBar.qml
     qml/ControlBar.qml
     qml/FillStroke.qml
     qml/StatusBar.qml
@@ -26,6 +27,7 @@ qt_add_qml_module(leinwand
     qml/controls/SpSwatch.qml
     qml/controls/SpTextField.qml
     qml/panels/ColorPanel.qml
+    qml/panels/ImportReportPanel.qml
     qml/panels/LayersPanel.qml
     qml/panels/PropertiesPanel.qml
     qml/panels/StrokePanel.qml
@@ -90,6 +92,7 @@ qt_add_resources(leinwand spectrum_icons
 
 # QRhi (rhi/qrhi.h) is only reachable through GuiPrivate in Qt 6.8.
 target_link_libraries(leinwand PRIVATE
-  editor render Qt6::Gui Qt6::GuiPrivate Qt6::Quick Qt6::QuickControls2 Qt6::Svg
+  editor render io Qt6::Gui Qt6::GuiPrivate Qt6::Quick Qt6::QuickControls2 Qt6::Svg
   KDAB::kddockwidgets
 )
+target_compile_definitions(leinwand PRIVATE LEINWAND_VERSION="${PROJECT_VERSION}")
