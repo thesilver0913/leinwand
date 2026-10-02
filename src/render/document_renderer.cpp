@@ -233,7 +233,7 @@ const DocumentRenderer::Impl::CacheEntry& DocumentRenderer::Impl::Entry(
 }
 
 void DocumentRenderer::Impl::Draw(SkCanvas* canvas, const core::Document& document,
-                                  const View& view, int width, int height) {
+                                  const View& view, int width, int height, const Overlay* overlay) {
   ++frame_;
   stats = {};
   document_ = &document;
@@ -269,6 +269,8 @@ void DocumentRenderer::Impl::Draw(SkCanvas* canvas, const core::Document& docume
   }
 
   for (const auto& layer : document.layers) DrawLayer(canvas, *layer, visible);
+  if (overlay)
+    DrawOverlay(canvas, document, *overlay, px * static_cast<float>(overlay->pixel_ratio));
   canvas->restore();
 
   document_ = nullptr;
@@ -378,6 +380,92 @@ void DocumentRenderer::Impl::DrawShape(SkCanvas* canvas, const core::Object& obj
   }
 }
 
+namespace {
+// Spectrum 2 accent-background-color-default (dark), for selections.
+constexpr SkColor kSelection = SkColorSetRGB(0x40, 0x69, 0xfd);
+}  // namespace
+
+void DocumentRenderer::Impl::DrawOverlay(SkCanvas* canvas, const core::Document& document,
+                                         const Overlay& overlay, float px) {
+  // `px` is one view pixel in document units.
+  for (const auto& found : core::FindObjects(document, overlay.selection)) {
+    canvas->save();
+    canvas->concat(ToSk(found.to_document));
+    DrawOutline(canvas, found.object, 2.0f * static_cast<float>(overlay.pixel_ratio));
+    canvas->restore();
+  }
+
+  if (overlay.bounding_box) {
+    const SkRect box = ToSk(*overlay.bounding_box);
+    SkPaint line;
+    line.setColor(kSelection);
+    line.setStyle(SkPaint::kStroke_Style);
+    line.setStrokeWidth(px);
+    canvas->drawRect(box, line);
+    SkPaint fill;
+    fill.setColor(SK_ColorWHITE);
+    const float half = 3.5f * px;
+    const SkPoint handles[] = {{box.left(), box.top()},     {box.centerX(), box.top()},
+                               {box.right(), box.top()},    {box.right(), box.centerY()},
+                               {box.right(), box.bottom()}, {box.centerX(), box.bottom()},
+                               {box.left(), box.bottom()},  {box.left(), box.centerY()}};
+    for (const SkPoint& h : handles) {
+      const SkRect r = SkRect::MakeLTRB(h.x() - half, h.y() - half, h.x() + half, h.y() + half);
+      canvas->drawRect(r, fill);
+      canvas->drawRect(r, line);
+    }
+  }
+
+  if (overlay.marquee) {
+    SkPaint dashes;
+    dashes.setColor(SkColorSetRGB(0x33, 0x33, 0x33));
+    dashes.setStyle(SkPaint::kStroke_Style);
+    dashes.setStrokeWidth(px);
+    const float intervals[] = {3 * px, 3 * px};
+    dashes.setPathEffect(SkDashPathEffect::Make(intervals, 0));
+    canvas->drawRect(ToSk(*overlay.marquee), dashes);
+  }
+}
+
+void DocumentRenderer::Impl::DrawOutline(SkCanvas* canvas, const core::ObjectPtr& object,
+                                         float anchor_half) {
+  if (const auto* group = std::get_if<core::GroupObject>(object.get())) {
+    canvas->save();
+    canvas->concat(ToSk(group->transform));
+    for (const auto& child : group->children) DrawOutline(canvas, child, anchor_half);
+    canvas->restore();
+    return;
+  }
+  SkPaint line;
+  line.setColor(kSelection);
+  line.setStyle(SkPaint::kStroke_Style);
+  line.setStrokeWidth(0);  // Hairline: one device pixel at any scale.
+  line.setAntiAlias(true);
+  canvas->drawPath(Entry(object).path, line);
+
+  // Anchor points as small squares, sized in device pixels.
+  std::vector<SkPoint> points;
+  auto collect = [&](const core::PathData& path) {
+    for (const auto& a : path.anchors) points.push_back(ToSk(a.position));
+  };
+  if (const auto* path = std::get_if<core::PathObject>(object.get())) collect(path->path);
+  if (const auto* compound = std::get_if<core::CompoundPathObject>(object.get())) {
+    for (const auto& subpath : compound->subpaths) collect(subpath);
+  }
+  const SkMatrix ctm = canvas->getTotalMatrix();
+  ctm.mapPoints(points);
+  SkPaint anchor;
+  anchor.setColor(kSelection);
+  canvas->save();
+  canvas->resetMatrix();
+  for (const SkPoint& p : points) {
+    canvas->drawRect(SkRect::MakeLTRB(p.x() - anchor_half, p.y() - anchor_half, p.x() + anchor_half,
+                                      p.y() + anchor_half),
+                     anchor);
+  }
+  canvas->restore();
+}
+
 void DocumentRenderer::Impl::PruneCache() {
   // Drop entries not used for a while; their objects were edited away or
   // scrolled off long ago.
@@ -394,11 +482,12 @@ DocumentRenderer::DocumentRenderer(RenderSettings settings)
 DocumentRenderer::~DocumentRenderer() = default;
 
 std::vector<std::uint8_t> DocumentRenderer::RenderRaster(const core::Document& document, int width,
-                                                         int height, const View& view) {
+                                                         int height, const View& view,
+                                                         const Overlay* overlay) {
   const SkImageInfo info =
       SkImageInfo::Make(width, height, kRGBA_8888_SkColorType, kPremul_SkAlphaType);
   sk_sp<SkSurface> surface = SkSurfaces::Raster(info);
-  impl_->Draw(surface->getCanvas(), document, view, width, height);
+  impl_->Draw(surface->getCanvas(), document, view, width, height, overlay);
   std::vector<std::uint8_t> pixels(info.computeMinByteSize());
   surface->readPixels(info, pixels.data(), info.minRowBytes(), 0, 0);
   return pixels;

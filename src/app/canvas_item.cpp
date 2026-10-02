@@ -4,6 +4,7 @@
 #include <rhi/qrhi.h>
 
 #include <QElapsedTimer>
+#include <QHoverEvent>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QQuickWindow>
@@ -14,6 +15,7 @@
 #include <string>
 
 #include "render/document_renderer.h"
+#include "render/overlay.h"
 #include "render/test_document.h"
 #include "render/vulkan_canvas.h"
 
@@ -41,6 +43,7 @@ class CanvasRenderer : public QQuickRhiItemRenderer {
     const double dpr = item->window()->effectiveDevicePixelRatio();
     const View& view = item->view();
     view_ = {view.pan_x * dpr, view.pan_y * dpr, view.zoom * dpr};
+    overlay_ = item->overlay(dpr);
 
     if (!error_.isEmpty()) {
       QMetaObject::invokeMethod(item, "reportError", Qt::QueuedConnection, Q_ARG(QString, error_));
@@ -73,7 +76,7 @@ class CanvasRenderer : public QQuickRhiItemRenderer {
     QElapsedTimer timer;
     timer.start();
     const VkImageLayout final_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    if (canvas_->Draw(renderer_, document_, view_, target, final_layout)) {
+    if (canvas_->Draw(renderer_, document_, view_, overlay_, target, final_layout)) {
       // Skia changed the layout behind QRhi's back; tell it.
       texture->setNativeLayout(final_layout);
     } else {
@@ -110,6 +113,7 @@ class CanvasRenderer : public QQuickRhiItemRenderer {
   leinwand::render::DocumentRenderer renderer_;
   leinwand::core::Document document_;
   View view_;
+  leinwand::render::Overlay overlay_;
   bool failed_ = false;
   QString error_;
   int frames_ = 0;
@@ -127,18 +131,40 @@ int CountObjects(const leinwand::core::Document& document) {
 
 CanvasItem::CanvasItem(QQuickItem* parent) : QQuickRhiItem(parent) {
   setAcceptedMouseButtons(Qt::LeftButton | Qt::MiddleButton);
+  setAcceptHoverEvents(true);
   setFlag(ItemIsFocusScope);
   setActiveFocusOnTab(true);
   loadShowcase();
 }
 
+CanvasItem::~CanvasItem() = default;
+
 QQuickRhiItemRenderer* CanvasItem::createRenderer() { return new CanvasRenderer; }
 
+leinwand::render::Overlay CanvasItem::overlay(double pixel_ratio) const {
+  const leinwand::editor::Overlay o = editor_->overlay();
+  return {o.selection, o.bounding_box, o.marquee, pixel_ratio};
+}
+
+QString CanvasItem::undoAction() const {
+  return QString::fromStdString(editor_->history().undo_action());
+}
+
+QString CanvasItem::redoAction() const {
+  return QString::fromStdString(editor_->history().redo_action());
+}
+
 void CanvasItem::SetDocument(leinwand::core::Document document) {
-  document_ = std::move(document);
-  object_count_ = CountObjects(document_);
+  editor_ = std::make_unique<leinwand::editor::Editor>(std::move(document));
+  object_count_ = CountObjects(editor_->document());
   fit_pending_ = true;
   if (width() > 0 && height() > 0) fitArtboard();
+  emit documentChanged();
+  update();
+}
+
+void CanvasItem::EditorChanged() {
+  object_count_ = CountObjects(editor_->document());
   emit documentChanged();
   update();
 }
@@ -168,9 +194,10 @@ void CanvasItem::setPanY(double y) {
 }
 
 void CanvasItem::fitArtboard() {
-  if (document_.artboards.empty() || width() <= 0 || height() <= 0) return;
+  const auto& artboards = editor_->document().artboards;
+  if (artboards.empty() || width() <= 0 || height() <= 0) return;
   fit_pending_ = false;
-  SetView(View::Fit(document_.artboards.front().bounds, width(), height()));
+  SetView(View::Fit(artboards.front().bounds, width(), height()));
 }
 
 void CanvasItem::actualSize() {
@@ -185,6 +212,50 @@ void CanvasItem::zoomOut() {
   SetView(view_.ZoomedAt({width() / 2, height() / 2}, View::NextZoomOut(view_.zoom) / view_.zoom));
 }
 
+void CanvasItem::undo() {
+  editor_->Undo();
+  EditorChanged();
+}
+
+void CanvasItem::redo() {
+  editor_->Redo();
+  EditorChanged();
+}
+
+void CanvasItem::selectAll() {
+  editor_->SelectAll();
+  EditorChanged();
+}
+
+void CanvasItem::deselect() {
+  editor_->Deselect();
+  EditorChanged();
+}
+
+void CanvasItem::deleteSelection() {
+  editor_->Delete();
+  EditorChanged();
+}
+
+void CanvasItem::group() {
+  editor_->Group();
+  EditorChanged();
+}
+
+void CanvasItem::ungroup() {
+  editor_->Ungroup();
+  EditorChanged();
+}
+
+void CanvasItem::arrange(int how) {
+  using leinwand::core::Arrange;
+  static constexpr Arrange kOrder[] = {Arrange::kBringToFront, Arrange::kBringForward,
+                                       Arrange::kSendBackward, Arrange::kSendToBack};
+  if (how < 0 || how > 3) return;
+  editor_->Arrange(kOrder[how]);
+  EditorChanged();
+}
+
 void CanvasItem::reportStats(double fps, double drawMs) {
   fps_ = fps;
   draw_ms_ = drawMs;
@@ -196,6 +267,21 @@ void CanvasItem::reportError(const QString& error) {
   error_ = error;
   emit errorChanged();
 }
+
+leinwand::core::Point CanvasItem::ToDocument(QPointF position) const {
+  return view_.ToDocument({position.x(), position.y()});
+}
+
+double CanvasItem::PickRadius() const { return 4.0 / view_.zoom; }
+
+namespace {
+
+leinwand::editor::Modifiers ToolModifiers(Qt::KeyboardModifiers modifiers) {
+  return {.shift = modifiers.testFlag(Qt::ShiftModifier),
+          .alt = modifiers.testFlag(Qt::AltModifier)};
+}
+
+}  // namespace
 
 void CanvasItem::geometryChange(const QRectF& newGeometry, const QRectF& oldGeometry) {
   QQuickRhiItem::geometryChange(newGeometry, oldGeometry);
@@ -219,19 +305,61 @@ void CanvasItem::wheelEvent(QWheelEvent* event) {
 }
 
 void CanvasItem::keyPressEvent(QKeyEvent* event) {
-  if (event->key() == Qt::Key_Space && !event->isAutoRepeat()) {
-    space_held_ = true;  // Temporary hand tool.
-    UpdateCursor();
-    event->accept();
-    return;
+  modifiers_ = event->modifiers();
+  if (tool_dragging_ && (event->key() == Qt::Key_Shift || event->key() == Qt::Key_Alt)) {
+    // Modifiers change the drag (constrain, copy) even when the mouse is still.
+    editor_->PointerMove(ToDocument(last_mouse_), ToolModifiers(modifiers_));
+    EditorChanged();
   }
-  QQuickRhiItem::keyPressEvent(event);
+  if (event->isAutoRepeat() && event->key() == Qt::Key_Space) return;
+  // Arrow keys nudge by the keyboard increment (1 pt; Shift: 10 pt).
+  const double step = event->modifiers().testFlag(Qt::ShiftModifier) ? 10.0 : 1.0;
+  switch (event->key()) {
+    case Qt::Key_Space:
+      space_held_ = true;  // Temporary hand tool.
+      UpdateCursor(last_mouse_);
+      break;
+    case Qt::Key_Left:
+      editor_->Nudge(-step, 0);
+      EditorChanged();
+      break;
+    case Qt::Key_Right:
+      editor_->Nudge(step, 0);
+      EditorChanged();
+      break;
+    case Qt::Key_Up:
+      editor_->Nudge(0, -step);
+      EditorChanged();
+      break;
+    case Qt::Key_Down:
+      editor_->Nudge(0, step);
+      EditorChanged();
+      break;
+    case Qt::Key_Delete:
+    case Qt::Key_Backspace:
+      deleteSelection();
+      break;
+    case Qt::Key_Escape:
+      editor_->CancelDrag();
+      tool_dragging_ = false;
+      EditorChanged();
+      break;
+    default:
+      QQuickRhiItem::keyPressEvent(event);
+      return;
+  }
+  event->accept();
 }
 
 void CanvasItem::keyReleaseEvent(QKeyEvent* event) {
+  modifiers_ = event->modifiers();
+  if (tool_dragging_ && (event->key() == Qt::Key_Shift || event->key() == Qt::Key_Alt)) {
+    editor_->PointerMove(ToDocument(last_mouse_), ToolModifiers(modifiers_));
+    EditorChanged();
+  }
   if (event->key() == Qt::Key_Space && !event->isAutoRepeat()) {
     space_held_ = false;
-    UpdateCursor();
+    UpdateCursor(last_mouse_);
     event->accept();
     return;
   }
@@ -240,34 +368,92 @@ void CanvasItem::keyReleaseEvent(QKeyEvent* event) {
 
 void CanvasItem::mousePressEvent(QMouseEvent* event) {
   forceActiveFocus();
+  last_mouse_ = event->position();
+  modifiers_ = event->modifiers();
   if (event->button() == Qt::MiddleButton || (event->button() == Qt::LeftButton && space_held_)) {
     panning_ = true;
-    last_mouse_ = event->position();
-    UpdateCursor();
-    event->accept();
-    return;
+  } else if (event->button() == Qt::LeftButton) {
+    tool_dragging_ = true;
+    editor_->PointerDown(ToDocument(event->position()), ToolModifiers(modifiers_), PickRadius());
+    EditorChanged();
   }
-  event->ignore();  // Left clicks belong to the tools (M2).
+  UpdateCursor(event->position());
+  event->accept();
 }
 
 void CanvasItem::mouseMoveEvent(QMouseEvent* event) {
-  if (!panning_) return;
   const QPointF delta = event->position() - last_mouse_;
   last_mouse_ = event->position();
-  SetView({view_.pan_x + delta.x(), view_.pan_y + delta.y(), view_.zoom});
+  modifiers_ = event->modifiers();
+  if (panning_) {
+    SetView({view_.pan_x + delta.x(), view_.pan_y + delta.y(), view_.zoom});
+  } else if (tool_dragging_) {
+    editor_->PointerMove(ToDocument(event->position()), ToolModifiers(modifiers_));
+    EditorChanged();
+  }
 }
 
-void CanvasItem::mouseReleaseEvent(QMouseEvent*) {
+void CanvasItem::mouseReleaseEvent(QMouseEvent* event) {
+  modifiers_ = event->modifiers();
+  if (tool_dragging_) {
+    editor_->PointerUp(ToDocument(event->position()), ToolModifiers(modifiers_));
+    tool_dragging_ = false;
+    EditorChanged();
+  }
   panning_ = false;
-  UpdateCursor();
+  UpdateCursor(event->position());
 }
 
-void CanvasItem::UpdateCursor() {
+void CanvasItem::hoverMoveEvent(QHoverEvent* event) {
+  // Qt Quick re-sends hover events every frame while the cursor rests on the
+  // item; only a real move needs a new hit test.
+  if (event->position() == last_mouse_ && event->modifiers() == modifiers_) return;
+  last_mouse_ = event->position();
+  modifiers_ = event->modifiers();
+  UpdateCursor(event->position());
+}
+
+void CanvasItem::UpdateCursor(QPointF position) {
   if (panning_) {
     setCursor(Qt::ClosedHandCursor);
-  } else if (space_held_) {
+    return;
+  }
+  if (space_held_) {
     setCursor(Qt::OpenHandCursor);
-  } else {
-    unsetCursor();
+    return;
+  }
+  if (tool_dragging_) return;  // Keep the cursor the drag started with.
+  using leinwand::editor::Handle;
+  using Kind = leinwand::editor::Hover::Kind;
+  const auto hover = editor_->HoverAt(ToDocument(position), PickRadius());
+  switch (hover.kind) {
+    case Kind::kHandle:
+      switch (hover.handle) {
+        case Handle::kTopLeft:
+        case Handle::kBottomRight:
+          setCursor(Qt::SizeFDiagCursor);
+          return;
+        case Handle::kTopRight:
+        case Handle::kBottomLeft:
+          setCursor(Qt::SizeBDiagCursor);
+          return;
+        case Handle::kTop:
+        case Handle::kBottom:
+          setCursor(Qt::SizeVerCursor);
+          return;
+        case Handle::kLeft:
+        case Handle::kRight:
+          setCursor(Qt::SizeHorCursor);
+          return;
+      }
+      return;
+    case Kind::kRotate:
+      // Qt has no rotate cursor; a custom one comes with the icon set (M7).
+      setCursor(Qt::CrossCursor);
+      return;
+    case Kind::kObject:
+    case Kind::kNothing:
+      unsetCursor();
+      return;
   }
 }

@@ -23,8 +23,6 @@ CubicBezier SegmentAt(const core::PathData& path, int index);
 // gives a degenerate rect; an empty path gives an invalid one.
 core::Rect Bounds(const core::PathData& path);
 
-core::PathData Transform(const core::PathData& path, const core::Matrix& matrix);
-
 // Bounds a rect's image under `matrix` (the four corners); exact for
 // scale and translation, conservative under rotation.
 core::Rect MapRect(const core::Rect& rect, const core::Matrix& matrix);

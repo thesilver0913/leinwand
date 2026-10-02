@@ -207,6 +207,22 @@ TEST_CASE("Replacing an object is picked up despite the path cache") {
   CHECK(Near(PixelAt(renderer.RenderRaster(document, kSize, kSize, {}), 50, 50), 0, 0, 255));
 }
 
+TEST_CASE("The overlay outlines the selection and draws the box, handles and marquee") {
+  const Document document = DocumentWith({Shape(Rectangle(20, 20, 80, 80), {kRed}, "sq")});
+  leinwand::render::Overlay overlay;
+  overlay.selection = {"sq"};
+  overlay.bounding_box = Rect{20, 20, 80, 80};
+  overlay.marquee = Rect{5, 85, 95, 95};
+  DocumentRenderer renderer;
+  const auto pixels = renderer.RenderRaster(document, kSize, kSize, View{}, &overlay);
+  CHECK(Near(PixelAt(pixels, 50, 50), 255, 0, 0));             // The fill is untouched.
+  CHECK(Near(PixelAt(pixels, 50, 20), 255, 255, 255, 10));     // Top handle: white centre.
+  CHECK(Near(PixelAt(pixels, 35, 20), 0x40, 0x69, 0xfd, 60));  // Box edge: selection blue.
+  CHECK((Near(PixelAt(pixels, 20, 20), 255, 255, 255, 10) ||   // Corner: handle over anchor.
+         Near(PixelAt(pixels, 20, 20), 0x40, 0x69, 0xfd, 60)));
+  CHECK(leinwand::testing::MatchesBaseline("render/overlay", pixels, kSize, kSize));
+}
+
 TEST_CASE("The showcase document matches its baseline image") {
   // 800x600 pt at quarter scale. The hidden layer is a full-artboard red
   // rectangle; it must not show anywhere.

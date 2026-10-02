@@ -11,4 +11,4 @@ qt_add_qml_module(leinwand
   SOURCES canvas_item.h canvas_item.cpp
 )
 # QRhi (rhi/qrhi.h) is only reachable through GuiPrivate in Qt 6.8.
-target_link_libraries(leinwand PRIVATE render Qt6::Gui Qt6::GuiPrivate Qt6::Quick)
+target_link_libraries(leinwand PRIVATE editor render Qt6::Gui Qt6::GuiPrivate Qt6::Quick)

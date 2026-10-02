@@ -8,6 +8,7 @@
 
 #include "core/document.h"
 #include "render/document_renderer.h"
+#include "render/overlay.h"
 #include "render/view.h"
 
 namespace leinwand::render {
@@ -43,7 +44,7 @@ class VulkanCanvas {
   // Draws the document, submits to the queue and leaves the image in
   // final_layout. `renderer` keeps its caches between frames.
   bool Draw(DocumentRenderer& renderer, const core::Document& document, const View& view,
-            const VulkanTarget& target, VkImageLayout final_layout);
+            const Overlay& overlay, const VulkanTarget& target, VkImageLayout final_layout);
 
   struct Impl;
 

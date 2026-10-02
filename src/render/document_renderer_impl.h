@@ -20,7 +20,7 @@ struct DocumentRenderer::Impl {
 
   // Draws the whole document onto `canvas`, whose pixels map to `view`.
   void Draw(SkCanvas* canvas, const core::Document& document, const View& view, int width,
-            int height);
+            int height, const Overlay* overlay = nullptr);
 
   RenderSettings settings;
   Stats stats;
@@ -37,6 +37,9 @@ struct DocumentRenderer::Impl {
   void DrawLayer(SkCanvas* canvas, const core::Layer& layer, const core::Rect& visible);
   void DrawObject(SkCanvas* canvas, const core::ObjectPtr& object, const core::Rect& visible);
   void DrawShape(SkCanvas* canvas, const core::Object& object, const SkPath& path);
+  void DrawOverlay(SkCanvas* canvas, const core::Document& document, const Overlay& overlay,
+                   float px);
+  void DrawOutline(SkCanvas* canvas, const core::ObjectPtr& object, float anchor_half);
   void PruneCache();
 
   const core::Document* document_ = nullptr;

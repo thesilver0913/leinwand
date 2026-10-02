@@ -61,16 +61,6 @@ Rect Bounds(const core::PathData& path) {
   return bounds;
 }
 
-core::PathData Transform(const core::PathData& path, const core::Matrix& matrix) {
-  core::PathData result = path;
-  for (auto& anchor : result.anchors) {
-    anchor.position = matrix.Map(anchor.position);
-    anchor.handle_in = matrix.MapVector(anchor.handle_in);
-    anchor.handle_out = matrix.MapVector(anchor.handle_out);
-  }
-  return result;
-}
-
 Rect MapRect(const Rect& rect, const core::Matrix& matrix) {
   if (!rect.IsValid()) return {};
   return Rect::FromPoint(matrix.Map({rect.left, rect.top}))

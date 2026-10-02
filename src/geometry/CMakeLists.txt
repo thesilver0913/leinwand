@@ -2,5 +2,6 @@
 # Bézier math and (later) the path-operation interface. Depends on core only.
 add_library(geometry STATIC
   bezier.cpp
+  hit_test.cpp
 )
 target_link_libraries(geometry PUBLIC core)

@@ -5,13 +5,14 @@
 #include <catch2/catch_test_macros.hpp>
 #include <numbers>
 
+#include "core/transform.h"
+
 using namespace leinwand::core;
 using Catch::Approx;
 using leinwand::geometry::Bounds;
 using leinwand::geometry::CubicBezier;
 using leinwand::geometry::MapRect;
 using leinwand::geometry::SegmentAt;
-using leinwand::geometry::Transform;
 
 namespace {
 
@@ -62,15 +63,6 @@ TEST_CASE("Path bounds cover every segment, including the closing one") {
   CHECK(SegmentAt(path, 1).p3 == Point{0, 0});
 }
 
-TEST_CASE("Transform moves anchors and rotates handles without translating them") {
-  PathData path;
-  path.anchors = {{{10, 0}, {-5, 0}, {5, 0}}};
-  const PathData moved = Transform(path, Matrix::Translate(1, 2) * Matrix::Scale(2, 2));
-  CHECK(moved.anchors[0].position == Point{21, 2});
-  CHECK(moved.anchors[0].handle_in == Point{-10, 0});
-  CHECK(moved.anchors[0].handle_out == Point{10, 0});
-}
-
 TEST_CASE("MapRect bounds the transformed corners") {
   CheckRect(MapRect(Rect::FromXYWH(0, 0, 10, 20), Matrix::Translate(5, 5)), {5, 5, 15, 25});
   // A quarter turn swaps width and height around the origin.
@@ -83,7 +75,7 @@ TEST_CASE("Object bounds include group transforms and compound subpaths") {
   PathData square;
   square.anchors = {{{0, 0}}, {{10, 0}}, {{10, 10}}, {{0, 10}}};
   square.closed = true;
-  PathData far_square = Transform(square, Matrix::Translate(90, 90));
+  PathData far_square = Transformed(square, Matrix::Translate(90, 90));
 
   CompoundPathObject compound;
   compound.subpaths = {square, far_square};

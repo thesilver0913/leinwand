@@ -7,6 +7,7 @@
 
 #include "core/color.h"
 #include "core/document.h"
+#include "render/overlay.h"
 #include "render/view.h"
 
 namespace leinwand::render {
@@ -28,7 +29,7 @@ class DocumentRenderer {
 
   // Renders on the CPU into tightly packed premultiplied RGBA8 pixels.
   std::vector<std::uint8_t> RenderRaster(const core::Document& document, int width, int height,
-                                         const View& view);
+                                         const View& view, const Overlay* overlay = nullptr);
 
   struct Stats {
     int drawn = 0;   // Objects painted in the last frame (groups count once).

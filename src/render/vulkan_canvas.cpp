@@ -81,7 +81,8 @@ std::unique_ptr<VulkanCanvas> VulkanCanvas::Create(const VulkanDevice& device, s
 }
 
 bool VulkanCanvas::Draw(DocumentRenderer& renderer, const core::Document& document,
-                        const View& view, const VulkanTarget& target, VkImageLayout final_layout) {
+                        const View& view, const Overlay& overlay, const VulkanTarget& target,
+                        VkImageLayout final_layout) {
   GrVkImageInfo info;
   info.fImage = target.image;
   info.fImageTiling = VK_IMAGE_TILING_OPTIMAL;
@@ -99,7 +100,7 @@ bool VulkanCanvas::Draw(DocumentRenderer& renderer, const core::Document& docume
                                      kRGBA_8888_SkColorType, nullptr, nullptr);
   if (!surface) return false;
 
-  renderer.impl().Draw(surface->getCanvas(), document, view, target.width, target.height);
+  renderer.impl().Draw(surface->getCanvas(), document, view, target.width, target.height, &overlay);
 
   const skgpu::MutableTextureState state =
       skgpu::MutableTextureStates::MakeVulkan(final_layout, impl_->queue_family_index);

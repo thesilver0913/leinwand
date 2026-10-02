@@ -28,6 +28,18 @@ Window {
         Component.onCompleted: if (window.pathsArg > 0) loadTestDocument(window.pathsArg)
     }
 
+    // Edit and Object menu shortcuts, as in Illustrator (spec 4.2, 7.1).
+    Shortcut { sequence: "Ctrl+Z"; onActivated: canvas.undo() }
+    Shortcut { sequences: ["Ctrl+Shift+Z", "Ctrl+Y"]; onActivated: canvas.redo() }
+    Shortcut { sequence: "Ctrl+A"; onActivated: canvas.selectAll() }
+    Shortcut { sequence: "Ctrl+Shift+A"; onActivated: canvas.deselect() }
+    Shortcut { sequence: "Ctrl+G"; onActivated: canvas.group() }
+    Shortcut { sequence: "Ctrl+Shift+G"; onActivated: canvas.ungroup() }
+    Shortcut { sequence: "Ctrl+Shift+]"; onActivated: canvas.arrange(0) }
+    Shortcut { sequence: "Ctrl+]"; onActivated: canvas.arrange(1) }
+    Shortcut { sequence: "Ctrl+["; onActivated: canvas.arrange(2) }
+    Shortcut { sequence: "Ctrl+Shift+["; onActivated: canvas.arrange(3) }
+
     Shortcut { sequence: "Ctrl+0"; onActivated: canvas.fitArtboard() }
     Shortcut { sequence: "Ctrl+1"; onActivated: canvas.actualSize() }
     Shortcut { sequences: ["Ctrl+=", "Ctrl++"]; onActivated: canvas.zoomIn() }
@@ -61,8 +73,9 @@ Window {
         style: Text.Outline
         text: canvas.error !== ""
               ? qsTr("Canvas error: %1").arg(canvas.error)
-              : qsTr("%1%  %2 objects  %3 fps  draw %4 ms")
+              : qsTr("%1%  %2 objects, %3 selected  undo: %4  %5 fps  draw %6 ms")
                     .arg((canvas.zoom * 100).toFixed(2)).arg(canvas.objectCount)
+                    .arg(canvas.selectionCount).arg(canvas.undoAction || "-")
                     .arg(canvas.fps.toFixed(1)).arg(canvas.drawMs.toFixed(2))
     }
 }

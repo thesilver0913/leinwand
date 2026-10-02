@@ -6,15 +6,24 @@ include(Catch)
 add_executable(core_tests
   core/types_test.cpp
   core/document_test.cpp
+  core/edit_test.cpp
+  core/history_test.cpp
 )
 target_link_libraries(core_tests PRIVATE core Catch2::Catch2WithMain)
 catch_discover_tests(core_tests)
 
 add_executable(geometry_tests
   geometry/bezier_test.cpp
+  geometry/hit_test_test.cpp
 )
 target_link_libraries(geometry_tests PRIVATE geometry Catch2::Catch2WithMain)
 catch_discover_tests(geometry_tests)
+
+add_executable(editor_tests
+  editor/editor_test.cpp
+)
+target_link_libraries(editor_tests PRIVATE editor Catch2::Catch2WithMain)
+catch_discover_tests(editor_tests)
 
 # Rendering runs on Skia's CPU backend so it works on CI machines without a GPU.
 add_executable(render_tests
