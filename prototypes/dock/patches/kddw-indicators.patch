@@ -1,0 +1,116 @@
+diff --git a/src/qtquick/ViewFactory.cpp b/src/qtquick/ViewFactory.cpp
+index 4e3eebe..a7fefd6 100644
+--- a/src/qtquick/ViewFactory.cpp
++++ b/src/qtquick/ViewFactory.cpp
+@@ -220,6 +220,16 @@ QUrl ViewFactory::separatorFilename() const
+     return QUrl(QStringLiteral("%1/Separator.qml").arg(kddwResourcePrefix()));
+ }
+ 
++QUrl ViewFactory::classicIndicatorsOverlayFilename() const
++{
++    return {};
++}
++
++QUrl ViewFactory::rubberBandFilename() const
++{
++    return {};
++}
++
+ Core::View *
+ ViewFactory::createSegmentedDropIndicatorOverlayView(Core::SegmentedDropIndicatorOverlay *,
+                                                      Core::View *) const
+diff --git a/src/qtquick/ViewFactory.h b/src/qtquick/ViewFactory.h
+index 60966b6..4f49300 100644
+--- a/src/qtquick/ViewFactory.h
++++ b/src/qtquick/ViewFactory.h
+@@ -85,6 +85,10 @@ public:
+     virtual QUrl groupFilename() const;
+     virtual QUrl floatingWindowFilename() const;
+     virtual QUrl separatorFilename() const;
++    /// QML for the classic drop indicators. Empty means the built-in one.
++    virtual QUrl classicIndicatorsOverlayFilename() const;
++    /// QML for the drop rubber band. Empty means the built-in one.
++    virtual QUrl rubberBandFilename() const;
+ 
+     KDDockWidgets::Core::Action *createAction(Core::DockWidget *, const char *debugName) const override;
+ 
+diff --git a/src/qtquick/views/ClassicIndicatorsWindow.cpp b/src/qtquick/views/ClassicIndicatorsWindow.cpp
+index fa78c22..1b84e1e 100644
+--- a/src/qtquick/views/ClassicIndicatorsWindow.cpp
++++ b/src/qtquick/views/ClassicIndicatorsWindow.cpp
+@@ -15,6 +15,8 @@
+ #include "core/Utils_p.h"
+ #include "qtquick/Platform.h"
+ #include "View.h"
++#include "kddockwidgets/Config.h"
++#include "qtquick/ViewFactory.h"
+ 
+ #include <QQmlContext>
+ #include <QQmlEngine>
+@@ -70,18 +72,27 @@ static QString iconName(DropLocation loc, bool active)
+ 
+     return name + suffix;
+ }
++
++// Draw the indicators as an item inside the window being hovered instead of in a
++// translucent top-level window. Wayland requires it; elsewhere it is for setups
++// where translucent windows do not work (e.g. Qt Quick on Vulkan on Windows).
++static bool useOverlayItem()
++{
++    return isWayland()
++        || (Config::self().internalFlags() & Config::InternalFlag_DisableTranslucency);
++}
+ }
+ 
+ ClassicDropIndicatorOverlay::ClassicDropIndicatorOverlay(Core::ClassicDropIndicatorOverlay *classicIndicators, Core::View *parent)
+     : QObject(QtQuick::asView_qtquick(parent))
+     , m_classicIndicators(classicIndicators)
+-    , m_window(isWayland() ? nullptr : new IndicatorWindow())
++    , m_window(useOverlayItem() ? nullptr : new IndicatorWindow())
+ {
+     Q_ASSERT(parent);
+     classicIndicators->dptr()->hoveredGroupRectChanged.connect([this] { hoveredGroupRectChanged(); });
+     classicIndicators->dptr()->currentDropLocationChanged.connect([this] { currentDropLocationChanged(); });
+ 
+-    if (isWayland()) {
++    if (useOverlayItem()) {
+         auto subContext = new QQmlContext(plat()->qmlEngine()->rootContext(), this);
+         subContext->setContextProperty(QStringLiteral("_kddw_overlayWindow"), this);
+         m_overlayItem = QtQuick::View::createItem(qmlSouceUrl().toString(), QtQuick::asView_qtquick(parent), subContext);
+@@ -243,6 +254,11 @@ void IndicatorWindow::setQuickWindowCreationCallback(const IndicatorWindowCreati
+ 
+ QUrl ClassicDropIndicatorOverlay::qmlSouceUrl() const
+ {
++    if (auto factory = qobject_cast<QtQuick::ViewFactory *>(Config::self().viewFactory())) {
++        const QUrl url = factory->classicIndicatorsOverlayFilename();
++        if (!url.isEmpty())
++            return url;
++    }
+ #ifdef KDDW_QML_MODULE
+     return QUrl(QStringLiteral("qrc:/qt/qml/com/kdab/dockwidgets/ClassicIndicatorsOverlay.qml"));
+ #else
+diff --git a/src/qtquick/views/RubberBand.cpp b/src/qtquick/views/RubberBand.cpp
+index 6ce83f1..c5f0616 100644
+--- a/src/qtquick/views/RubberBand.cpp
++++ b/src/qtquick/views/RubberBand.cpp
+@@ -11,6 +11,8 @@
+ 
+ #include "RubberBand.h"
+ #include "qtquick/Platform.h"
++#include "qtquick/ViewFactory.h"
++#include "kddockwidgets/Config.h"
+ 
+ #include <QQmlEngine>
+ 
+@@ -22,6 +24,11 @@ using namespace KDDockWidgets::QtQuick;
+ namespace {
+ QString rubberbandFile()
+ {
++    if (auto factory = qobject_cast<QtQuick::ViewFactory *>(Config::self().viewFactory())) {
++        const QUrl url = factory->rubberBandFilename();
++        if (!url.isEmpty())
++            return url.toString();
++    }
+ #ifdef KDDW_QML_MODULE
+     return QStringLiteral("qrc:/qt/qml/com/kdab/dockwidgets/RubberBand.qml");
+ #else

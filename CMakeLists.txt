@@ -10,6 +10,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # The app needs Qt; the render library and its tests do not.
 option(LEINWAND_BUILD_APP "Build the Qt Quick application" ON)
+option(LEINWAND_BUILD_PROTOTYPES "Build the M0 verification prototypes" ON)
 
 if(MSVC)
   add_compile_options(/W4 /permissive- /utf-8)
@@ -20,6 +21,9 @@ endif()
 add_subdirectory(src/render)
 if(LEINWAND_BUILD_APP)
   add_subdirectory(src/app)
+  if(LEINWAND_BUILD_PROTOTYPES)
+    add_subdirectory(prototypes/dock)
+  endif()
 endif()
 
 include(CTest)
