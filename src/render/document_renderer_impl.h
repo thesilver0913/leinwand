@@ -40,9 +40,11 @@ struct DocumentRenderer::Impl {
   void DrawOverlay(SkCanvas* canvas, const core::Document& document, const Overlay& overlay,
                    float px);
   void DrawOutline(SkCanvas* canvas, const core::ObjectPtr& object, float anchor_half);
+  void DrawEditedPath(SkCanvas* canvas, const EditedPath& edited, float px, float anchor_half);
   void PruneCache();
 
   const core::Document* document_ = nullptr;
+  bool outline_ = false;  // Outline view: paths as hairlines, no paint.
   std::unordered_map<const core::Object*, CacheEntry> cache_;
   std::uint64_t frame_ = 0;
 };

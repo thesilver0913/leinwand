@@ -7,6 +7,9 @@
 #include <QHoverEvent>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <QPainter>
+#include <QPainterPath>
+#include <QPixmap>
 #include <QQuickWindow>
 #include <QVulkanInstance>
 #include <QWheelEvent>
@@ -143,8 +146,20 @@ CanvasItem::~CanvasItem() = default;
 QQuickRhiItemRenderer* CanvasItem::createRenderer() { return new CanvasRenderer; }
 
 leinwand::render::Overlay CanvasItem::overlay(double pixel_ratio) const {
-  const leinwand::editor::Overlay o = editor_->overlay();
-  return {o.selection, o.bounding_box, o.marquee, pixel_ratio};
+  leinwand::editor::Overlay o = editor_->overlay();
+  leinwand::render::Overlay overlay;
+  overlay.selection = std::move(o.selection);
+  overlay.bounding_box = o.bounding_box;
+  overlay.marquee = o.marquee;
+  overlay.pixel_ratio = pixel_ratio;
+  for (auto& path : o.paths) {
+    overlay.paths.push_back(
+        {std::move(path.path), std::move(path.selected), std::move(path.with_handles)});
+  }
+  overlay.rubber_band = std::move(o.rubber_band);
+  overlay.guides = std::move(o.guides);
+  overlay.outline = outline_view_;
+  return overlay;
 }
 
 QString CanvasItem::undoAction() const {
@@ -157,6 +172,7 @@ QString CanvasItem::redoAction() const {
 
 void CanvasItem::SetDocument(leinwand::core::Document document) {
   editor_ = std::make_unique<leinwand::editor::Editor>(std::move(document));
+  editor_->SetSmartGuides(smart_guides_);
   object_count_ = CountObjects(editor_->document());
   fit_pending_ = true;
   if (width() > 0 && height() > 0) fitArtboard();
@@ -257,8 +273,44 @@ void CanvasItem::arrange(int how) {
   EditorChanged();
 }
 
+void CanvasItem::convertAnchors(bool smooth) {
+  editor_->ConvertSelectedAnchors(smooth);
+  EditorChanged();
+}
+
+void CanvasItem::removeAnchors() {
+  editor_->RemoveSelectedAnchors();
+  EditorChanged();
+}
+
+void CanvasItem::cutAtAnchor() {
+  editor_->CutAtSelectedAnchor();
+  EditorChanged();
+}
+
+void CanvasItem::joinEnds() {
+  editor_->JoinSelectedEnds();
+  EditorChanged();
+}
+
+void CanvasItem::setSmartGuides(bool on) {
+  if (on == smart_guides_) return;
+  smart_guides_ = on;
+  editor_->SetSmartGuides(on);
+  emit viewChanged();
+}
+
+void CanvasItem::setOutlineView(bool outline) {
+  if (outline == outline_view_) return;
+  outline_view_ = outline;
+  emit viewChanged();
+  update();
+}
+
 void CanvasItem::setTool(int tool) {
-  if (tool < 0 || tool > 5 || tool == this->tool()) return;
+  using leinwand::editor::Tool;
+  if (tool < 0 || tool > static_cast<int>(Tool::kDirectSelection)) return;
+  if (tool == static_cast<int>(editor_->chosen_tool()) && tool == this->tool()) return;
   editor_->SetTool(static_cast<leinwand::editor::Tool>(tool));
   tool_dragging_ = false;
   emit toolChanged();
@@ -384,14 +436,29 @@ leinwand::core::Point CanvasItem::ToDocument(QPointF position) const {
 
 double CanvasItem::PickRadius() const { return 4.0 / view_.zoom; }
 
-namespace {
-
-leinwand::editor::Modifiers ToolModifiers(Qt::KeyboardModifiers modifiers) {
-  return {.shift = modifiers.testFlag(Qt::ShiftModifier),
-          .alt = modifiers.testFlag(Qt::AltModifier)};
+leinwand::editor::Modifiers CanvasItem::ToolModifiers() const {
+  return {.shift = modifiers_.testFlag(Qt::ShiftModifier),
+          .alt = modifiers_.testFlag(Qt::AltModifier),
+          .space = space_held_ && tool_dragging_};
 }
 
-}  // namespace
+void CanvasItem::UpdateTemporaryTool(Qt::KeyboardModifiers modifiers) {
+  using leinwand::editor::Tool;
+  if (tool_dragging_) return;  // Keys held during a drag change the drag instead.
+  const Tool chosen = editor_->chosen_tool();
+  std::optional<Tool> temporary;
+  if (modifiers.testFlag(Qt::ControlModifier)) {
+    if (chosen != Tool::kSelection && chosen != Tool::kDirectSelection) {
+      temporary = editor_->last_selection_tool();
+    }
+  } else if (modifiers.testFlag(Qt::AltModifier) && chosen == Tool::kPen) {
+    temporary = Tool::kConvertAnchor;
+  }
+  if (temporary.value_or(chosen) == editor_->tool()) return;
+  editor_->SetTemporaryTool(temporary);
+  emit toolChanged();
+  update();
+}
 
 void CanvasItem::geometryChange(const QRectF& newGeometry, const QRectF& oldGeometry) {
   QQuickRhiItem::geometryChange(newGeometry, oldGeometry);
@@ -415,15 +482,22 @@ void CanvasItem::wheelEvent(QWheelEvent* event) {
 }
 
 void CanvasItem::keyPressEvent(QKeyEvent* event) {
+  using leinwand::editor::Tool;
   modifiers_ = event->modifiers();
-  if (tool_dragging_ && (event->key() == Qt::Key_Shift || event->key() == Qt::Key_Alt)) {
-    // Modifiers change the drag (constrain, copy) even when the mouse is still.
-    editor_->PointerMove(ToDocument(last_mouse_), ToolModifiers(modifiers_));
+  UpdateTemporaryTool(modifiers_);
+  if (event->isAutoRepeat() && event->key() == Qt::Key_Space) return;
+  if (event->key() == Qt::Key_Space) space_held_ = true;
+  if (tool_dragging_ && (event->key() == Qt::Key_Shift || event->key() == Qt::Key_Alt ||
+                         event->key() == Qt::Key_Space)) {
+    // Modifiers change the drag (constrain, copy, move the anchor) even when
+    // the mouse is still.
+    editor_->PointerMove(ToDocument(last_mouse_), ToolModifiers());
     EditorChanged();
   }
-  if (event->isAutoRepeat() && event->key() == Qt::Key_Space) return;
+  if (event->key() == Qt::Key_Control || event->key() == Qt::Key_Alt) UpdateCursor(last_mouse_);
   // Up and down while drawing a polygon or star change its sides or points.
-  if (tool_dragging_ && (event->key() == Qt::Key_Up || event->key() == Qt::Key_Down)) {
+  const bool counting = editor_->tool() == Tool::kPolygon || editor_->tool() == Tool::kStar;
+  if (tool_dragging_ && counting && (event->key() == Qt::Key_Up || event->key() == Qt::Key_Down)) {
     editor_->AdjustToolCount(event->key() == Qt::Key_Up ? 1 : -1);
     EditorChanged();
     event->accept();
@@ -433,8 +507,7 @@ void CanvasItem::keyPressEvent(QKeyEvent* event) {
   const double step = event->modifiers().testFlag(Qt::ShiftModifier) ? 10.0 : 1.0;
   switch (event->key()) {
     case Qt::Key_Space:
-      space_held_ = true;  // Temporary hand tool.
-      UpdateCursor(last_mouse_);
+      UpdateCursor(last_mouse_);  // Temporary hand tool.
       break;
     case Qt::Key_Left:
       editor_->Nudge(-step, 0);
@@ -457,8 +530,17 @@ void CanvasItem::keyPressEvent(QKeyEvent* event) {
       deleteSelection();
       break;
     case Qt::Key_Escape:
-      editor_->CancelDrag();
-      tool_dragging_ = false;
+      if (tool_dragging_) {
+        editor_->CancelDrag();
+        tool_dragging_ = false;
+      } else {
+        editor_->FinishPath();  // The pen leaves the path open (spec 4.2).
+      }
+      EditorChanged();
+      break;
+    case Qt::Key_Return:
+    case Qt::Key_Enter:
+      editor_->FinishPath();
       EditorChanged();
       break;
     default:
@@ -470,16 +552,19 @@ void CanvasItem::keyPressEvent(QKeyEvent* event) {
 
 void CanvasItem::keyReleaseEvent(QKeyEvent* event) {
   modifiers_ = event->modifiers();
-  if (tool_dragging_ && (event->key() == Qt::Key_Shift || event->key() == Qt::Key_Alt)) {
-    editor_->PointerMove(ToDocument(last_mouse_), ToolModifiers(modifiers_));
+  UpdateTemporaryTool(modifiers_);
+  const bool space = event->key() == Qt::Key_Space && !event->isAutoRepeat();
+  if (space) space_held_ = false;
+  if (tool_dragging_ && (event->key() == Qt::Key_Shift || event->key() == Qt::Key_Alt || space)) {
+    editor_->PointerMove(ToDocument(last_mouse_), ToolModifiers());
     EditorChanged();
   }
-  if (event->key() == Qt::Key_Space && !event->isAutoRepeat()) {
-    space_held_ = false;
+  if (space) {
     UpdateCursor(last_mouse_);
     event->accept();
     return;
   }
+  if (event->key() == Qt::Key_Control || event->key() == Qt::Key_Alt) UpdateCursor(last_mouse_);
   QQuickRhiItem::keyReleaseEvent(event);
 }
 
@@ -490,8 +575,9 @@ void CanvasItem::mousePressEvent(QMouseEvent* event) {
   if (event->button() == Qt::MiddleButton || (event->button() == Qt::LeftButton && space_held_)) {
     panning_ = true;
   } else if (event->button() == Qt::LeftButton) {
+    UpdateTemporaryTool(modifiers_);
     tool_dragging_ = true;
-    editor_->PointerDown(ToDocument(event->position()), ToolModifiers(modifiers_), PickRadius());
+    editor_->PointerDown(ToDocument(event->position()), ToolModifiers(), PickRadius());
     EditorChanged();
   }
   UpdateCursor(event->position());
@@ -505,7 +591,7 @@ void CanvasItem::mouseMoveEvent(QMouseEvent* event) {
   if (panning_) {
     SetView({view_.pan_x + delta.x(), view_.pan_y + delta.y(), view_.zoom});
   } else if (tool_dragging_) {
-    editor_->PointerMove(ToDocument(event->position()), ToolModifiers(modifiers_));
+    editor_->PointerMove(ToDocument(event->position()), ToolModifiers());
     EditorChanged();
   }
 }
@@ -513,8 +599,9 @@ void CanvasItem::mouseMoveEvent(QMouseEvent* event) {
 void CanvasItem::mouseReleaseEvent(QMouseEvent* event) {
   modifiers_ = event->modifiers();
   if (tool_dragging_) {
-    editor_->PointerUp(ToDocument(event->position()), ToolModifiers(modifiers_));
+    editor_->PointerUp(ToDocument(event->position()), ToolModifiers());
     tool_dragging_ = false;
+    UpdateTemporaryTool(modifiers_);  // Keys may have changed during the drag.
     EditorChanged();
   }
   panning_ = false;
@@ -527,22 +614,102 @@ void CanvasItem::hoverMoveEvent(QHoverEvent* event) {
   if (event->position() == last_mouse_ && event->modifiers() == modifiers_) return;
   last_mouse_ = event->position();
   modifiers_ = event->modifiers();
+  UpdateTemporaryTool(modifiers_);
+  if (editor_->drawing_path()) {
+    editor_->PointerHover(ToDocument(event->position()));  // The rubber band.
+    update();
+  }
   UpdateCursor(event->position());
 }
 
+namespace {
+
+// Interim pen cursors until the icon set arrives (M7): a crosshair with a
+// mark for what a click would do (spec 4.2).
+QCursor PenCursor(const QString& mark) {
+  static QHash<QString, QCursor> cache;
+  if (const auto it = cache.constFind(mark); it != cache.constEnd()) return *it;
+  QPixmap pixmap(32, 32);
+  pixmap.fill(Qt::transparent);
+  QPainter painter(&pixmap);
+  painter.setRenderHint(QPainter::Antialiasing);
+  const std::pair<QColor, double> strokes[] = {{Qt::white, 3.0}, {Qt::black, 1.0}};
+  for (const auto& [color, width] : strokes) {
+    painter.setPen(QPen(color, width));
+    painter.drawLine(QPointF(8, 1), QPointF(8, 15));
+    painter.drawLine(QPointF(1, 8), QPointF(15, 8));
+  }
+  if (!mark.isEmpty()) {
+    QFont font = painter.font();
+    font.setPixelSize(13);
+    font.setBold(true);
+    QPainterPath text;
+    text.addText(QPointF(15, 27), font, mark);
+    painter.strokePath(text, QPen(Qt::white, 3));
+    painter.fillPath(text, Qt::black);
+  }
+  painter.end();
+  return *cache.insert(mark, QCursor(pixmap, 8, 8));
+}
+
+}  // namespace
+
 void CanvasItem::UpdateCursor(QPointF position) {
+  using leinwand::editor::PenAction;
+  using leinwand::editor::Tool;
   if (panning_) {
     setCursor(Qt::ClosedHandCursor);
     return;
   }
+  if (tool_dragging_) return;  // Keep the cursor the drag started with.
   if (space_held_) {
     setCursor(Qt::OpenHandCursor);
     return;
   }
-  if (tool_dragging_) return;  // Keep the cursor the drag started with.
-  if (editor_->tool() != leinwand::editor::Tool::kSelection) {
-    setCursor(Qt::CrossCursor);
-    return;
+  switch (editor_->tool()) {
+    case Tool::kSelection:
+      break;
+    case Tool::kDirectSelection:
+      unsetCursor();
+      return;
+    case Tool::kPen:
+      switch (editor_->PenActionAt(ToDocument(position), PickRadius())) {
+        case PenAction::kNewPath:
+          setCursor(PenCursor("*"));
+          return;
+        case PenAction::kNewAnchor:
+          setCursor(PenCursor(""));
+          return;
+        case PenAction::kRemoveHandle:
+          setCursor(PenCursor("^"));
+          return;
+        case PenAction::kClose:
+          setCursor(PenCursor("o"));
+          return;
+        case PenAction::kJoin:
+        case PenAction::kContinue:
+          setCursor(PenCursor("/"));
+          return;
+        case PenAction::kAddAnchor:
+          setCursor(PenCursor("+"));
+          return;
+        case PenAction::kDeleteAnchor:
+          setCursor(PenCursor("-"));
+          return;
+      }
+      return;
+    case Tool::kAddAnchor:
+      setCursor(PenCursor("+"));
+      return;
+    case Tool::kDeleteAnchor:
+      setCursor(PenCursor("-"));
+      return;
+    case Tool::kConvertAnchor:
+      setCursor(PenCursor("^"));
+      return;
+    default:
+      setCursor(Qt::CrossCursor);
+      return;
   }
   using leinwand::editor::Handle;
   using Kind = leinwand::editor::Hover::Kind;

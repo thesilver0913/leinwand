@@ -8,8 +8,11 @@
 #include <utility>
 #include <variant>
 
+#include "core/transform.h"
+#include "editor/tool_math.h"
 #include "geometry/bezier.h"
 #include "geometry/hit_test.h"
+#include "geometry/path_edit.h"
 
 namespace leinwand::editor {
 
@@ -29,21 +32,7 @@ Handle Opposite(Handle h) { return static_cast<Handle>((static_cast<int>(h) + 4)
 bool MovesX(Handle h) { return h != Handle::kTop && h != Handle::kBottom; }
 bool MovesY(Handle h) { return h != Handle::kLeft && h != Handle::kRight; }
 
-double Distance(Point a, Point b) { return std::hypot(a.x - b.x, a.y - b.y); }
-
 Point Centre(const Rect& r) { return {(r.left + r.right) / 2, (r.top + r.bottom) / 2}; }
-
-// Shift-drag: the nearest multiple of 45 degrees.
-Point ConstrainTo45(Point d) {
-  const double length = std::hypot(d.x, d.y);
-  if (length == 0) return d;
-  const double step = std::numbers::pi / 4;
-  const double angle = std::round(std::atan2(d.y, d.x) / step) * step;
-  // Project onto the snapped direction, as Illustrator does.
-  const Point dir{std::cos(angle), std::sin(angle)};
-  const double along = d.x * dir.x + d.y * dir.y;
-  return dir * along;
-}
 
 core::IdSet TopLevelSelectable(const core::Document& document) {
   core::IdSet ids;
@@ -104,8 +93,11 @@ Editor::Editor(core::Document document) : history_({std::move(document), {}}) {
 }
 
 void Editor::SetTool(Tool tool) {
+  FinishPath();
   drag_ = {};
   tool_ = tool;
+  temporary_tool_.reset();
+  if (tool == Tool::kSelection || tool == Tool::kDirectSelection) last_selection_tool_ = tool;
 }
 
 void Editor::AdjustToolCount(int delta) {
@@ -123,7 +115,7 @@ std::optional<core::ObjectPtr> Editor::DrawnShape() const {
   core::ShapeObject shape;
   shape.common.id = drag_.new_id;
   shape.common.appearance = new_style_;
-  switch (tool_) {
+  switch (tool()) {
     case Tool::kRectangle:
     case Tool::kEllipse: {
       if (m.shift) {  // Square or circle.
@@ -134,7 +126,7 @@ std::optional<core::ObjectPtr> Editor::DrawnShape() const {
       const Point centre = m.alt ? s : s + d * 0.5;
       const double w = std::abs(d.x) * (m.alt ? 2 : 1), h = std::abs(d.y) * (m.alt ? 2 : 1);
       if (w <= 0 || h <= 0) return std::nullopt;
-      if (tool_ == Tool::kRectangle) {
+      if (tool() == Tool::kRectangle) {
         shape.shape = core::RectangleShape{w, h};
       } else {
         shape.shape = core::EllipseShape{w, h};
@@ -148,7 +140,7 @@ std::optional<core::ObjectPtr> Editor::DrawnShape() const {
       // keeps the shape upright.
       const double radius = std::hypot(d.x, d.y);
       const double angle = m.shift ? 0.0 : std::atan2(d.y, d.x) + std::numbers::pi / 2;
-      if (tool_ == Tool::kPolygon) {
+      if (tool() == Tool::kPolygon) {
         shape.shape = core::PolygonShape{polygon_sides_, radius};
       } else {
         shape.shape = core::StarShape{star_points_, radius, radius / 2};
@@ -169,7 +161,7 @@ std::optional<core::ObjectPtr> Editor::DrawnShape() const {
       });
       break;
     }
-    case Tool::kSelection:
+    default:
       return std::nullopt;
   }
   return core::MakeObject(std::move(shape));
@@ -263,6 +255,48 @@ std::optional<Rect> Editor::SelectionBounds() const {
 Overlay Editor::overlay() const {
   Overlay overlay;
   overlay.selection = selection();
+  if (dragging()) overlay.guides = guides_;
+  const Tool tool = this->tool();
+  const bool path_tool = tool == Tool::kPen || tool == Tool::kDirectSelection ||
+                         tool == Tool::kAddAnchor || tool == Tool::kDeleteAnchor ||
+                         tool == Tool::kConvertAnchor;
+  if (path_tool) {
+    for (const auto& id : EditablePaths()) {
+      const auto ref = GetPath(document(), id);
+      PathOverlay path{core::Transformed(ref->path, ref->to_document), {}, {}};
+      const int n = static_cast<int>(path.path.anchors.size());
+      for (const auto& a : anchors_) {
+        if (a.id != id || a.index >= n) continue;
+        path.selected.insert(a.index);
+        // Handles of the anchor and the near handles of its neighbours.
+        path.with_handles.insert(a.index);
+        if (a.index > 0 || path.path.closed) path.with_handles.insert((a.index + n - 1) % n);
+        if (a.index < n - 1 || path.path.closed) path.with_handles.insert((a.index + 1) % n);
+      }
+      if (id == pen_.path_id && n > 0) {
+        const int last = pen_.reverse ? 0 : n - 1;
+        path.selected.insert(last);
+        path.with_handles.insert(last);
+      }
+      overlay.paths.push_back(std::move(path));
+      overlay.selection.erase(id);  // Drawn with its own anchors instead.
+    }
+    if (drag_.kind == DragKind::kDirectMarquee) {
+      overlay.marquee = Rect::FromPoint(drag_.start).Union(drag_.current);
+    }
+    // The pen's next segment follows the pointer (spec 4.2).
+    if (drawing_path() && hover_ && drag_.kind == DragKind::kNone) {
+      if (const auto ref = GetPath(document(), pen_.path_id); ref && !ref->path.anchors.empty()) {
+        const core::PathData drawn = core::Transformed(
+            pen_.reverse ? geometry::Reversed(ref->path) : ref->path, ref->to_document);
+        core::PathData band;
+        band.anchors = {drawn.anchors.back(), {*hover_}};
+        band.anchors[0].handle_in = {};
+        overlay.rubber_band = std::move(band);
+      }
+    }
+    return overlay;
+  }
   // The box hides while the selection is being transformed, as in Illustrator.
   if (drag_.kind == DragKind::kNone || drag_.kind == DragKind::kPending ||
       drag_.kind == DragKind::kMarquee) {
@@ -294,7 +328,7 @@ std::optional<Handle> Editor::RotateZoneAt(Point p, double pick) const {
 }
 
 Hover Editor::HoverAt(Point p, double pick) const {
-  if (tool_ != Tool::kSelection) return {};
+  if (tool() != Tool::kSelection) return {};
   if (const auto h = HandleAt(p, pick)) return {Hover::Kind::kHandle, *h};
   if (const auto h = RotateZoneAt(p, pick)) return {Hover::Kind::kRotate, *h};
   if (geometry::HitTest(document(), p, pick)) return {Hover::Kind::kObject};
@@ -309,13 +343,42 @@ void Editor::Commit(const std::string& action, core::EditorState state) {
 
 void Editor::PointerDown(Point p, Modifiers modifiers, double pick) {
   drag_ = {};
-  drag_.start = drag_.current = p;
+  guides_.clear();
+  drag_.start = drag_.current = drag_.grab = p;
   drag_.threshold = pick / 2;
+  drag_.pick = pick;
   drag_.modifiers = modifiers;
-  if (tool_ != Tool::kSelection) {
-    drag_.kind = DragKind::kDraw;
-    drag_.new_id = ids_.Next();
-    return;
+  const Tool tool = this->tool();
+  // Switching to a selection tool, even with Ctrl held, ends the pen path.
+  if (tool == Tool::kSelection || tool == Tool::kDirectSelection) FinishPath();
+  switch (tool) {
+    case Tool::kPen:
+      PenDown(p, modifiers, pick);
+      return;
+    case Tool::kAddAnchor:
+    case Tool::kDeleteAnchor:
+    case Tool::kConvertAnchor:
+      AnchorToolDown(p, pick);
+      if (drag_.kind == DragKind::kNone && tool == Tool::kConvertAnchor) {
+        // Not on an anchor: maybe on a handle, which the tool splits.
+        DirectDown(p, modifiers, pick);
+        if (drag_.kind != DragKind::kMoveHandle) drag_ = {};
+      }
+      return;
+    case Tool::kDirectSelection:
+      DirectDown(p, modifiers, pick);
+      return;
+    case Tool::kRectangle:
+    case Tool::kEllipse:
+    case Tool::kPolygon:
+    case Tool::kStar:
+    case Tool::kLine:
+      drag_.kind = DragKind::kDraw;
+      drag_.new_id = ids_.Next();
+      drag_.start = drag_.current = drag_.grab = SnapPlaced(p, pick);
+      return;
+    case Tool::kSelection:
+      break;
   }
   if (!selection().empty()) {
     if (const auto h = HandleAt(p, pick)) {
@@ -349,11 +412,24 @@ void Editor::PointerDown(Point p, Modifiers modifiers, double pick) {
 }
 
 void Editor::PointerMove(Point p, Modifiers modifiers) {
-  drag_.current = p;
+  drag_.current = SnapDrag(p);
   drag_.modifiers = modifiers;
-  if (drag_.kind == DragKind::kDraw) {
-    UpdateDrawing();
-    return;
+  switch (drag_.kind) {
+    case DragKind::kDraw:
+      UpdateDrawing();
+      return;
+    case DragKind::kPen:
+      PenMove();
+      return;
+    case DragKind::kConvert:
+    case DragKind::kDirectPending:
+    case DragKind::kMoveAnchors:
+    case DragKind::kMoveHandle:
+    case DragKind::kDragSegment:
+      DirectMove();
+      return;
+    default:
+      break;
   }
   switch (drag_.kind) {
     case DragKind::kNone:
@@ -431,8 +507,27 @@ void Editor::UpdatePreview(Modifiers modifiers) {
 }
 
 void Editor::PointerUp(Point p, Modifiers modifiers) {
-  drag_.current = p;
+  drag_.current = SnapDrag(p);
   const DragKind kind = drag_.kind;
+  switch (kind) {
+    case DragKind::kPen:
+      drag_.modifiers = modifiers;
+      PenMove();
+      PenUp();
+      return;
+    case DragKind::kConvert:
+    case DragKind::kDirectPending:
+    case DragKind::kDirectMarquee:
+    case DragKind::kMoveAnchors:
+    case DragKind::kMoveHandle:
+    case DragKind::kDragSegment:
+      drag_.modifiers = modifiers;
+      DirectMove();
+      DirectUp(p, modifiers);
+      return;
+    default:
+      break;
+  }
   if (kind == DragKind::kMarquee) {
     const core::IdSet touched =
         geometry::ObjectsTouching(document(), Rect::FromPoint(drag_.start).Union(p), 0.25);
@@ -471,6 +566,10 @@ void Editor::SelectAll() { SetSelection(TopLevelSelectable(document())); }
 void Editor::Deselect() { SetSelection({}); }
 
 void Editor::Delete() {
+  if (tool() == Tool::kDirectSelection && !anchors_.empty()) {
+    DeleteSelectedAnchors();
+    return;
+  }
   if (selection().empty()) return;
   Commit("delete", {core::RemoveObjects(document(), selection()), {}});
 }
@@ -502,6 +601,10 @@ void Editor::Arrange(core::Arrange arrange) {
 }
 
 void Editor::Nudge(double dx, double dy) {
+  if (tool() == Tool::kDirectSelection && !anchors_.empty()) {
+    MoveSelectedAnchors({dx, dy});
+    return;
+  }
   if (selection().empty()) return;
   Commit("move",
          {core::TransformObjects(document(), selection(), Matrix::Translate(dx, dy)), selection()});
@@ -510,11 +613,27 @@ void Editor::Nudge(double dx, double dy) {
 void Editor::Undo() {
   drag_ = {};
   history_.Undo();
+  anchors_.clear();
+  // Undoing pen clicks keeps drawing, until the path itself is gone.
+  if (drawing_path() && !GetPath(document(), pen_.path_id)) FinishPath();
 }
 
 void Editor::Redo() {
   drag_ = {};
   history_.Redo();
+  anchors_.clear();
+}
+
+void Editor::MoveSelectedAnchors(Point delta) {
+  drag_.base = history_.current().document;
+  drag_.start = {};
+  drag_.current = delta;
+  drag_.kind = DragKind::kMoveAnchors;
+  drag_.modifiers = {};
+  DirectMove();
+  std::optional<core::EditorState> result = std::move(drag_.preview);
+  drag_ = {};
+  if (result) Commit("move anchors", std::move(*result));
 }
 
 }  // namespace leinwand::editor

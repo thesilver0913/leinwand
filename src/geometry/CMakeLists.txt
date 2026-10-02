@@ -3,5 +3,6 @@
 add_library(geometry STATIC
   bezier.cpp
   hit_test.cpp
+  path_edit.cpp
 )
 target_link_libraries(geometry PUBLIC core)

@@ -224,6 +224,7 @@ void DocumentRenderer::Impl::Draw(SkCanvas* canvas, const core::Document& docume
   ++frame_;
   stats = {};
   document_ = &document;
+  outline_ = overlay && overlay->outline;
 
   const auto& bg = settings.pasteboard;
   canvas->clear(SkColor4f{static_cast<float>(bg.r), static_cast<float>(bg.g),
@@ -289,7 +290,8 @@ void DocumentRenderer::Impl::DrawObject(SkCanvas* canvas, const core::ObjectPtr&
 
   // Object opacity and blending apply to the object as a whole, so it is
   // composited from its own layer.
-  const bool isolate = common.opacity < 1.0 || common.blend_mode != core::BlendMode::kNormal;
+  const bool isolate =
+      !outline_ && (common.opacity < 1.0 || common.blend_mode != core::BlendMode::kNormal);
   if (isolate) {
     SkPaint layer_paint;
     layer_paint.setAlphaf(static_cast<float>(common.opacity));
@@ -305,12 +307,19 @@ void DocumentRenderer::Impl::DrawObject(SkCanvas* canvas, const core::ObjectPtr&
     const auto inverse = group->transform.Inverted();
     const Rect local = inverse ? geometry::MapRect(visible, *inverse) : visible;
     auto end = group->children.end();
-    if (group->clipped && !group->children.empty()) {
+    if (group->clipped && !group->children.empty() && !outline_) {
       --end;  // The frontmost child is the clip path and is not painted.
       canvas->clipPath(Entry(group->children.back()).path, /*doAntiAlias=*/true);
     }
     for (auto it = group->children.begin(); it != end; ++it) DrawObject(canvas, *it, local);
     canvas->restore();
+  } else if (outline_) {
+    SkPaint line;
+    line.setColor(SK_ColorBLACK);
+    line.setStyle(SkPaint::kStroke_Style);
+    line.setStrokeWidth(0);  // Hairline.
+    line.setAntiAlias(true);
+    canvas->drawPath(entry.path, line);
   } else {
     DrawShape(canvas, *object, entry.path);
   }
@@ -370,6 +379,17 @@ void DocumentRenderer::Impl::DrawShape(SkCanvas* canvas, const core::Object& obj
 namespace {
 // Spectrum 2 accent-background-color-default (dark), for selections.
 constexpr SkColor kSelection = SkColorSetRGB(0x40, 0x69, 0xfd);
+// Smart guides: Illustrator's default magenta.
+constexpr SkColor kGuide = SkColorSetRGB(0xff, 0x00, 0xff);
+
+SkPaint Hairline(SkColor color) {
+  SkPaint line;
+  line.setColor(color);
+  line.setStyle(SkPaint::kStroke_Style);
+  line.setStrokeWidth(0);  // One device pixel at any scale.
+  line.setAntiAlias(true);
+  return line;
+}
 }  // namespace
 
 void DocumentRenderer::Impl::DrawOverlay(SkCanvas* canvas, const core::Document& document,
@@ -401,6 +421,19 @@ void DocumentRenderer::Impl::DrawOverlay(SkCanvas* canvas, const core::Document&
       canvas->drawRect(r, fill);
       canvas->drawRect(r, line);
     }
+  }
+
+  const float anchor_half = 3.0f * static_cast<float>(overlay.pixel_ratio);
+  for (const auto& edited : overlay.paths) DrawEditedPath(canvas, edited, px, anchor_half);
+
+  if (overlay.rubber_band) {
+    SkPathBuilder band;
+    AppendPath(band, *overlay.rubber_band);
+    canvas->drawPath(band.detach(), Hairline(kSelection));
+  }
+
+  for (const auto& [from, to] : overlay.guides) {
+    canvas->drawLine(ToSk(from), ToSk(to), Hairline(kGuide));
   }
 
   if (overlay.marquee) {
@@ -446,6 +479,56 @@ void DocumentRenderer::Impl::DrawOutline(SkCanvas* canvas, const core::ObjectPtr
     canvas->drawRect(SkRect::MakeLTRB(p.x() - anchor_half, p.y() - anchor_half, p.x() + anchor_half,
                                       p.y() + anchor_half),
                      anchor);
+  }
+  canvas->restore();
+}
+
+void DocumentRenderer::Impl::DrawEditedPath(SkCanvas* canvas, const EditedPath& edited, float px,
+                                            float anchor_half) {
+  // `px` is one view pixel in document units; `anchor_half` is in device pixels.
+  const core::PathData& path = edited.path;
+  SkPathBuilder outline;
+  AppendPath(outline, path);
+  canvas->drawPath(outline.detach(), Hairline(kSelection));
+
+  // Handles: a line from the anchor to a dot. An open path's outer ends have
+  // no segment for their outer handle, so it is not shown.
+  const int n = static_cast<int>(path.anchors.size());
+  SkPaint dot;
+  dot.setColor(kSelection);
+  dot.setAntiAlias(true);
+  for (int i : edited.with_handles) {
+    if (i < 0 || i >= n) continue;
+    const core::Anchor& a = path.anchors[i];
+    const bool has_in = path.closed || i > 0;
+    const bool has_out = path.closed || i < n - 1;
+    const std::pair<bool, core::Point> handles[] = {{has_in, a.in_point()},
+                                                    {has_out, a.out_point()}};
+    for (const auto& [shown, handle] : handles) {
+      if (!shown || handle == a.position) continue;
+      canvas->drawLine(ToSk(a.position), ToSk(handle), Hairline(kSelection));
+      canvas->drawCircle(ToSk(handle), 2.5f * px, dot);
+    }
+  }
+
+  // Anchors as squares sized in device pixels: filled when selected,
+  // hollow otherwise.
+  std::vector<SkPoint> points;
+  for (const auto& a : path.anchors) points.push_back(ToSk(a.position));
+  canvas->getTotalMatrix().mapPoints(points);
+  canvas->save();
+  canvas->resetMatrix();
+  SkPaint fill;
+  SkPaint border = Hairline(kSelection);
+  border.setStrokeWidth(1);
+  border.setAntiAlias(false);
+  for (int i = 0; i < n; ++i) {
+    const SkPoint p = points[i];
+    const SkRect r = SkRect::MakeLTRB(p.x() - anchor_half, p.y() - anchor_half, p.x() + anchor_half,
+                                      p.y() + anchor_half);
+    fill.setColor(edited.selected.contains(i) ? kSelection : SK_ColorWHITE);
+    canvas->drawRect(r, fill);
+    canvas->drawRect(r, border);
   }
   canvas->restore();
 }

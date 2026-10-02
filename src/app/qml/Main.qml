@@ -61,19 +61,24 @@ ApplicationWindow {
         anchors.fill: parent
         spacing: 0
 
-        // Tools (spec 4.2 shortcuts: V, M, L, \; polygon and star have none).
+        // Tools (spec 4.2 shortcuts; polygon and star have none).
         ColumnLayout {
             Layout.fillHeight: true
             // Children fill the column's width; the column itself must not
             // grow, or it inherits their fillWidth and squeezes the canvas.
             Layout.fillWidth: false
-            Layout.preferredWidth: 110
-            Layout.maximumWidth: 110
+            Layout.preferredWidth: 150
+            Layout.maximumWidth: 150
             Layout.margins: 4
             spacing: 2
             Repeater {
                 model: [
                     { tool: 0, label: qsTr("Selection (V)") },
+                    { tool: 10, label: qsTr("Direct selection (A)") },
+                    { tool: 6, label: qsTr("Pen (P)") },
+                    { tool: 7, label: qsTr("Add anchor (+)") },
+                    { tool: 8, label: qsTr("Delete anchor (-)") },
+                    { tool: 9, label: qsTr("Anchor point (Shift+C)") },
                     { tool: 1, label: qsTr("Rectangle (M)") },
                     { tool: 2, label: qsTr("Ellipse (L)") },
                     { tool: 3, label: qsTr("Polygon") },
@@ -90,6 +95,16 @@ ApplicationWindow {
                 }
             }
             Item { Layout.fillHeight: true }
+            CheckBox {
+                text: qsTr("Outline (Ctrl+Y)")
+                checked: canvas.outlineView
+                onClicked: { canvas.outlineView = checked; canvas.forceActiveFocus() }
+            }
+            CheckBox {
+                text: qsTr("Smart guides (Ctrl+U)")
+                checked: canvas.smartGuides
+                onClicked: { canvas.smartGuides = checked; canvas.forceActiveFocus() }
+            }
         }
 
         CanvasItem {
@@ -108,9 +123,9 @@ ApplicationWindow {
             Layout.fillWidth: false
             Layout.preferredWidth: 260
             Layout.maximumWidth: 260
-            enabled: window.info.valid
 
             GridLayout {
+                enabled: window.info.valid
                 anchors { left: parent.left; right: parent.right; top: parent.top }
                 columns: 2
                 columnSpacing: 8
@@ -258,6 +273,46 @@ ApplicationWindow {
                     decimals: 2
                     onCommitted: v => canvas.setShapeValue("length", v)
                 }
+
+                // Anchor commands, standing in for the control bar (spec 4.2).
+                Label {
+                    text: qsTr("Anchors: %1").arg(canvas.anchorCount)
+                    font.bold: true
+                    Layout.columnSpan: 2
+                    Layout.topMargin: 12
+                    visible: canvas.anchorCount > 0
+                }
+                Button {
+                    text: qsTr("Corner")
+                    visible: canvas.anchorCount > 0
+                    Layout.fillWidth: true
+                    onClicked: { canvas.convertAnchors(false); canvas.forceActiveFocus() }
+                }
+                Button {
+                    text: qsTr("Smooth")
+                    visible: canvas.anchorCount > 0
+                    Layout.fillWidth: true
+                    onClicked: { canvas.convertAnchors(true); canvas.forceActiveFocus() }
+                }
+                Button {
+                    text: qsTr("Remove")
+                    visible: canvas.anchorCount > 0
+                    Layout.fillWidth: true
+                    onClicked: { canvas.removeAnchors(); canvas.forceActiveFocus() }
+                }
+                Button {
+                    text: qsTr("Cut path")
+                    visible: canvas.anchorCount === 1
+                    Layout.fillWidth: true
+                    onClicked: { canvas.cutAtAnchor(); canvas.forceActiveFocus() }
+                }
+                Button {
+                    text: qsTr("Join (Ctrl+J)")
+                    visible: canvas.anchorCount === 2
+                    Layout.fillWidth: true
+                    Layout.columnSpan: 2
+                    onClicked: { canvas.joinEnds(); canvas.forceActiveFocus() }
+                }
             }
         }
     }
@@ -283,10 +338,16 @@ ApplicationWindow {
     Shortcut { sequence: "M"; onActivated: canvas.tool = 1 }
     Shortcut { sequence: "L"; onActivated: canvas.tool = 2 }
     Shortcut { sequence: "\\"; onActivated: canvas.tool = 5 }
+    Shortcut { sequence: "P"; onActivated: canvas.tool = 6 }
+    // "+" needs Shift on most layouts; "=" is the same key unshifted on US ones.
+    Shortcut { sequences: ["+", "Shift++", "="]; onActivated: canvas.tool = 7 }
+    Shortcut { sequence: "-"; onActivated: canvas.tool = 8 }
+    Shortcut { sequence: "Shift+C"; onActivated: canvas.tool = 9 }
+    Shortcut { sequence: "A"; onActivated: canvas.tool = 10 }
 
     // Edit and Object menu shortcuts, as in Illustrator (spec 4.2, 7.1).
     Shortcut { sequence: "Ctrl+Z"; onActivated: canvas.undo() }
-    Shortcut { sequences: ["Ctrl+Shift+Z", "Ctrl+Y"]; onActivated: canvas.redo() }
+    Shortcut { sequence: "Ctrl+Shift+Z"; onActivated: canvas.redo() }
     Shortcut { sequence: "Ctrl+A"; onActivated: canvas.selectAll() }
     Shortcut { sequence: "Ctrl+Shift+A"; onActivated: canvas.deselect() }
     Shortcut { sequence: "Ctrl+G"; onActivated: canvas.group() }
@@ -296,6 +357,11 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+["; onActivated: canvas.arrange(2) }
     Shortcut { sequence: "Ctrl+Shift+["; onActivated: canvas.arrange(3) }
 
+    Shortcut { sequence: "Ctrl+J"; onActivated: canvas.joinEnds() }
+
+    // View menu.
+    Shortcut { sequence: "Ctrl+Y"; onActivated: canvas.outlineView = !canvas.outlineView }
+    Shortcut { sequence: "Ctrl+U"; onActivated: canvas.smartGuides = !canvas.smartGuides }
     Shortcut { sequence: "Ctrl+0"; onActivated: canvas.fitArtboard() }
     Shortcut { sequence: "Ctrl+1"; onActivated: canvas.actualSize() }
     Shortcut { sequences: ["Ctrl+=", "Ctrl++"]; onActivated: canvas.zoomIn() }
