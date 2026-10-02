@@ -2,7 +2,6 @@
 // M0: confirms the vcpkg Skia build has the features phase 1 relies on.
 // Vulkan is covered by render linking GrDirectContexts::MakeVulkan.
 #include <catch2/catch_test_macros.hpp>
-
 #include <cstring>
 
 #include "include/core/SkCanvas.h"
@@ -12,6 +11,7 @@
 #include "include/core/SkRect.h"
 #include "include/core/SkStream.h"
 #include "include/docs/SkPDFDocument.h"
+#include "include/docs/SkPDFJpegHelpers.h"
 #include "include/pathops/SkPathOps.h"
 
 TEST_CASE("Skia PathOps unions two overlapping squares") {
@@ -27,7 +27,8 @@ TEST_CASE("Skia PathOps unions two overlapping squares") {
 TEST_CASE("Skia PDF backend writes a document") {
   SkDynamicMemoryWStream stream;
   {
-    sk_sp<SkDocument> document = SkPDF::MakeDocument(&stream, SkPDF::Metadata());
+    // Skia refuses to create a PDF without JPEG callbacks.
+    sk_sp<SkDocument> document = SkPDF::MakeDocument(&stream, SkPDF::JPEG::MetadataWithCallbacks());
     REQUIRE(document);
     SkCanvas* page = document->beginPage(200, 200);
     page->drawRect(SkRect::MakeXYWH(10, 10, 50, 50), SkPaint());

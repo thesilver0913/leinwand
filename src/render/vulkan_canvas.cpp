@@ -2,6 +2,7 @@
 #include "render/vulkan_canvas.h"
 
 #include "include/core/SkCanvas.h"
+#include "include/core/SkColorSpace.h"
 #include "include/core/SkSurface.h"
 #include "include/gpu/ganesh/GrBackendSurface.h"
 #include "include/gpu/ganesh/GrDirectContext.h"
@@ -13,6 +14,7 @@
 #include "include/gpu/vk/VulkanExtensions.h"
 #include "include/gpu/vk/VulkanMutableTextureState.h"
 #include "render/test_scene_impl.h"
+#include "render/vma_allocator.h"
 
 namespace leinwand::render {
 
@@ -31,8 +33,7 @@ VulkanCanvas::~VulkanCanvas() {
   }
 }
 
-std::unique_ptr<VulkanCanvas> VulkanCanvas::Create(const VulkanDevice& device,
-                                                   std::string* error) {
+std::unique_ptr<VulkanCanvas> VulkanCanvas::Create(const VulkanDevice& device, std::string* error) {
   if (!device.get_instance_proc_addr) {
     *error = "vkGetInstanceProcAddr is missing";
     return nullptr;
@@ -40,17 +41,20 @@ std::unique_ptr<VulkanCanvas> VulkanCanvas::Create(const VulkanDevice& device,
   const auto get_instance_proc = device.get_instance_proc_addr;
   const auto get_device_proc = reinterpret_cast<PFN_vkGetDeviceProcAddr>(
       get_instance_proc(device.instance, "vkGetDeviceProcAddr"));
+  // Names that resolve to null are kept for the error message.
+  auto unresolved = std::make_shared<std::string>();
   skgpu::VulkanGetProc get_proc = [=](const char* name, VkInstance instance,
                                       VkDevice dev) -> PFN_vkVoidFunction {
-    if (dev != VK_NULL_HANDLE) return get_device_proc(dev, name);
-    return get_instance_proc(instance, name);
+    const PFN_vkVoidFunction proc =
+        dev != VK_NULL_HANDLE ? get_device_proc(dev, name) : get_instance_proc(instance, name);
+    if (!proc) *unresolved += std::string(" ") + name;
+    return proc;
   };
 
   auto impl = std::make_unique<Impl>();
   impl->queue_family_index = device.queue_family_index;
   // Qt enabled the extensions it wanted; Skia is told about none of them.
-  impl->extensions.init(get_proc, device.instance, device.physical_device, 0, nullptr, 0,
-                        nullptr);
+  impl->extensions.init(get_proc, device.instance, device.physical_device, 0, nullptr, 0, nullptr);
 
   skgpu::VulkanBackendContext backend;
   backend.fInstance = device.instance;
@@ -61,10 +65,16 @@ std::unique_ptr<VulkanCanvas> VulkanCanvas::Create(const VulkanDevice& device,
   backend.fMaxAPIVersion = device.api_version;
   backend.fVkExtensions = &impl->extensions;
   backend.fGetProc = get_proc;
+  backend.fMemoryAllocator =
+      MakeVmaAllocator(device.instance, device.physical_device, device.device, get_instance_proc);
+  if (!backend.fMemoryAllocator) {
+    *error = "Could not create the Vulkan memory allocator";
+    return nullptr;
+  }
 
   impl->context = GrDirectContexts::MakeVulkan(backend);
   if (!impl->context) {
-    *error = "GrDirectContexts::MakeVulkan failed";
+    *error = "GrDirectContexts::MakeVulkan failed; unresolved Vulkan functions:" + *unresolved;
     return nullptr;
   }
   return std::unique_ptr<VulkanCanvas>(new VulkanCanvas(std::move(impl)));

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "canvas_item.h"
 
+#include <rhi/qrhi.h>
+
 #include <QElapsedTimer>
 #include <QMouseEvent>
 #include <QQuickWindow>
 #include <QVulkanInstance>
 #include <QWheelEvent>
-#include <rhi/qrhi.h>
-
 #include <cmath>
 #include <memory>
 #include <string>
@@ -42,8 +42,7 @@ class CanvasRenderer : public QQuickRhiItemRenderer {
     view_ = {item->panX() * dpr, item->panY() * dpr, item->zoom() * dpr};
 
     if (!error_.isEmpty()) {
-      QMetaObject::invokeMethod(item, "reportError", Qt::QueuedConnection,
-                                Q_ARG(QString, error_));
+      QMetaObject::invokeMethod(item, "reportError", Qt::QueuedConnection, Q_ARG(QString, error_));
       error_.clear();
     }
     if (frames_ >= 30) {
@@ -76,6 +75,8 @@ class CanvasRenderer : public QQuickRhiItemRenderer {
     if (canvas_->Draw(*scene_, view_, target, final_layout)) {
       // Skia changed the layout behind QRhi's back; tell it.
       texture->setNativeLayout(final_layout);
+    } else {
+      error_ = QStringLiteral("Skia could not wrap the item's texture");
     }
     draw_ns_ += timer.nsecsElapsed();
     if (frames_++ == 0) interval_.start();
@@ -89,9 +90,8 @@ class CanvasRenderer : public QQuickRhiItemRenderer {
     }
     const auto* handles = static_cast<const QRhiVulkanNativeHandles*>(rhi()->nativeHandles());
     QVulkanInstance* instance = handles->inst;
-    const QVersionNumber version = instance->apiVersion().isNull()
-                                       ? instance->supportedApiVersion()
-                                       : instance->apiVersion();
+    const QVersionNumber version =
+        instance->apiVersion().isNull() ? instance->supportedApiVersion() : instance->apiVersion();
 
     leinwand::render::VulkanDevice device;
     device.instance = instance->vkInstance();
@@ -166,6 +166,7 @@ void CanvasItem::reportStats(double fps, double drawMs) {
 }
 
 void CanvasItem::reportError(const QString& error) {
+  qWarning("Canvas: %s", qPrintable(error));
   error_ = error;
   emit errorChanged();
 }

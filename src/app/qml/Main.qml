@@ -14,9 +14,16 @@ Window {
     readonly property bool bench: Qt.application.arguments.indexOf("--bench") >= 0
     property var samples: []
 
+    // --paths=N: number of test paths (default 10000).
+    readonly property int pathsArg: {
+        const arg = Qt.application.arguments.find(a => a.startsWith("--paths="))
+        return arg ? parseInt(arg.substring(8)) : 10000
+    }
+
     CanvasItem {
         id: canvas
         anchors.fill: parent
+        pathCount: window.pathsArg
         onStatsChanged: if (window.bench) window.samples.push([fps, drawMs])
     }
 

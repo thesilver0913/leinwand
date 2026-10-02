@@ -8,8 +8,9 @@
     {
       "name": "skia",
       "default-features": false,
-      "features": ["pdf", "png", "vulkan"]
+      "features": ["jpeg", "pdf", "png", "vulkan"]
     },
-    "vulkan-headers"
+    "vulkan-headers",
+    "vulkan-memory-allocator"
   ]
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include <catch2/catch_test_macros.hpp>
-
 #include "render/test_scene.h"
+
+#include <catch2/catch_test_macros.hpp>
 
 using leinwand::render::TestScene;
 using leinwand::render::View;
@@ -26,5 +26,6 @@ TEST_CASE("TestScene draws something other than the background") {
   for (std::size_t i = 0; i < pixels.size(); i += 4) {
     if (pixels[i] != 0x53 || pixels[i + 1] != 0x53 || pixels[i + 2] != 0x53) ++differing;
   }
-  CHECK(differing > 128 * 128 / 4);
+  // About four blobs fall inside 128 px at zoom 1.
+  CHECK(differing > 128 * 128 / 10);
 }

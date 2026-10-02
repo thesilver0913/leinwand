@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
-#include <QQuickRhiItem>
 #include <QtQml/qqmlregistration.h>
+
+#include <QQuickRhiItem>
 
 // Canvas prototype for M0: Skia draws into the item's texture with the
 // Vulkan device Qt Quick already uses.
