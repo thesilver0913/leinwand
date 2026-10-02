@@ -60,18 +60,6 @@ void ForEachEdge(const std::vector<core::PathData>& subpaths, double tolerance, 
   }
 }
 
-std::vector<core::PathData> SubpathsOf(const core::Object& object) {
-  if (const auto* path = std::get_if<core::PathObject>(&object)) return {path->path};
-  if (const auto* compound = std::get_if<core::CompoundPathObject>(&object))
-    return compound->subpaths;
-  return {};
-}
-
-core::FillRule FillRuleOf(const core::Object& object) {
-  const auto* compound = std::get_if<core::CompoundPathObject>(&object);
-  return compound ? compound->fill_rule : core::FillRule::kNonZero;
-}
-
 // Half the widest stroke, and whether anything is filled.
 void PaintExtent(const core::Object& object, double* stroke_reach, bool* filled) {
   *stroke_reach = 0.0;
@@ -104,7 +92,7 @@ std::optional<std::string> HitObject(const core::Object& object, Point p, double
     auto end = group->children.rend();
     if (group->clipped && !group->children.empty()) {
       const core::Object& clip = *group->children.back();
-      if (!FillContains(SubpathsOf(clip), FillRuleOf(clip), local, local_tolerance))
+      if (!FillContains(core::OutlineOf(clip), core::FillRuleOf(clip), local, local_tolerance))
         return std::nullopt;
     }
     auto it = group->children.rbegin();
@@ -120,9 +108,9 @@ std::optional<std::string> HitObject(const core::Object& object, Point p, double
   PaintExtent(object, &stroke_reach, &filled);
   // Cheap rejection before flattening any curves.
   if (!Bounds(object).Outset(stroke_reach + tolerance).Contains(p)) return std::nullopt;
-  const auto subpaths = SubpathsOf(object);
+  const auto subpaths = core::OutlineOf(object);
   const double flatness = std::max(tolerance / 4, 1e-3);
-  if (filled && FillContains(subpaths, FillRuleOf(object), p, flatness)) return common.id;
+  if (filled && FillContains(subpaths, core::FillRuleOf(object), p, flatness)) return common.id;
   for (const auto& subpath : subpaths) {
     if (DistanceToOutline(subpath, p, flatness) <= stroke_reach + tolerance) return common.id;
   }
@@ -145,14 +133,15 @@ bool Touches(const core::Object& object, const Rect& rect, double tolerance) {
   }
   if (!Bounds(object).Intersects(rect)) return false;
   bool touched = false;
-  ForEachEdge(SubpathsOf(object), tolerance, false,
+  ForEachEdge(core::OutlineOf(object), tolerance, false,
               [&](Point a, Point b) { touched = touched || SegmentTouchesRect(a, b, rect); });
   if (touched) return true;
   double stroke_reach;
   bool filled;
   PaintExtent(object, &stroke_reach, &filled);
   const Point centre{(rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2};
-  return filled && FillContains(SubpathsOf(object), FillRuleOf(object), centre, tolerance);
+  return filled &&
+         FillContains(core::OutlineOf(object), core::FillRuleOf(object), centre, tolerance);
 }
 
 // Calls f for each object directly in the layer or its sublayers, until f

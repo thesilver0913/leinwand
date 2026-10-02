@@ -88,7 +88,158 @@ Point HandlePosition(const Rect& box, Handle handle) {
 }
 
 Editor::Editor(core::Document document) : history_({std::move(document), {}}) {
-  for (const auto& id : core::AllObjectIds(history_.current().document)) ids_.Reserve(id);
+  const core::Document& doc = history_.current().document;
+  for (const auto& id : core::AllObjectIds(doc)) ids_.Reserve(id);
+  std::function<void(const core::Layer&)> reserve = [&](const core::Layer& layer) {
+    ids_.Reserve(layer.id);
+    for (const auto& child : layer.children) {
+      if (const auto* sublayer = std::get_if<core::LayerPtr>(&child)) reserve(**sublayer);
+    }
+  };
+  for (const auto& layer : doc.layers) reserve(*layer);
+  // Illustrator's defaults for new artwork: white fill, 1 pt black stroke.
+  core::Stroke stroke{core::RgbColor{0, 0, 0}};
+  stroke.width = 1;
+  new_style_ = {stroke, core::Fill{core::RgbColor{1, 1, 1}}};
+}
+
+void Editor::SetTool(Tool tool) {
+  drag_ = {};
+  tool_ = tool;
+}
+
+void Editor::AdjustToolCount(int delta) {
+  if (tool_ == Tool::kPolygon) polygon_sides_ = std::clamp(polygon_sides_ + delta, 3, 1000);
+  if (tool_ == Tool::kStar) star_points_ = std::clamp(star_points_ + delta, 3, 1000);
+  if (drag_.kind == DragKind::kDraw) UpdateDrawing();
+}
+
+std::optional<core::ObjectPtr> Editor::DrawnShape() const {
+  const Point s = drag_.start;
+  Point d = drag_.current - s;
+  if (std::hypot(d.x, d.y) < drag_.threshold) return std::nullopt;
+  const Modifiers m = drag_.modifiers;
+
+  core::ShapeObject shape;
+  shape.common.id = drag_.new_id;
+  shape.common.appearance = new_style_;
+  switch (tool_) {
+    case Tool::kRectangle:
+    case Tool::kEllipse: {
+      if (m.shift) {  // Square or circle.
+        const double side = std::max(std::abs(d.x), std::abs(d.y));
+        d = {std::copysign(side, d.x), std::copysign(side, d.y)};
+      }
+      // Alt: the press point is the centre instead of a corner.
+      const Point centre = m.alt ? s : s + d * 0.5;
+      const double w = std::abs(d.x) * (m.alt ? 2 : 1), h = std::abs(d.y) * (m.alt ? 2 : 1);
+      if (w <= 0 || h <= 0) return std::nullopt;
+      if (tool_ == Tool::kRectangle) {
+        shape.shape = core::RectangleShape{w, h};
+      } else {
+        shape.shape = core::EllipseShape{w, h};
+      }
+      shape.transform = Matrix::Translate(centre.x, centre.y);
+      break;
+    }
+    case Tool::kPolygon:
+    case Tool::kStar: {
+      // Drawn from the centre; a vertex follows the pointer unless Shift
+      // keeps the shape upright.
+      const double radius = std::hypot(d.x, d.y);
+      const double angle = m.shift ? 0.0 : std::atan2(d.y, d.x) + std::numbers::pi / 2;
+      if (tool_ == Tool::kPolygon) {
+        shape.shape = core::PolygonShape{polygon_sides_, radius};
+      } else {
+        shape.shape = core::StarShape{star_points_, radius, radius / 2};
+      }
+      shape.transform = Matrix::Translate(s.x, s.y) * Matrix::Rotate(angle);
+      break;
+    }
+    case Tool::kLine: {
+      if (m.shift) d = ConstrainTo45(d);
+      const Point a = m.alt ? s - d : s, b = s + d;
+      shape.shape = core::LineShape{std::hypot(b.x - a.x, b.y - a.y)};
+      const Point mid = (a + b) * 0.5;
+      shape.transform =
+          Matrix::Translate(mid.x, mid.y) * Matrix::Rotate(std::atan2(b.y - a.y, b.x - a.x));
+      // A line has nothing to fill.
+      std::erase_if(shape.common.appearance, [](const core::AppearanceItem& item) {
+        return std::holds_alternative<core::Fill>(item);
+      });
+      break;
+    }
+    case Tool::kSelection:
+      return std::nullopt;
+  }
+  return core::MakeObject(std::move(shape));
+}
+
+void Editor::UpdateDrawing() {
+  const auto shape = DrawnShape();
+  if (!shape) {
+    drag_.preview.reset();
+    return;
+  }
+  drag_.preview = core::EditorState{
+      core::AddObject(history_.current().document, *shape, "layer-" + drag_.new_id),
+      {drag_.new_id}};
+}
+
+const core::ShapeObject* Editor::SingleShape() const {
+  if (selection().size() != 1) return nullptr;
+  const auto found = core::FindObjects(document(), selection());
+  if (found.size() != 1) return nullptr;
+  return std::get_if<core::ShapeObject>(&*found[0].object);
+}
+
+std::optional<SelectionInfo> Editor::Info() const {
+  const auto bounds = SelectionBounds();
+  if (!bounds) return std::nullopt;
+  SelectionInfo info;
+  info.bounds = *bounds;
+  if (const core::ShapeObject* shape = SingleShape()) {
+    info.shape = shape->shape;
+    // The panel counts counter-clockwise on screen; y points down.
+    info.rotation = -std::atan2(shape->transform.b, shape->transform.a) * 180 / std::numbers::pi;
+    if (std::abs(info.rotation) < 1e-9) info.rotation = 0;
+  }
+  return info;
+}
+
+void Editor::SetBounds(const Rect& bounds) {
+  const auto old = SelectionBounds();
+  if (!old || bounds == *old) return;
+  const double sx = old->width() > 0 ? bounds.width() / old->width() : 1.0;
+  const double sy = old->height() > 0 ? bounds.height() / old->height() : 1.0;
+  if (sx <= 0 || sy <= 0) return;
+  const Matrix matrix = Matrix::Translate(bounds.left, bounds.top) * Matrix::Scale(sx, sy) *
+                        Matrix::Translate(-old->left, -old->top);
+  Commit("transform", {core::TransformObjects(document(), selection(), matrix), selection()});
+}
+
+void Editor::SetRotation(double degrees) {
+  const auto info = Info();
+  if (!info) return;
+  // A single shape shows its own angle, so the value is absolute; anything
+  // else shows 0 and the value rotates by that much.
+  const double delta = info->shape ? degrees - info->rotation : degrees;
+  if (std::abs(delta) < 1e-9) return;
+  const Point c = Centre(info->bounds);
+  const Matrix matrix = Matrix::Translate(c.x, c.y) *
+                        Matrix::Rotate(-delta * std::numbers::pi / 180) *
+                        Matrix::Translate(-c.x, -c.y);
+  Commit("rotate", {core::TransformObjects(document(), selection(), matrix), selection()});
+}
+
+void Editor::SetShape(const core::ShapeParams& params) {
+  const core::ShapeObject* shape = SingleShape();
+  if (!shape || shape->shape == params) return;
+  core::ShapeObject changed = *shape;
+  changed.shape = params;
+  Commit("shape",
+         {core::ReplaceObjects(document(), {{shape->common.id, core::MakeObject(changed)}}),
+          selection()});
 }
 
 const core::Document& Editor::document() const {
@@ -143,6 +294,7 @@ std::optional<Handle> Editor::RotateZoneAt(Point p, double pick) const {
 }
 
 Hover Editor::HoverAt(Point p, double pick) const {
+  if (tool_ != Tool::kSelection) return {};
   if (const auto h = HandleAt(p, pick)) return {Hover::Kind::kHandle, *h};
   if (const auto h = RotateZoneAt(p, pick)) return {Hover::Kind::kRotate, *h};
   if (geometry::HitTest(document(), p, pick)) return {Hover::Kind::kObject};
@@ -159,6 +311,12 @@ void Editor::PointerDown(Point p, Modifiers modifiers, double pick) {
   drag_ = {};
   drag_.start = drag_.current = p;
   drag_.threshold = pick / 2;
+  drag_.modifiers = modifiers;
+  if (tool_ != Tool::kSelection) {
+    drag_.kind = DragKind::kDraw;
+    drag_.new_id = ids_.Next();
+    return;
+  }
   if (!selection().empty()) {
     if (const auto h = HandleAt(p, pick)) {
       drag_.kind = DragKind::kScale;
@@ -192,6 +350,11 @@ void Editor::PointerDown(Point p, Modifiers modifiers, double pick) {
 
 void Editor::PointerMove(Point p, Modifiers modifiers) {
   drag_.current = p;
+  drag_.modifiers = modifiers;
+  if (drag_.kind == DragKind::kDraw) {
+    UpdateDrawing();
+    return;
+  }
   switch (drag_.kind) {
     case DragKind::kNone:
     case DragKind::kMarquee:
@@ -277,6 +440,14 @@ void Editor::PointerUp(Point p, Modifiers modifiers) {
     selection.insert(touched.begin(), touched.end());
     drag_ = {};
     SetSelection(std::move(selection));
+    return;
+  }
+  if (kind == DragKind::kDraw) {
+    drag_.modifiers = modifiers;
+    UpdateDrawing();
+    std::optional<core::EditorState> result = std::move(drag_.preview);
+    drag_ = {};
+    if (result) Commit("draw", std::move(*result));
     return;
   }
   if (drag_.preview) {

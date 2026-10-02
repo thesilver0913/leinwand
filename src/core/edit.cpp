@@ -153,6 +153,23 @@ IdSet WithoutNested(const Document& document, const IdSet& ids) {
   return result;
 }
 
+Document AddObject(const Document& document, ObjectPtr object, const std::string& layer_id) {
+  Document result = document;
+  for (auto it = result.layers.rbegin(); it != result.layers.rend(); ++it) {
+    if (!(*it)->visible || (*it)->locked) continue;
+    Layer layer = **it;
+    layer.children.push_back(std::move(object));
+    *it = MakeLayer(std::move(layer));
+    return result;
+  }
+  Layer layer;
+  layer.id = layer_id;
+  layer.name = "Layer 1";
+  layer.children.push_back(std::move(object));
+  result.layers.push_back(MakeLayer(std::move(layer)));
+  return result;
+}
+
 IdSet AllObjectIds(const Document& document) {
   IdSet ids;
   VisitObjects(document, [&](const Object& object) { ids.insert(CommonOf(object).id); });

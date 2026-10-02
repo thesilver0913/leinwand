@@ -4,6 +4,7 @@
 #include <QtQml/qqmlregistration.h>
 
 #include <QQuickRhiItem>
+#include <QVariantMap>
 #include <memory>
 
 #include "core/document.h"
@@ -29,6 +30,12 @@ class CanvasItem : public QQuickRhiItem {
   Q_PROPERTY(int selectionCount READ selectionCount NOTIFY documentChanged)
   Q_PROPERTY(QString undoAction READ undoAction NOTIFY documentChanged)
   Q_PROPERTY(QString redoAction READ redoAction NOTIFY documentChanged)
+  // 0 selection, 1 rectangle, 2 ellipse, 3 polygon, 4 star, 5 line.
+  Q_PROPERTY(int tool READ tool WRITE setTool NOTIFY toolChanged)
+  // For the transform panel: "valid", "x", "y", "width", "height",
+  // "rotation", and for a single live shape "shape" (its kind) plus its
+  // parameters. Lengths in points, angles in degrees.
+  Q_PROPERTY(QVariantMap selectionInfo READ selectionInfo NOTIFY documentChanged)
   Q_PROPERTY(double fps READ fps NOTIFY statsChanged)
   Q_PROPERTY(double drawMs READ drawMs NOTIFY statsChanged)
   Q_PROPERTY(QString error READ error NOTIFY errorChanged)
@@ -48,6 +55,9 @@ class CanvasItem : public QQuickRhiItem {
   // Stable action keys ("move", "delete", ...); QML turns them into text.
   QString undoAction() const;
   QString redoAction() const;
+  int tool() const { return static_cast<int>(editor_->tool()); }
+  void setTool(int tool);
+  QVariantMap selectionInfo() const;
   double fps() const { return fps_; }
   double drawMs() const { return draw_ms_; }
   QString error() const { return error_; }
@@ -74,12 +84,22 @@ class CanvasItem : public QQuickRhiItem {
   // 0: bring to front, 1: bring forward, 2: send backward, 3: send to back.
   Q_INVOKABLE void arrange(int how);
 
+  // Transform panel edits; each is one undo step.
+  Q_INVOKABLE void setBounds(double x, double y, double width, double height);
+  Q_INVOKABLE void setRotation(double degrees);
+  // Sets one parameter of the selected live shape: "width", "height",
+  // "cornerRadius" (all corners), "cornerKind" (0 round, 1 inverted, 2
+  // chamfer), "pieStart", "pieEnd", "sides", "radius", "polygonCornerRadius",
+  // "points", "outerRadius", "innerRadius" or "length".
+  Q_INVOKABLE void setShapeValue(const QString& key, double value);
+
   // Called from the render thread through queued invocations.
   Q_INVOKABLE void reportStats(double fps, double drawMs);
   Q_INVOKABLE void reportError(const QString& error);
 
  signals:
   void viewChanged();
+  void toolChanged();
   void documentChanged();
   void statsChanged();
   void errorChanged();
@@ -97,7 +117,8 @@ class CanvasItem : public QQuickRhiItem {
 
  private:
   void SetDocument(leinwand::core::Document document);
-  void SetView(const leinwand::render::View& view);
+  // `by_user`: zooming or panning ends the automatic fitting.
+  void SetView(const leinwand::render::View& view, bool by_user = true);
   void EditorChanged();
   void UpdateCursor(QPointF position);
   leinwand::core::Point ToDocument(QPointF position) const;
@@ -106,7 +127,9 @@ class CanvasItem : public QQuickRhiItem {
   std::unique_ptr<leinwand::editor::Editor> editor_;
   int object_count_ = 0;
   leinwand::render::View view_;
-  bool fit_pending_ = true;  // Fit the artboard once the item has a size.
+  // Refit the artboard whenever the item resizes, until the user moves the
+  // view (the first sizes during window layout are not final).
+  bool fit_pending_ = true;
   bool space_held_ = false;
   bool panning_ = false;
   bool tool_dragging_ = false;

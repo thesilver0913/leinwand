@@ -10,6 +10,7 @@
 #include <QQuickWindow>
 #include <QVulkanInstance>
 #include <QWheelEvent>
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <string>
@@ -175,7 +176,8 @@ void CanvasItem::loadTestDocument(int pathCount) {
   SetDocument(leinwand::render::MakeTestDocument(pathCount));
 }
 
-void CanvasItem::SetView(const View& view) {
+void CanvasItem::SetView(const View& view, bool by_user) {
+  if (by_user) fit_pending_ = false;
   view_ = view;
   emit viewChanged();
   update();
@@ -196,8 +198,7 @@ void CanvasItem::setPanY(double y) {
 void CanvasItem::fitArtboard() {
   const auto& artboards = editor_->document().artboards;
   if (artboards.empty() || width() <= 0 || height() <= 0) return;
-  fit_pending_ = false;
-  SetView(View::Fit(artboards.front().bounds, width(), height()));
+  SetView(View::Fit(artboards.front().bounds, width(), height()), /*by_user=*/false);
 }
 
 void CanvasItem::actualSize() {
@@ -253,6 +254,115 @@ void CanvasItem::arrange(int how) {
                                        Arrange::kSendBackward, Arrange::kSendToBack};
   if (how < 0 || how > 3) return;
   editor_->Arrange(kOrder[how]);
+  EditorChanged();
+}
+
+void CanvasItem::setTool(int tool) {
+  if (tool < 0 || tool > 5 || tool == this->tool()) return;
+  editor_->SetTool(static_cast<leinwand::editor::Tool>(tool));
+  tool_dragging_ = false;
+  emit toolChanged();
+  EditorChanged();
+}
+
+QVariantMap CanvasItem::selectionInfo() const {
+  QVariantMap map;
+  const auto info = editor_->Info();
+  map["valid"] = info.has_value();
+  if (!info) return map;
+  map["x"] = info->bounds.left;
+  map["y"] = info->bounds.top;
+  map["width"] = info->bounds.width();
+  map["height"] = info->bounds.height();
+  map["rotation"] = info->rotation;
+  if (!info->shape) {
+    map["shape"] = QString();
+    return map;
+  }
+  std::visit(
+      [&](const auto& s) {
+        using T = std::decay_t<decltype(s)>;
+        using namespace leinwand::core;
+        if constexpr (std::is_same_v<T, RectangleShape>) {
+          map["shape"] = QStringLiteral("rectangle");
+          map["shapeWidth"] = s.width;
+          map["shapeHeight"] = s.height;
+          map["cornerRadius"] = s.corners[0].radius;
+          map["cornerKind"] = static_cast<int>(s.corners[0].kind);
+        } else if constexpr (std::is_same_v<T, EllipseShape>) {
+          map["shape"] = QStringLiteral("ellipse");
+          map["shapeWidth"] = s.width;
+          map["shapeHeight"] = s.height;
+          map["pieStart"] = s.pie_start;
+          map["pieEnd"] = s.pie_end;
+        } else if constexpr (std::is_same_v<T, PolygonShape>) {
+          map["shape"] = QStringLiteral("polygon");
+          map["sides"] = s.sides;
+          map["radius"] = s.radius;
+          map["polygonCornerRadius"] = s.corner_radius;
+        } else if constexpr (std::is_same_v<T, StarShape>) {
+          map["shape"] = QStringLiteral("star");
+          map["points"] = s.points;
+          map["outerRadius"] = s.outer_radius;
+          map["innerRadius"] = s.inner_radius;
+        } else {
+          map["shape"] = QStringLiteral("line");
+          map["length"] = s.length;
+        }
+      },
+      *info->shape);
+  return map;
+}
+
+void CanvasItem::setBounds(double x, double y, double width, double height) {
+  if (width <= 0 || height <= 0) return;
+  editor_->SetBounds(leinwand::core::Rect::FromXYWH(x, y, width, height));
+  EditorChanged();
+}
+
+void CanvasItem::setRotation(double degrees) {
+  editor_->SetRotation(degrees);
+  EditorChanged();
+}
+
+void CanvasItem::setShapeValue(const QString& key, double value) {
+  const auto info = editor_->Info();
+  if (!info || !info->shape) return;
+  leinwand::core::ShapeParams params = *info->shape;
+  const double size = std::max(value, 0.0);
+  const int count = std::clamp(static_cast<int>(std::lround(value)), 3, 1000);
+  std::visit(
+      [&](auto& s) {
+        using T = std::decay_t<decltype(s)>;
+        using namespace leinwand::core;
+        if constexpr (std::is_same_v<T, RectangleShape>) {
+          if (key == "width") s.width = size;
+          if (key == "height") s.height = size;
+          for (auto& corner : s.corners) {
+            if (key == "cornerRadius") corner.radius = size;
+            if (key == "cornerKind") {
+              corner.kind = static_cast<CornerKind>(std::clamp(static_cast<int>(value), 0, 2));
+            }
+          }
+        } else if constexpr (std::is_same_v<T, EllipseShape>) {
+          if (key == "width") s.width = size;
+          if (key == "height") s.height = size;
+          if (key == "pieStart") s.pie_start = value;
+          if (key == "pieEnd") s.pie_end = value;
+        } else if constexpr (std::is_same_v<T, PolygonShape>) {
+          if (key == "sides") s.sides = count;
+          if (key == "radius") s.radius = size;
+          if (key == "polygonCornerRadius") s.corner_radius = size;
+        } else if constexpr (std::is_same_v<T, StarShape>) {
+          if (key == "points") s.points = count;
+          if (key == "outerRadius") s.outer_radius = size;
+          if (key == "innerRadius") s.inner_radius = size;
+        } else {
+          if (key == "length") s.length = size;
+        }
+      },
+      params);
+  editor_->SetShape(params);
   EditorChanged();
 }
 
@@ -312,6 +422,13 @@ void CanvasItem::keyPressEvent(QKeyEvent* event) {
     EditorChanged();
   }
   if (event->isAutoRepeat() && event->key() == Qt::Key_Space) return;
+  // Up and down while drawing a polygon or star change its sides or points.
+  if (tool_dragging_ && (event->key() == Qt::Key_Up || event->key() == Qt::Key_Down)) {
+    editor_->AdjustToolCount(event->key() == Qt::Key_Up ? 1 : -1);
+    EditorChanged();
+    event->accept();
+    return;
+  }
   // Arrow keys nudge by the keyboard increment (1 pt; Shift: 10 pt).
   const double step = event->modifiers().testFlag(Qt::ShiftModifier) ? 10.0 : 1.0;
   switch (event->key()) {
@@ -423,6 +540,10 @@ void CanvasItem::UpdateCursor(QPointF position) {
     return;
   }
   if (tool_dragging_) return;  // Keep the cursor the drag started with.
+  if (editor_->tool() != leinwand::editor::Tool::kSelection) {
+    setCursor(Qt::CrossCursor);
+    return;
+  }
   using leinwand::editor::Handle;
   using Kind = leinwand::editor::Hover::Kind;
   const auto hover = editor_->HoverAt(ToDocument(position), PickRadius());

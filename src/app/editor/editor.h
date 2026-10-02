@@ -11,6 +11,7 @@
 #include "core/edit.h"
 #include "core/history.h"
 #include "core/id.h"
+#include "core/shape.h"
 #include "core/types.h"
 
 namespace leinwand::editor {
@@ -18,6 +19,17 @@ namespace leinwand::editor {
 struct Modifiers {
   bool shift = false;
   bool alt = false;
+};
+
+enum class Tool { kSelection, kRectangle, kEllipse, kPolygon, kStar, kLine };
+
+// What the transform panel shows for the current selection.
+struct SelectionInfo {
+  core::Rect bounds;  // Geometric bounds in document coordinates.
+  // Only for a single live shape: its parameters and rotation (degrees,
+  // counter-clockwise on screen as in Illustrator's panel).
+  std::optional<core::ShapeParams> shape;
+  double rotation = 0.0;
 };
 
 // Bounding-box handles, clockwise from the top-left corner.
@@ -57,6 +69,19 @@ class Editor {
   void CancelDrag();
   bool dragging() const { return drag_.kind != DragKind::kNone; }
 
+  Tool tool() const { return tool_; }
+  void SetTool(Tool tool);
+  // Arrow keys while drawing a polygon or star: more or fewer sides/points.
+  void AdjustToolCount(int delta);
+  int polygon_sides() const { return polygon_sides_; }
+  int star_points() const { return star_points_; }
+
+  std::optional<SelectionInfo> Info() const;
+  // Transform panel edits on the selection.
+  void SetBounds(const core::Rect& bounds);
+  void SetRotation(double degrees);
+  void SetShape(const core::ShapeParams& shape);
+
   // Commands. Each edit is one undo step; nothing is recorded when there is
   // nothing to act on.
   void SelectAll();
@@ -70,7 +95,7 @@ class Editor {
   void Redo();
 
  private:
-  enum class DragKind { kNone, kPending, kMove, kScale, kRotate, kMarquee };
+  enum class DragKind { kNone, kPending, kMove, kScale, kRotate, kMarquee, kDraw };
   struct Drag {
     DragKind kind = DragKind::kNone;
     core::Point start;
@@ -80,17 +105,26 @@ class Editor {
     std::optional<core::EditorState> duplicate;  // Alt-drag copy, made once.
     std::optional<core::EditorState> preview;
     core::Point current;
+    std::string new_id;  // The shape being drawn.
+    Modifiers modifiers;
   };
 
   void Commit(const std::string& action, core::EditorState state);
   void SetSelection(core::IdSet selection);
   void UpdatePreview(Modifiers modifiers);
+  void UpdateDrawing();
+  std::optional<core::ObjectPtr> DrawnShape() const;
+  const core::ShapeObject* SingleShape() const;
   std::optional<Handle> HandleAt(core::Point p, double pick) const;
   std::optional<Handle> RotateZoneAt(core::Point p, double pick) const;
 
   core::History history_;
   core::IdGenerator ids_;
   Drag drag_;
+  Tool tool_ = Tool::kSelection;
+  int polygon_sides_ = 6;
+  int star_points_ = 5;
+  core::Appearance new_style_;  // Fill and stroke for new shapes.
 };
 
 // Where a handle sits on a box.

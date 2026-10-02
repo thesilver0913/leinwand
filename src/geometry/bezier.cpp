@@ -70,16 +70,14 @@ Rect MapRect(const Rect& rect, const core::Matrix& matrix) {
 }
 
 Rect Bounds(const core::Object& object) {
-  if (const auto* path = std::get_if<core::PathObject>(&object)) return Bounds(path->path);
-  if (const auto* compound = std::get_if<core::CompoundPathObject>(&object)) {
+  if (const auto* group = std::get_if<core::GroupObject>(&object)) {
     Rect bounds;
-    for (const auto& subpath : compound->subpaths) bounds = bounds.Union(Bounds(subpath));
-    return bounds;
+    for (const auto& child : group->children) bounds = bounds.Union(Bounds(*child));
+    return MapRect(bounds, group->transform);
   }
-  const auto& group = std::get<core::GroupObject>(object);
   Rect bounds;
-  for (const auto& child : group.children) bounds = bounds.Union(Bounds(*child));
-  return MapRect(bounds, group.transform);
+  for (const auto& subpath : core::OutlineOf(object)) bounds = bounds.Union(Bounds(subpath));
+  return bounds;
 }
 
 }  // namespace leinwand::geometry

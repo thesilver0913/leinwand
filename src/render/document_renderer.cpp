@@ -95,28 +95,15 @@ void AppendPath(SkPathBuilder& builder, const core::PathData& path) {
 
 SkPath ToSkPath(const core::Object& object) {
   SkPathBuilder builder;
-  if (const auto* path = std::get_if<core::PathObject>(&object)) {
-    AppendPath(builder, path->path);
-  } else if (const auto* compound = std::get_if<core::CompoundPathObject>(&object)) {
-    for (const auto& subpath : compound->subpaths) AppendPath(builder, subpath);
-    builder.setFillType(compound->fill_rule == core::FillRule::kEvenOdd ? SkPathFillType::kEvenOdd
-                                                                        : SkPathFillType::kWinding);
-  }
+  for (const auto& subpath : core::OutlineOf(object)) AppendPath(builder, subpath);
+  builder.setFillType(core::FillRuleOf(object) == core::FillRule::kEvenOdd
+                          ? SkPathFillType::kEvenOdd
+                          : SkPathFillType::kWinding);
   return builder.detach();
 }
 
-// Inside and outside alignment need a region, so only closed shapes get it.
-bool IsClosedShape(const core::Object& object) {
-  if (const auto* path = std::get_if<core::PathObject>(&object)) return path->path.closed;
-  if (const auto* compound = std::get_if<core::CompoundPathObject>(&object)) {
-    return std::all_of(compound->subpaths.begin(), compound->subpaths.end(),
-                       [](const core::PathData& p) { return p.closed; });
-  }
-  return false;
-}
-
 core::StrokeAlign EffectiveAlign(const core::Object& object, const core::Stroke& stroke) {
-  return IsClosedShape(object) ? stroke.align : core::StrokeAlign::kCenter;
+  return core::IsClosed(object) ? stroke.align : core::StrokeAlign::kCenter;
 }
 
 // How far a stroke can reach beyond the geometry.
@@ -448,10 +435,7 @@ void DocumentRenderer::Impl::DrawOutline(SkCanvas* canvas, const core::ObjectPtr
   auto collect = [&](const core::PathData& path) {
     for (const auto& a : path.anchors) points.push_back(ToSk(a.position));
   };
-  if (const auto* path = std::get_if<core::PathObject>(object.get())) collect(path->path);
-  if (const auto* compound = std::get_if<core::CompoundPathObject>(object.get())) {
-    for (const auto& subpath : compound->subpaths) collect(subpath);
-  }
+  for (const auto& subpath : core::OutlineOf(*object)) collect(subpath);
   const SkMatrix ctm = canvas->getTotalMatrix();
   ctm.mapPoints(points);
   SkPaint anchor;

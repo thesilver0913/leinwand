@@ -8,6 +8,7 @@ add_executable(core_tests
   core/document_test.cpp
   core/edit_test.cpp
   core/history_test.cpp
+  core/shape_test.cpp
 )
 target_link_libraries(core_tests PRIVATE core Catch2::Catch2WithMain)
 catch_discover_tests(core_tests)
@@ -21,6 +22,7 @@ catch_discover_tests(geometry_tests)
 
 add_executable(editor_tests
   editor/editor_test.cpp
+  editor/shape_tools_test.cpp
 )
 target_link_libraries(editor_tests PRIVATE editor Catch2::Catch2WithMain)
 catch_discover_tests(editor_tests)

@@ -57,6 +57,11 @@ Document UngroupObjects(const Document& document, const IdSet& ids, IdSet* relea
 Document DuplicateObjects(const Document& document, const IdSet& ids, IdGenerator& id_generator,
                           IdSet* copies);
 
+// Puts `object` in front of everything in the frontmost visible, unlocked
+// top-level layer, where new artwork goes. Without such a layer, a new
+// "Layer 1" is added on top with `layer_id`.
+Document AddObject(const Document& document, ObjectPtr object, const std::string& layer_id);
+
 // Every object id in the document, for IdGenerator::Reserve.
 IdSet AllObjectIds(const Document& document);
 
