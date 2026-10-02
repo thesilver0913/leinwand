@@ -64,5 +64,5 @@
 
 ## コードの書式
 
-- clang-format は Google スタイルをもとに、1行100桁(`.clang-format`)。CI の Ubuntu の clang-format(18)と手元の LLVM(23)で判定が違う場合は、CI に合わせる。
+- clang-format は Google スタイルをもとに、1行100桁(`.clang-format`)。バージョンは 23.1.2 に固定する(CI は PyPI の `clang-format==23.1.2`、手元は LLVM 23.1.2)。バージョンが違うと整形結果が変わり、CI の書式チェックが落ちる(Ubuntu 標準の 18 で実際に落ちた)。
 - `prototypes/` は M0 の検証用。M1 以降、使うものは `src/` に移し、残りは消す。
