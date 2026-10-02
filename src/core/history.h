@@ -28,6 +28,11 @@ class History {
   // ("move", "delete", ...), not display text. Discards undone steps.
   void Push(std::string action, EditorState state);
 
+  // Replaces the state of the last step, keeping its action: continuous
+  // edits such as a slider drag become one step (spec 7.2). Discards undone
+  // steps. Without a step to amend, records a new one.
+  void Amend(std::string action, EditorState state);
+
   // Selection changes are not undo steps (as in Illustrator); they update the
   // current state in place.
   void SetSelection(IdSet selection);

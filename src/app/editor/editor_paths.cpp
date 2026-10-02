@@ -168,8 +168,7 @@ void Editor::PenDown(Point p, Modifiers modifiers, double pick) {
       object.common.id = ids_.Next();
       object.common.appearance = new_style_;
       object.path.anchors = {{p}};
-      drag_.base =
-          core::AddObject(*drag_.base, core::MakeObject(object), "layer-" + object.common.id);
+      drag_.base = WithNewObject(*drag_.base, core::MakeObject(object));
       pen_ = {object.common.id, false};
       drag_.path_id = object.common.id;
       drag_.index = 0;

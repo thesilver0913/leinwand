@@ -79,6 +79,7 @@ Point HandlePosition(const Rect& box, Handle handle) {
 Editor::Editor(core::Document document) : history_({std::move(document), {}}) {
   const core::Document& doc = history_.current().document;
   for (const auto& id : core::AllObjectIds(doc)) ids_.Reserve(id);
+  for (const auto& swatch : doc.swatches) ids_.Reserve(swatch.id);
   std::function<void(const core::Layer&)> reserve = [&](const core::Layer& layer) {
     ids_.Reserve(layer.id);
     for (const auto& child : layer.children) {
@@ -173,9 +174,8 @@ void Editor::UpdateDrawing() {
     drag_.preview.reset();
     return;
   }
-  drag_.preview = core::EditorState{
-      core::AddObject(history_.current().document, *shape, "layer-" + drag_.new_id),
-      {drag_.new_id}};
+  drag_.preview =
+      core::EditorState{WithNewObject(history_.current().document, *shape), {drag_.new_id}};
 }
 
 const core::ShapeObject* Editor::SingleShape() const {
@@ -335,11 +335,26 @@ Hover Editor::HoverAt(Point p, double pick) const {
   return {};
 }
 
-void Editor::SetSelection(core::IdSet selection) { history_.SetSelection(std::move(selection)); }
+void Editor::SetSelection(core::IdSet selection) {
+  history_.SetSelection(std::move(selection));
+  AdoptSelectionStyle();
+}
 
 void Editor::Commit(const std::string& action, core::EditorState state) {
+  if (gesture_ && gesture_pushed_) {
+    history_.Amend(action, std::move(state));
+    return;
+  }
   history_.Push(action, std::move(state));
+  gesture_pushed_ = gesture_;
 }
+
+void Editor::BeginGesture() {
+  gesture_ = true;
+  gesture_pushed_ = false;
+}
+
+void Editor::EndGesture() { gesture_ = gesture_pushed_ = false; }
 
 void Editor::PointerDown(Point p, Modifiers modifiers, double pick) {
   drag_ = {};
@@ -367,6 +382,9 @@ void Editor::PointerDown(Point p, Modifiers modifiers, double pick) {
       return;
     case Tool::kDirectSelection:
       DirectDown(p, modifiers, pick);
+      return;
+    case Tool::kEyedropper:
+      EyedropperDown(p, pick);
       return;
     case Tool::kRectangle:
     case Tool::kEllipse:

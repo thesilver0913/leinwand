@@ -4,12 +4,14 @@
 // the canvas item translates Qt input into these calls.
 #pragma once
 
+#include <functional>
 #include <optional>
 #include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "core/appearance.h"
 #include "core/document.h"
 #include "core/edit.h"
 #include "core/history.h"
@@ -37,6 +39,7 @@ enum class Tool {
   kDeleteAnchor,
   kConvertAnchor,
   kDirectSelection,
+  kEyedropper,
 };
 
 // What a pen click would do at a point (spec 4.2: the cursor shows it).
@@ -64,6 +67,18 @@ struct PathOverlay {
   core::PathData path;
   std::set<int> selected;      // Filled anchors.
   std::set<int> with_handles;  // Anchors whose handles are shown.
+};
+
+// What the toolbar's fill and stroke boxes and the Color and Stroke panels
+// show: for the selection, or the style for new objects.
+struct StyleState {
+  std::optional<core::Color> fill;  // nullopt: none.
+  std::optional<core::Color> stroke;
+  bool fill_mixed = false;  // The selected objects differ (shown as "?").
+  bool stroke_mixed = false;
+  std::optional<core::Stroke> stroke_style;  // Settings of the first front stroke.
+  double opacity = 1.0;
+  bool opacity_mixed = false;
 };
 
 // What the transform panel shows for the current selection.
@@ -143,6 +158,46 @@ class Editor {
   // objects' anchors and centres, and align with them.
   bool smart_guides() const { return smart_guides_; }
   void SetSmartGuides(bool on) { smart_guides_ = on; }
+
+  // Fill and stroke (spec 7.2). They edit the selected objects (a group's
+  // contents) and become the style for new objects; with nothing selected
+  // they edit only that style.
+  StyleState Style() const;
+  void SetFill(const std::optional<core::Color>& paint);
+  void SetStroke(const std::optional<core::Color>& paint);
+  void SwapFillAndStroke();     // Shift+X
+  void DefaultFillAndStroke();  // D: white fill, 1 pt black stroke.
+  // Changes the front stroke's settings (width, cap, join, ...) where there
+  // is a stroke.
+  void EditStroke(const std::function<void(core::Stroke&)>& edit);
+  void SetOpacity(double opacity);
+  // Which of fill and stroke the Color panel edits (X toggles).
+  bool fill_active() const { return fill_active_; }
+  void SetFillActive(bool fill) { fill_active_ = fill; }
+  const core::Appearance& new_style() const { return new_style_; }
+  // Edits between these two make one undo step (slider drags).
+  void BeginGesture();
+  void EndGesture();
+
+  // Selects objects by id (Layers panel); hidden and locked ones are left out.
+  void Select(const core::IdSet& ids);
+  // The layer new artwork goes into (Layers panel); when it cannot take art,
+  // the frontmost layer that can.
+  void SetActiveLayer(const std::string& id) { active_layer_ = id; }
+  const std::string& active_layer() const { return active_layer_; }
+
+  // Swatches panel: AddSwatch gives the swatch a fresh id and returns it.
+  std::string AddSwatch(core::Swatch swatch);
+  void RemoveSwatch(const std::string& id);
+
+  // Layers panel (spec 7.2); `id` is a layer or object id.
+  void SetItemVisible(const std::string& id, bool visible);
+  void SetItemLocked(const std::string& id, bool locked);
+  void RenameItem(const std::string& id, const std::string& name);
+  void MoveItem(const std::string& id, const std::string& parent, int index);
+  // A new layer in front of the given one (or of all); returns its id.
+  std::string AddLayer(const std::string& above, const std::string& name);
+  void RemoveLayer(const std::string& id);
 
   std::optional<SelectionInfo> Info() const;
   // Transform panel edits on the selection.
@@ -227,6 +282,14 @@ class Editor {
   void PenMove();
   void PenUp();
   void AnchorToolDown(core::Point p, double pick);
+  void EyedropperDown(core::Point p, double pick);
+  // Applies an appearance edit to the selection and the new-object style.
+  void ApplyStyle(const std::string& action, const std::function<void(core::Appearance&)>& edit);
+  // New objects take the basic style (front fill and stroke) of the first
+  // selected object, as in Illustrator.
+  void AdoptSelectionStyle();
+  // `document` with `object` added where new artwork goes.
+  core::Document WithNewObject(const core::Document& document, core::ObjectPtr object) const;
   void DirectDown(core::Point p, Modifiers modifiers, double pick);
   void DirectMove();
   void DirectUp(core::Point p, Modifiers modifiers);
@@ -280,7 +343,11 @@ class Editor {
   std::optional<core::Point> hover_;
   std::set<AnchorRef> anchors_;  // Direct selection.
   bool smart_guides_ = true;
-  Guides guides_;  // Shown while dragging.
+  bool fill_active_ = true;
+  std::string active_layer_;
+  bool gesture_ = false;         // Inside BeginGesture/EndGesture.
+  bool gesture_pushed_ = false;  // The gesture's step exists already.
+  Guides guides_;                // Shown while dragging.
   mutable std::optional<core::Document> snap_source_;
   mutable std::vector<SnapPoint> snap_points_;
 };

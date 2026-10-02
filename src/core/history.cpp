@@ -18,6 +18,15 @@ void History::Push(std::string action, EditorState state) {
   Trim();
 }
 
+void History::Amend(std::string action, EditorState state) {
+  if (index_ == 0) {
+    Push(std::move(action), std::move(state));
+    return;
+  }
+  steps_.resize(index_ + 1);
+  steps_[index_].state = std::move(state);
+}
+
 void History::SetSelection(IdSet selection) {
   steps_[index_].state.selection = std::move(selection);
 }

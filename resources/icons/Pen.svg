@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Leinwand icon on the Spectrum 20x20 grid (spec 7: tools Spectrum has no icon for). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
+  <g fill="none" stroke="var(--iconPrimary, #222)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M2.75 17.25 L5.5 9.75 L11 5.5 L14.5 9 L10.25 14.5 Z"/>
+    <path d="M2.75 17.25 L7.25 12.75"/>
+    <path d="M12.25 3.75 L16.25 7.75"/>
+  </g>
+  <circle cx="8.25" cy="11.75" r="1.25" fill="var(--iconPrimary, #222)"/>
+</svg>

@@ -8,6 +8,7 @@
 #include <variant>
 #include <vector>
 
+#include "core/style.h"
 #include "geometry/bezier.h"
 #include "include/core/SkBlendMode.h"
 #include "include/core/SkBlurTypes.h"
@@ -124,42 +125,9 @@ double StrokeOutset(const core::Object& object, const core::Stroke& stroke) {
   return half * factor;
 }
 
-core::RgbColor ToRgb(const core::ProcessColor& color) {
-  if (const auto* rgb = std::get_if<core::RgbColor>(&color)) return *rgb;
-  if (const auto* gray = std::get_if<core::GrayColor>(&color)) {
-    return {gray->gray, gray->gray, gray->gray};
-  }
-  // Naive device CMYK until color management arrives (phase 4).
-  const auto& cmyk = std::get<core::CmykColor>(color);
-  return {(1 - cmyk.c) * (1 - cmyk.k), (1 - cmyk.m) * (1 - cmyk.k), (1 - cmyk.y) * (1 - cmyk.k)};
-}
-
-// Null when the color refers to a swatch the document does not have.
-std::optional<core::RgbColor> Resolve(const core::Color& color, const core::Document& document) {
-  return std::visit(
-      [&](const auto& c) -> std::optional<core::RgbColor> {
-        using T = std::decay_t<decltype(c)>;
-        if constexpr (std::is_same_v<T, core::SpotColor>) {
-          const core::Swatch* swatch = document.FindSwatch(c.swatch_id);
-          if (!swatch) return std::nullopt;
-          // A tint mixes the full-strength color with paper white.
-          const core::RgbColor full = ToRgb(swatch->color);
-          return core::RgbColor{1 - c.tint * (1 - full.r), 1 - c.tint * (1 - full.g),
-                                1 - c.tint * (1 - full.b)};
-        } else if constexpr (std::is_same_v<T, core::SwatchRef>) {
-          const core::Swatch* swatch = document.FindSwatch(c.swatch_id);
-          if (!swatch) return std::nullopt;
-          return ToRgb(swatch->color);
-        } else {
-          return ToRgb(core::ProcessColor{c});
-        }
-      },
-      color);
-}
-
 bool SetPaintColor(SkPaint& paint, const core::Color& color, double opacity,
                    const core::Document& document) {
-  const auto rgb = Resolve(color, document);
+  const auto rgb = core::ToRgb(color, document);
   if (!rgb) return false;
   paint.setColor4f({static_cast<float>(rgb->r), static_cast<float>(rgb->g),
                     static_cast<float>(rgb->b), static_cast<float>(opacity)});

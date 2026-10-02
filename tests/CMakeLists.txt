@@ -9,6 +9,8 @@ add_executable(core_tests
   core/edit_test.cpp
   core/history_test.cpp
   core/shape_test.cpp
+  core/style_test.cpp
+  core/layers_test.cpp
 )
 target_link_libraries(core_tests PRIVATE core Catch2::Catch2WithMain)
 catch_discover_tests(core_tests)
@@ -27,6 +29,8 @@ add_executable(editor_tests
   editor/pen_tool_test.cpp
   editor/direct_selection_test.cpp
   editor/smart_guides_test.cpp
+  editor/style_test.cpp
+  editor/number_input_test.cpp
 )
 target_link_libraries(editor_tests PRIVATE editor Catch2::Catch2WithMain)
 catch_discover_tests(editor_tests)
