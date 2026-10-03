@@ -4,6 +4,7 @@
 #include <rhi/qrhi.h>
 
 #include <QElapsedTimer>
+#include <QFile>
 #include <QHoverEvent>
 #include <QKeyEvent>
 #include <QMouseEvent>
@@ -11,6 +12,8 @@
 #include <QPainterPath>
 #include <QPixmap>
 #include <QQuickWindow>
+#include <QRegularExpression>
+#include <QSvgRenderer>
 #include <QVulkanInstance>
 #include <QWheelEvent>
 #include <algorithm>
@@ -18,6 +21,7 @@
 #include <memory>
 #include <string>
 
+#include "preferences.h"
 #include "render/document_renderer.h"
 #include "render/overlay.h"
 #include "render/vulkan_canvas.h"
@@ -48,6 +52,8 @@ class CanvasRenderer : public QQuickRhiItemRenderer {
     const View& view = item->view();
     view_ = {view.pan_x * dpr, view.pan_y * dpr, view.zoom * dpr};
     overlay_ = item->overlay(dpr);
+    const QColor canvas(Preferences::instance()->Text(QStringLiteral("canvasColor")));
+    renderer_.SetPasteboard({canvas.redF(), canvas.greenF(), canvas.blueF()});
 
     if (!error_.isEmpty()) {
       QMetaObject::invokeMethod(item, "reportError", Qt::QueuedConnection, Q_ARG(QString, error_));
@@ -134,6 +140,7 @@ CanvasItem::CanvasItem(QQuickItem* parent) : QQuickRhiItem(parent), session_(Ses
   setActiveFocusOnTab(true);
   session_->SetCanvas(this);
   connect(session_, &Session::documentChanged, this, [this] { update(); });
+  connect(Preferences::instance(), &Preferences::changed, this, [this] { update(); });
   connect(session_, &Session::toolChanged, this, [this] { UpdateCursor(last_mouse_); });
   connect(session_, &Session::documentReplaced, this, [this] {
     fit_pending_ = true;
@@ -158,6 +165,7 @@ leinwand::render::Overlay CanvasItem::overlay(double pixel_ratio) const {
   overlay.bounding_box = o.bounding_box;
   overlay.marquee = o.marquee;
   overlay.pixel_ratio = pixel_ratio;
+  overlay.anchor_size = Preferences::instance()->Number(QStringLiteral("anchorSize"));
   for (auto& path : o.paths) {
     overlay.paths.push_back(
         {std::move(path.path), std::move(path.selected), std::move(path.with_handles)});
@@ -235,7 +243,9 @@ leinwand::core::Point CanvasItem::ToDocument(QPointF position) const {
   return view_.ToDocument({position.x(), position.y()});
 }
 
-double CanvasItem::PickRadius() const { return 4.0 / view_.zoom; }
+double CanvasItem::PickRadius() const {
+  return Preferences::instance()->Number(QStringLiteral("pickTolerance")) / view_.zoom;
+}
 
 leinwand::editor::Modifiers CanvasItem::ToolModifiers() const {
   return {.shift = modifiers_.testFlag(Qt::ShiftModifier),
@@ -287,7 +297,8 @@ void CanvasItem::keyPressEvent(QKeyEvent* event) {
     return;
   }
   // Arrow keys nudge by the keyboard increment (1 pt; Shift: 10 pt).
-  const double step = event->modifiers().testFlag(Qt::ShiftModifier) ? 10.0 : 1.0;
+  const double increment = Preferences::instance()->Number(QStringLiteral("keyboardIncrement"));
+  const double step = event->modifiers().testFlag(Qt::ShiftModifier) ? increment * 10 : increment;
   switch (event->key()) {
     case Qt::Key_Space:
       UpdateCursor(last_mouse_);  // Temporary hand tool.
@@ -414,32 +425,74 @@ void CanvasItem::hoverMoveEvent(QHoverEvent* event) {
 
 namespace {
 
-// Interim pen cursors until the icon set arrives (M7): a crosshair with a
-// mark for what a click would do (spec 4.2).
-QCursor PenCursor(const QString& mark) {
+// Tool cursors drawn from the toolbar's icons (spec 4.2: the pen's cursor
+// shows what a click would do): the icon in black with a white outline, and
+// an optional mark at the lower right. `hotspot` is in the icon's 20x20 grid.
+QCursor IconCursor(const QString& icon, QPointF hotspot, const QString& mark = {}) {
   static QHash<QString, QCursor> cache;
-  if (const auto it = cache.constFind(mark); it != cache.constEnd()) return *it;
+  const QString key = icon + u'|' + mark;
+  if (const auto it = cache.constFind(key); it != cache.constEnd()) return *it;
+  constexpr int kIcon = 24;
+  constexpr int kMargin = 2;
+  auto render = [&](const QColor& color) {
+    QFile file(QStringLiteral(":/icons/leinwand/%1.svg").arg(icon));
+    if (!file.open(QIODevice::ReadOnly)) {
+      file.setFileName(QStringLiteral(":/icons/spectrum/%1.svg").arg(icon));
+      file.open(QIODevice::ReadOnly);
+    }
+    static const QRegularExpression var(QStringLiteral(R"(var\(--[A-Za-z]+,\s*#[0-9A-Fa-f]+\))"));
+    const QByteArray svg = QString::fromUtf8(file.readAll()).replace(var, color.name()).toUtf8();
+    QImage image(kIcon, kIcon, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    QPainter painter(&image);
+    QSvgRenderer(svg).render(&painter);
+    return image;
+  };
   QPixmap pixmap(32, 32);
   pixmap.fill(Qt::transparent);
   QPainter painter(&pixmap);
   painter.setRenderHint(QPainter::Antialiasing);
-  const std::pair<QColor, double> strokes[] = {{Qt::white, 3.0}, {Qt::black, 1.0}};
-  for (const auto& [color, width] : strokes) {
-    painter.setPen(QPen(color, width));
-    painter.drawLine(QPointF(8, 1), QPointF(8, 15));
-    painter.drawLine(QPointF(1, 8), QPointF(15, 8));
+  // A white outline: the white icon shifted all around, then the black one.
+  const QImage white = render(Qt::white);
+  for (int dx = -1; dx <= 1; ++dx) {
+    for (int dy = -1; dy <= 1; ++dy) painter.drawImage(kMargin + dx, kMargin + dy, white);
   }
+  painter.drawImage(kMargin, kMargin, render(Qt::black));
   if (!mark.isEmpty()) {
     QFont font = painter.font();
-    font.setPixelSize(13);
+    font.setPixelSize(12);
     font.setBold(true);
     QPainterPath text;
-    text.addText(QPointF(15, 27), font, mark);
+    text.addText(QPointF(21, 30), font, mark);
     painter.strokePath(text, QPen(Qt::white, 3));
     painter.fillPath(text, Qt::black);
   }
   painter.end();
-  return *cache.insert(mark, QCursor(pixmap, 8, 8));
+  const double scale = kIcon / 20.0;
+  return *cache.insert(key, QCursor(pixmap, static_cast<int>(kMargin + hotspot.x() * scale),
+                                    static_cast<int>(kMargin + hotspot.y() * scale)));
+}
+
+QCursor PenCursor(const QString& mark) {
+  return IconCursor(QStringLiteral("Pen"), {2.75, 17.25}, mark);
+}
+
+// The direct selection tool's white arrow (Qt has only the black one).
+QCursor WhiteArrow() {
+  static const QCursor cursor = [] {
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    const QPointF arrow[] = {{1.5, 1.5}, {1.5, 18},   {6, 13.5},   {9.5, 21},
+                             {12, 20},   {8.5, 12.5}, {14.5, 12.5}};
+    painter.setPen(QPen(Qt::black, 1.2));
+    painter.setBrush(Qt::white);
+    painter.drawPolygon(arrow, std::size(arrow));
+    painter.end();
+    return QCursor(pixmap, 1, 1);
+  }();
+  return cursor;
 }
 
 }  // namespace
@@ -457,14 +510,15 @@ void CanvasItem::UpdateCursor(QPointF position) {
     return;
   }
   if (session_->tool() == 13) {
-    setCursor(PenCursor(modifiers_.testFlag(Qt::AltModifier) ? "-" : "+"));
+    const bool out = modifiers_.testFlag(Qt::AltModifier);
+    setCursor(IconCursor(out ? QStringLiteral("ZoomOut") : QStringLiteral("ZoomIn"), {8, 8}));
     return;
   }
   switch (editor().tool()) {
     case Tool::kSelection:
       break;
     case Tool::kDirectSelection:
-      unsetCursor();
+      setCursor(WhiteArrow());
       return;
     case Tool::kPen:
       switch (editor().PenActionAt(ToDocument(position), PickRadius())) {
@@ -499,7 +553,10 @@ void CanvasItem::UpdateCursor(QPointF position) {
       setCursor(PenCursor("-"));
       return;
     case Tool::kConvertAnchor:
-      setCursor(PenCursor("^"));
+      setCursor(IconCursor(QStringLiteral("AnchorPoint"), {10, 4.5}));
+      return;
+    case Tool::kEyedropper:
+      setCursor(IconCursor(QStringLiteral("Eyedropper"), {2.2, 17.8}));
       return;
     default:
       setCursor(Qt::CrossCursor);

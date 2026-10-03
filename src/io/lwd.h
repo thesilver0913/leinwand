@@ -56,4 +56,7 @@ bool SaveLwd(const std::filesystem::path& path, const core::Document& document,
              std::string* error);
 LoadResult LoadLwd(const std::filesystem::path& path);
 
+// thumbnail.png of a .lwd file (the welcome screen's recent files), or empty.
+std::vector<std::uint8_t> ReadLwdThumbnail(const std::filesystem::path& path);
+
 }  // namespace leinwand::io

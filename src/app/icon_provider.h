@@ -12,3 +12,11 @@ class IconProvider : public QQuickImageProvider {
   IconProvider();
   QImage requestImage(const QString& id, QSize* size, const QSize& requested_size) override;
 };
+
+// Thumbnails of documents for the welcome screen: image://thumbnail/<path,
+// percent-encoded>. The thumbnail stored in a .lwd file; nothing for others.
+class ThumbnailProvider : public QQuickImageProvider {
+ public:
+  ThumbnailProvider();
+  QImage requestImage(const QString& id, QSize* size, const QSize& requested_size) override;
+};

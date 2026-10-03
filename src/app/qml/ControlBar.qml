@@ -32,7 +32,7 @@ Rectangle {
                                        })[root.info.shape ?? ""] ?? qsTr("Path"))
                 : qsTr("Mixed Objects")
             subdued: false
-            Layout.preferredWidth: 96
+            Layout.preferredWidth: 130
         }
 
         SpLabel { text: qsTr("Fill") }

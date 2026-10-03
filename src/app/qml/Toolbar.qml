@@ -10,7 +10,9 @@ import Leinwand
 
 Rectangle {
     id: root
-    implicitWidth: 44
+    // Wide enough for the fill and stroke boxes (44 px) inside the margins,
+    // so that the layout does not grow past the bar and push the buttons right.
+    implicitWidth: 52
     color: Spectrum.backgroundLayer1Color
 
     // Tool ids follow Session.tool. Shortcuts are listed in the tooltips.
@@ -21,7 +23,7 @@ Rectangle {
          { tool: 7, icon: "PenAdd", tip: qsTr("Add Anchor Point Tool (+)") },
          { tool: 8, icon: "PenDelete", tip: qsTr("Delete Anchor Point Tool (-)") },
          { tool: 9, icon: "AnchorPoint", tip: qsTr("Anchor Point Tool (Shift+C)") }],
-        [{ tool: 5, icon: "Line", tip: qsTr("Line Segment Tool (\\)") }],
+        [{ tool: 5, icon: "Line", tip: qsTr("Line Segment Tool (%1)").arg("\\") }],
         [{ tool: 1, icon: "RectangleHoriz", tip: qsTr("Rectangle Tool (M)") },
          { tool: 2, icon: "Circle", tip: qsTr("Ellipse Tool (L)") },
          { tool: 3, icon: "Polygon6", tip: qsTr("Polygon Tool") },

@@ -27,6 +27,7 @@ struct Overlay {
   std::optional<core::Rect> bounding_box;  // Drawn with eight handles.
   std::optional<core::Rect> marquee;
   double pixel_ratio = 1.0;       // Device pixels per view pixel, for line and handle sizes.
+  double anchor_size = 6.0;       // View pixels across an anchor square (preferences).
   std::vector<EditedPath> paths;  // Pen and direct selection.
   std::optional<core::PathData> rubber_band;                // The pen's next segment.
   std::vector<std::pair<core::Point, core::Point>> guides;  // Smart guides.

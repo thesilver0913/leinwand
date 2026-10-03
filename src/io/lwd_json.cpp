@@ -708,6 +708,7 @@ std::string WriteDocumentJson(const Document& document, std::string_view app_ver
     board["id"] = a.id;
     if (!a.name.empty()) board["name"] = a.name;
     board["bounds"] = RectJson(a.bounds);
+    if (a.bleed != 0.0) board["bleed"] = Num(a.bleed);
     AppendUnknown(board, a.unknown_fields);
     artboards.push_back(std::move(board));
   }
@@ -772,6 +773,7 @@ LoadResult ReadDocumentJson(std::string_view text) {
         const Json* bounds = b.Take("bounds");
         if (!bounds) throw Corrupt("an artboard needs \"bounds\"");
         board.bounds = RectOf(*bounds);
+        board.bleed = b.Number("bleed", 0.0);
         board.unknown_fields = b.Unknown();
         document.artboards.push_back(std::move(board));
       }

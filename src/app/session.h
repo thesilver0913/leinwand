@@ -62,6 +62,9 @@ class Session : public QObject {
   Q_PROPERTY(QString filePath READ filePath NOTIFY fileChanged)
   Q_PROPERTY(QString displayName READ displayName NOTIFY fileChanged)
   Q_PROPERTY(bool dirty READ dirty NOTIFY documentChanged)
+  // False until a document is created or opened (spec 9: the main window
+  // can start empty, behind the welcome screen).
+  Q_PROPERTY(bool hasDocument READ hasDocument NOTIFY fileChanged)
   // What the last import could not take over (spec 6.3): {kind, action
   // ("preserved", "approximated", "converted", "discarded"), count, ids}.
   Q_PROPERTY(QVariantList importReport READ importReport NOTIFY importReportChanged)
@@ -105,13 +108,17 @@ class Session : public QObject {
   QString filePath() const { return file_path_; }
   QString displayName() const { return display_name_; }
   bool dirty() const;
+  bool hasDocument() const { return has_document_; }
   QVariantList importReport() const { return import_report_; }
   QString error() const { return error_; }
   QVariantList recoveryFiles() const { return recovery_files_; }
 
   // Files (spec 3.3, 6). URLs from file dialogs or local paths. Each returns
   // false and sets `error` on failure.
-  Q_INVOKABLE void newDocument();
+  // A new document with one artboard of this size and bleed (points).
+  Q_INVOKABLE void newDocument(double width = 595.28, double height = 841.89, double bleed = 0);
+  // No document: the empty main window.
+  Q_INVOKABLE void closeDocument();
   Q_INVOKABLE bool open(const QUrl& url);          // .lwd, or .svg (imported).
   Q_INVOKABLE bool openPath(const QString& path);  // A command-line argument.
   Q_INVOKABLE bool save();                         // To filePath; false if there is none.
@@ -204,7 +211,9 @@ class Session : public QObject {
   bool Fail(const QString& message);
   void SetReport(const leinwand::io::ImportReport& report);
   void Autosave();
+  void ApplyPreferences();
   void RemoveRecovery();
+  void AddRecent(const QString& path);
 
   std::unique_ptr<leinwand::editor::Editor> editor_;
   std::unique_ptr<LayersModel> layers_;
@@ -224,4 +233,5 @@ class Session : public QObject {
   std::uint64_t autosaved_revision_ = 0;
   QVariantList recovery_files_;  // Found at start.
   int untitled_ = 0;
+  bool has_document_ = false;
 };

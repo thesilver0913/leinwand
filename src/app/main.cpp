@@ -4,14 +4,27 @@
 #include <kddockwidgets/qtquick/Platform.h>
 #include <kddockwidgets/qtquick/ViewFactory.h>
 
+#include <QDir>
+#include <QEventLoop>
+#include <QFont>
+#include <QFontDatabase>
 #include <QGuiApplication>
+#include <QIcon>
+#include <QLibraryInfo>
+#include <QLocale>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 #include <QQuickWindow>
+#include <QStyleHints>
 #include <QSurfaceFormat>
+#include <QTimer>
+#include <QTranslator>
 
 #include "icon_provider.h"
+#include "preferences.h"
 #include "session.h"
+#include "shortcuts.h"
+#include "spectrum_theme.h"
 
 namespace {
 
@@ -51,16 +64,75 @@ void ConfigureDocking() {
   config.setViewFactory(new SpectrumViewFactory());
 }
 
+// The UI language: the preference, or the system's (Japanese or English).
+QString Language() {
+  const QString chosen = Preferences::instance()->Text(QStringLiteral("language"));
+  if (chosen == QLatin1String("ja") || chosen == QLatin1String("en")) return chosen;
+  return QLocale::system().language() == QLocale::Japanese ? QStringLiteral("ja")
+                                                           : QStringLiteral("en");
+}
+
+// Translations of Leinwand and of Qt's own dialogs (spec 7.3).
+class Translations {
+ public:
+  void Apply(const QString& language) {
+    QCoreApplication::removeTranslator(&app_);
+    QCoreApplication::removeTranslator(&qt_);
+    if (app_.load(QStringLiteral(":/i18n/leinwand_%1.qm").arg(language))) {
+      QCoreApplication::installTranslator(&app_);
+    }
+    if (qt_.load(QStringLiteral("qt_%1").arg(language),
+                 QLibraryInfo::path(QLibraryInfo::TranslationsPath)) ||
+        qt_.load(QStringLiteral("qt_%1").arg(language),
+                 QCoreApplication::applicationDirPath() + QStringLiteral("/translations"))) {
+      QCoreApplication::installTranslator(&qt_);
+    }
+    // Source Han Sans has the Latin of Source Sans; Japanese needs it.
+    const QString family = language == QLatin1String("ja") ? QStringLiteral("Source Han Sans JP")
+                                                           : QStringLiteral("Source Sans 3");
+    QFont font = QGuiApplication::font();
+    font.setFamilies({family, QStringLiteral("Source Han Sans JP")});
+    QGuiApplication::setFont(font);
+    family_ = family;
+  }
+  QString family() const { return family_; }
+
+ private:
+  QTranslator app_;
+  QTranslator qt_;
+  QString family_;
+};
+
+// The bundled UI fonts (spec 7: Source Sans 3, Source Han Sans), next to the
+// executable in fonts/.
+void LoadFonts() {
+  const QDir dir(QCoreApplication::applicationDirPath() + QStringLiteral("/fonts"));
+  for (const QString& file : dir.entryList({QStringLiteral("*.otf")}, QDir::Files)) {
+    QFontDatabase::addApplicationFont(dir.absoluteFilePath(file));
+  }
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
   // Skia draws with Qt Quick's own Vulkan device (M0 check 1).
   QQuickWindow::setGraphicsApi(QSGRendererInterface::Vulkan);
+  // The UI scale (preferences) must be known before Qt starts.
+  const double scale = Preferences::ReadEarly(QStringLiteral("uiScale")).toDouble();
+  if (scale > 0 && scale != 100 && !qEnvironmentVariableIsSet("QT_SCALE_FACTOR")) {
+    qputenv("QT_SCALE_FACTOR", QByteArray::number(scale / 100.0));
+  }
 
   QGuiApplication app(argc, argv);
-  // Names the settings and data folders (autosave recovery files).
-  QCoreApplication::setOrganizationName(QStringLiteral("Leinwand"));
+  // Names the data folder (%LOCALAPPDATA%\Leinwand: autosave recovery).
   QCoreApplication::setApplicationName(QStringLiteral("Leinwand"));
+  QCoreApplication::setApplicationVersion(QStringLiteral(LEINWAND_VERSION));
+  QIcon icon;
+  for (int size : {16, 24, 32, 48, 64, 128, 256, 512}) {
+    icon.addFile(QStringLiteral(":/resources/icons/app/leinwand-%1.png").arg(size),
+                 QSize(size, size));
+  }
+  QGuiApplication::setWindowIcon(icon);
   // The Spectrum components are built on Qt Quick Templates; the few stock
   // controls left (scroll bars, tooltips) use Fusion, which follows the
   // palette set from the Spectrum tokens.
@@ -71,15 +143,69 @@ int main(int argc, char* argv[]) {
     format.setSwapInterval(0);
     QSurfaceFormat::setDefaultFormat(format);
   }
-  ConfigureDocking();
 
-  Session session;  // The QML singleton `Session`.
+  Preferences preferences;  // The QML singleton `Preferences`.
+  Shortcuts shortcuts;      // The QML singleton `Shortcuts`.
+  Translations translations;
+  LoadFonts();
+  translations.Apply(Language());
+
   QQmlApplicationEngine engine;
-  KDDockWidgets::QtQuick::Platform::instance()->setQmlEngine(&engine);
   engine.addImageProvider(QStringLiteral("icon"), new IconProvider);
+  engine.addImageProvider(QStringLiteral("thumbnail"), new ThumbnailProvider);
   QObject::connect(
       &engine, &QQmlApplicationEngine::objectCreationFailed, &app,
       [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
+
+  // Theme and font for every window, following the preferences.
+  auto* theme = engine.singletonInstance<SpectrumTheme*>("Leinwand", "Spectrum");
+  auto apply_theme = [&] {
+    const QString choice = preferences.Text(QStringLiteral("theme"));
+    const bool dark = choice == QLatin1String("system")
+                          ? QGuiApplication::styleHints()->colorScheme() != Qt::ColorScheme::Light
+                          : choice != QLatin1String("light");
+    theme->setDark(dark);
+    theme->setFontFamily(translations.family());
+  };
+  apply_theme();
+  QObject::connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, &app,
+                   apply_theme);
+  QObject::connect(&preferences, &Preferences::changed, &app, [&](const QString& key) {
+    if (key == QLatin1String("language")) {
+      translations.Apply(Language());
+      engine.retranslate();
+    }
+    apply_theme();
+  });
+
+  // Spec 9: the splash screen names each step of the start-up as it runs,
+  // with a progress bar (the share of the start-up done before the step).
+  engine.loadFromModule("Leinwand", "Splash");
+  QObject* splash = engine.rootObjects().isEmpty() ? nullptr : engine.rootObjects().constLast();
+  auto step = [&](const QString& name, double progress) {
+    if (splash) {
+      splash->setProperty("step", name);
+      splash->setProperty("progress", progress);
+    }
+    QCoreApplication::processEvents();
+  };
+
+  // --hold-splash: keep the splash up for a few seconds (to look at it).
+  if (QCoreApplication::arguments().contains(QStringLiteral("--hold-splash"))) {
+    step(QCoreApplication::translate("Startup", "Setting up the panels..."), 0.35);
+    QEventLoop wait;
+    QTimer::singleShot(6000, &wait, &QEventLoop::quit);
+    wait.exec();
+  }
+  step(QCoreApplication::translate("Startup", "Preparing the document..."), 0.1);
+  Session session;  // The QML singleton `Session`.
+  step(QCoreApplication::translate("Startup", "Setting up the panels..."), 0.35);
+  ConfigureDocking();
+  KDDockWidgets::QtQuick::Platform::instance()->setQmlEngine(&engine);
+  // Building the window takes the longest.
+  step(QCoreApplication::translate("Startup", "Building the window..."), 0.5);
   engine.loadFromModule("Leinwand", "Main");
+  step(QCoreApplication::translate("Startup", "Ready"), 1.0);
+  if (splash) QMetaObject::invokeMethod(splash, "close");
   return app.exec();
 }

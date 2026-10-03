@@ -38,6 +38,7 @@ struct Artboard {
   std::string name;
   Rect bounds;
   std::string unknown_fields;
+  double bleed = 0.0;  // On every side, in points (spec 3.2, "裁ち落とし").
 };
 
 enum class ColorMode { kRgb, kCmyk };
@@ -67,9 +68,10 @@ struct Document {
 // The basic palette a new document starts with, like Illustrator's.
 std::vector<Swatch> DefaultSwatches();
 
-// A new, empty document: one A4 portrait artboard, one layer named
-// `layer_name`, and the default swatches.
-Document NewDocument(const std::string& layer_name);
+// A new, empty document: one artboard of the given size (points) and bleed,
+// one layer named `layer_name`, and the default swatches.
+Document NewDocument(const std::string& layer_name, double width = 595.28, double height = 841.89,
+                     double bleed = 0.0);
 
 // Calls `visit` for every object, depth first in painting order (back to
 // front), including objects inside groups. Hidden objects are included.

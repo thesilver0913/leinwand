@@ -14,6 +14,8 @@
 | KDDockWidgets | v2.4.1 を CMake の FetchContent でソースから取り込み、`cmake/patches/kddw-indicators.patch` を当てる(取り込みは `cmake/KDDockWidgets.cmake`)。vcpkg は使わない(vcpkg が別の Qt をビルドしてしまうため) | M0、M5 で本体へ |
 | nlohmann-json | vcpkg。ビルド時のトークン変換ツールで使う(M6 の `.lwd` でも使う予定)。MIT | M5 |
 | miniz、pugixml | vcpkg。`.lwd` の ZIP と SVG の XML に使う(どちらも MIT)。`src/io` の中だけで使い、型を外に出さない | M6 |
+| UI フォント | Source Sans 3(Regular、Semibold、Bold)と源ノ角ゴシックの日本語サブセット(Regular、Bold)を `third_party/fonts` に置き、実行ファイルの隣の `fonts/` から読む。日本語の UI では源ノ角ゴシック(欧文は Source Sans と同じ字形)を使う | M7 |
+| Inno Setup | 6 系。Web インストーラーの作成に使う(`installer/leinwand.iss`)。手元は winget のユーザー単位のインストール、CI は Windows ランナーのものか Chocolatey | M7 |
 | Spectrum のトークンとアイコン | `third_party/` に同梱する(取得元と版は各 README)。トークンは `variables.json` をビルド時に `tools/spectrum_theme` で C++ の表へ変換し、アイコンは使う SVG だけを置く | M5 |
 | CMake | Windows では単体で入れた CMake 4.x を使う。Visual Studio 同梱の 3.31 は vcpkg の一部のソースアーカイブを展開できない | M0 |
 | 開発環境の用意 | Windows は `tools/setup-windows.ps1`。`-CheckOnly` で不足の確認だけができる | M0 |
@@ -129,6 +131,28 @@
 **メニュー**: ファイル、編集、オブジェクト、選択、表示、ウィンドウ、ヘルプを、今ある機能の分だけ置いた。メニューにあるショートカットはメニュー側で定義する(同じキーを `Shortcut` と二重に定義すると、どちらも効かなくなるため)。
 
 **Illustrator 実機と未照合のもの(追加)**: SVG の px を pt として読む扱い、レイヤーの書き出し方(Illustrator は `data-name` を使う)。
+
+## 仕上げとリリース(M7)
+
+- **起動**: スプラッシュは `Splash.qml`。初期化の各段階(ドキュメントの準備、パネルの準備、ウィンドウの作成)が自分の名前を表示する。文言は翻訳ファイルで管理する。
+- **ウェルカムスクリーン**: 独立したウィンドウ。新規作成のプリセット(印刷: A4、A3、B5、はがき、名刺。Web。アイコン)とカスタムサイズ(幅、高さ、単位、裁ち落とし)、開く、最近使ったファイル(.lwd はサムネイル付き、グリッド / リスト)。ファイルを指定して起動したときと、環境設定でオフにしたときは出さない。カラーモードは RGB だけ(フェーズ1〜3)。
+- **ドキュメントのない状態**: 起動直後や「閉じる」のあとは、ドキュメントのない空のメインウィンドウになる(`Session.hasDocument`)。見本のドキュメントは `--showcase` で開く。
+- **アートボードの裁ち落とし**: `Artboard::bleed`(全辺同じ値)。`.lwd` の `"bleed"`。キャンバスに赤い線で示す。
+- **環境設定**: JSON(Windows は `%APPDATA%\Leinwand\preferences.json`、Linux は `~/.config/leinwand/`)。未知のキーは残す。今ある分類は、一般(キー入力、ラバーバンド、ウェルカムスクリーン)、選択範囲・アンカー表示(許容範囲、アンカーのサイズ)、スマートガイド(許容範囲)、ユーザーインターフェイス(テーマ、言語、UI の拡大率、カンバスカラー)、パフォーマンス(取り消しの回数)、ファイル管理(自動保存の間隔、復元データの保存先)。テキスト、単位、ガイド・グリッド、フォントの分類は、その機能と一緒に足す。UI の拡大率は再起動後に反映する(Qt の起動前に読む)。
+- **キーボードショートカット**: コマンドごとに複数のキーを持てる(先頭をメニューに表示する)。初期値は Illustrator に合わせ、変更は `shortcuts.json` に初期値との差分として保存する。セットの書き出しと読み込みができる。ほかのコマンドと重なるキーを設定すると、重なる相手を表示する(設定は受け付ける)。
+- **翻訳**: `i18n/leinwand_ja.ts`(日本語)と `leinwand_en.ts`(英語の複数形だけ)。`cmake --build --target update_translations` でソースから更新する。用語は Illustrator の日本語版に合わせる。Qt 自身のダイアログの翻訳(`qt_ja`)も読む。言語を変えるとすぐに切り替わる。
+- **アイコン**: 原版の SVG(フィルター付き)から `tools/make_icons.ps1` が Edge のヘッドレスモードで PNG を描き、`.ico` をまとめる(生成物はリポジトリに置く)。16〜32px は影・光・粒子のフィルターを外し、パスとハンドルの線を太くした小サイズ版(`leinwand-icon-small.svg`)を使う。`.lwd` 用の文書アイコン(`leinwand-document.svg`)は、ページの上に小サイズ版の図柄を載せたもので、実行ファイルの2番目のアイコンにする。
+- **カーソル**: ツールバーのアイコンから作る(黒に白の縁取り)。ペンは操作に応じた記号を添える。ダイレクト選択は白い矢印を描く。
+- **配布物**: `cmake --install` で、Qt(windeployqt)、vcpkg の DLL、MSVC ランタイムの DLL、フォント、ライセンスを集める。描画は Vulkan だけなので、ソフトウェア OpenGL と Direct3D・DXC のシェーダーコンパイラーは入れない(パッケージは約40MB)。
+- **Web インストーラー**: GitHub Releases の API(`/repos/thesilver0913/leinwand/releases`)から一覧を取り、`-windows-x64.zip` と `.zip.sha256` を添付したリリースだけを候補にする。既定は最新版で、「他のバージョン...」で選び直せる。パッケージは SHA-256 を確かめてから PowerShell の `Expand-Archive` で展開し、前の版の `bin` などを消してから置く。.lwd を関連付け、.svg・.ai・.pdf は「プログラムから開く」の候補にだけ入れる。ユーザー単位と全ユーザーのどちらにも入れられる。アンインストールで、作ったレジストリのキーは空なら消す。
+- **リリース**: `v<版>` のタグを push すると `.github/workflows/release.yml` がビルド、テスト、パッケージ作成をして GitHub Releases に公開する。タグは `CMakeLists.txt` の版と一致させる。
+- **試し方**: `tools/package-windows.ps1 -ReleasesUrl http://127.0.0.1:8765/releases.json` で、ローカルのサーバーから取るインストーラーを作れる(`/VERYSILENT /CURRENTUSER` で無人インストールを試せる)。
+
+## .ai の読み込みに向けた調査
+
+- .ai の読み込みは本体の機能として作る(プラグインにはしない。仕様書1章のとおりプラグインAPIは公開しない)。2026-10-03 合意。
+- 実物のファイルの解析結果は [ai-format-notes.md](ai-format-notes.md) にある。PDF互換部分だけでも見た目はほぼ再現できるが、画像オブジェクトと不透明マスクが要る。Illustrator 独自のデータ(Zstandard 圧縮、旧仕様と同じ骨組みのテキスト形式)からは、レイヤー、アピアランス、効果、テキストの本文が取れる見込みがある。独自データで読める部分を読み、残りをPDF互換部分で補う方針に決めた(2026-10-03、仕様書 6.1・6.2 と10章を更新)。
+- 利用者から受け取ったファイルはリポジトリに入れない。テスト用のファイルは同じ要素を持つものを別に作る。
 
 ## UI とドッキング
 

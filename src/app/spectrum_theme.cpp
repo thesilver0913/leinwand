@@ -42,6 +42,12 @@ void SpectrumTheme::setDark(bool dark) {
   emit darkChanged();
 }
 
+void SpectrumTheme::setFontFamily(const QString& family) {
+  if (family == font_family_) return;
+  font_family_ = family;
+  emit fontFamilyChanged();
+}
+
 void SpectrumTheme::Load() {
   QVariantHash values;
   values.reserve(static_cast<qsizetype>(std::size(kTokens)));
