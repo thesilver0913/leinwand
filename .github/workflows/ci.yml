@@ -28,7 +28,14 @@ jobs:
 
       - name: Linux packages
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libxkbcommon-dev libvulkan-dev
+        # autotools: vcpkg builds gperf (for Fontconfig) and ICU with them.
+        run: >
+          sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libxkbcommon-dev
+          libvulkan-dev autoconf autoconf-archive automake libtool
+
+      - name: macOS packages
+        if: runner.os == 'macOS'
+        run: brew install autoconf autoconf-archive automake libtool
 
       - uses: ilammy/msvc-dev-cmd@v1
         if: runner.os == 'Windows'

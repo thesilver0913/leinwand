@@ -39,4 +39,24 @@
 
 ## 2. テキストシェーピングの組み込み
 
-(検証中)
+**結論: 成立。** HarfBuzz で組み、Skia でグリフとして描く方式で進める。FreeType は使わない(Linux で Skia がフォントを読むためにだけ入る)。PDF のフォント埋め込みは TrueType では成立し、CFF ベースの OpenType では Type3 になる(下記)。
+
+**方法**: `tests/render/text_probe_test.cpp`(`render_tests "[text-probe]"` で実行)。
+
+**結果**(Windows。Linux と macOS は CI で確認中)
+
+| 確かめたこと | 結果 |
+| --- | --- |
+| vcpkg での導入 | HarfBuzz 14.2.1 と ICU 78.3 が入る。Windows の ICU は MSYS2 のツールでビルドされ、初回は時間がかかる。vcpkg の HarfBuzz の CMake 設定は FreeType を必ず探すので、HarfBuzz は `freetype` 機能付きで入れる |
+| シェーピング | 同梱の源ノ角ゴシック(17,944 グリフ)で、日本語・英語・約物・合字(fi、ffi)・数字の混じった 70 バイトの文が 39 グリフになった。欠けたグリフ(.notdef)はない。HarfBuzz はフォントのバイト列から直接読む(独自の OpenType 処理を使い、FreeType は要らない) |
+| Skia での描画 | プラットフォームのフォント管理(Windows は DirectWrite)で同じバイト列から作った書体に、HarfBuzz のグリフ番号と位置をそのまま渡して描けた。グリフ番号は Skia 自身の対応表と一致する |
+| アウトライン | HarfBuzz の描画関数で「永」の輪郭が取れる(3 輪郭、直線 14、3次曲線 16)。CFF のフォントは3次曲線で返るので、パスへの変換(アウトライン化)にそのまま使える |
+| PDF | TrueType(Arial)は CIDFontType2 + FontFile2 で埋め込まれ、ToUnicode も付く。CFF ベースの OpenType(源ノ角ゴシック)は Type3(グリフを図形として書く)になる。見た目は正確で ToUnicode により検索・コピーもできるが、フォントとしては埋め込まれない |
+| ICU | 書記素クラスタ(家族の絵文字が1つになる)と行分割位置が取れる。「、」「。」の前では分割しない |
+| OS フォント | DirectWrite で 230 ファミリーを列挙でき、確かめた 20 ファミリーすべてでフォントファイルのバイト列が取れた(HarfBuzz に渡せる) |
+
+**判断**
+
+- テキストエンジン(`src/text/` を想定)は HarfBuzz と ICU に依存し、Skia には依存しない。グリフ番号と位置、アウトラインを返し、描画は `render` が Skia で行う。
+- OS フォントの列挙とバイト列の取得は、Skia のフォント管理(DirectWrite、Core Text、Fontconfig)を `platform` の裏で使う。Skia の型は外に出さない。
+- PDF の CFF フォントは、フェーズ2では Type3 のまま出す(見た目と検索は保たれる)。仕様書 6.2 のとおり、フェーズ4で専用の PDF 書き出しに置き換えるときに、CFF を FontFile3 として埋め込む。日本語の OS フォントには TrueType(游ゴシック、メイリオ)と CFF(ヒラギノ、源ノ角ゴシック)の両方があるので、PDF 書き出しのダイアログで、Type3 になるフォントがあることを知らせる。

@@ -20,6 +20,7 @@ add_executable(geometry_tests
   geometry/bezier_test.cpp
   geometry/hit_test_test.cpp
   geometry/path_edit_test.cpp
+  geometry/path_ops_test.cpp
 )
 target_link_libraries(geometry_tests PRIVATE geometry Catch2::Catch2WithMain)
 catch_discover_tests(geometry_tests)
@@ -43,6 +44,7 @@ add_executable(render_tests
   render/document_renderer_test.cpp
   render/image_compare.cpp
   render/view_test.cpp
+  render/skia_path_ops_test.cpp
   render/pathops_probe_test.cpp
   render/text_probe_test.cpp
 )

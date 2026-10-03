@@ -22,7 +22,6 @@
 #include <string>
 #include <vector>
 
-#include "include/codec/SkPngEncoder.h"
 #include "include/core/SkBitmap.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkData.h"
@@ -34,6 +33,7 @@
 #include "include/core/SkTypeface.h"
 #include "include/docs/SkPDFDocument.h"
 #include "include/docs/SkPDFJpegHelpers.h"
+#include "include/encode/SkPngEncoder.h"
 
 #if defined(_WIN32)
 #include "include/ports/SkTypeface_win.h"
@@ -122,6 +122,29 @@ hb_draw_funcs_t* CountingFuncs() {
          void*) { ++static_cast<OutlineCount*>(data)->cubics; },
       nullptr, nullptr);
   return funcs;
+}
+
+// The font kinds (/Subtype) and font files Skia's PDF backend writes for
+// glyphs of `typeface`.
+std::string PdfFonts(const sk_sp<SkTypeface>& typeface, const Shaped& shaped,
+                     const std::string& text) {
+  SkDynamicMemoryWStream stream;
+  sk_sp<SkDocument> pdf = SkPDF::MakeDocument(&stream, SkPDF::JPEG::MetadataWithCallbacks());
+  SkCanvas* canvas = pdf->beginPage(shaped.advance + 40, 70);
+  SkFont font(typeface, 32);
+  SkPaint paint;
+  canvas->drawGlyphs(shaped.glyphs, shaped.positions, shaped.clusters, {text.data(), text.size()},
+                     {20, 46}, font, paint);
+  pdf->endPage();
+  pdf->close();
+  sk_sp<SkData> data = stream.detachAsData();
+  const std::string contents(static_cast<const char*>(data->data()), data->size());
+  std::string kinds;
+  for (const char* key : {"/Type0", "/Type3", "/TrueType", "/CIDFontType0", "/CIDFontType2",
+                          "/FontFile2", "/FontFile3", "/ToUnicode"}) {
+    if (contents.find(key) != std::string::npos) kinds += std::string(" ") + key;
+  }
+  return kinds;
 }
 
 std::vector<int32_t> Breaks(UBreakIteratorType type, const std::u16string& text) {
@@ -234,9 +257,42 @@ TEST_CASE("Text engine probe (M8)", "[.][text-probe]") {
     const bool searchable = contents.find("/ToUnicode") != std::string::npos;
     std::printf("PDF: %zu bytes, font embedded: %s, ToUnicode: %s\n", contents.size(),
                 embedded ? "yes" : "no", searchable ? "yes" : "no");
-    CHECK(embedded);
+    // Not CHECKed: CFF fonts come out as Type3 (see the comparison below).
     CHECK(searchable);
     std::ofstream((out_dir / "text_probe.pdf").string(), std::ios::binary) << contents;
+  }
+
+  // A TrueType (glyf) OS font, for comparison with the CFF-based Han Sans.
+  {
+    sk_sp<SkTypeface> truetype;
+    for (int i = 0; i < manager->countFamilies() && !truetype; ++i) {
+      sk_sp<SkFontStyleSet> set = manager->createStyleSet(i);
+      if (!set || set->count() == 0) continue;
+      sk_sp<SkTypeface> face_i = set->createTypeface(0);
+      if (face_i && face_i->getTableSize(SkSetFourByteTag('g', 'l', 'y', 'f')) > 0) {
+        truetype = face_i;
+      }
+    }
+    REQUIRE(truetype);
+    SkString name;
+    truetype->getFamilyName(&name);
+    int index = 0;
+    std::unique_ptr<SkStreamAsset> stream = truetype->openStream(&index);
+    REQUIRE(stream);
+    sk_sp<SkData> tt_data = SkData::MakeFromStream(stream.get(), stream->getLength());
+    hb_blob_t* tt_blob =
+        hb_blob_create(static_cast<const char*>(tt_data->data()), unsigned(tt_data->size()),
+                       HB_MEMORY_MODE_READONLY, nullptr, nullptr);
+    hb_face_t* tt_face = hb_face_create(tt_blob, unsigned(index));
+    hb_font_t* tt_font = hb_font_create(tt_face);
+    const std::string latin = "Leinwand PDF text";
+    const Shaped tt_shaped = Shape(tt_font, latin, 32, hb_face_get_upem(tt_face));
+    std::printf("PDF with %s (TrueType):%s\n", name.c_str(),
+                PdfFonts(truetype, tt_shaped, latin).c_str());
+    std::printf("PDF with Source Han Sans (CFF):%s\n", PdfFonts(typeface, shaped, text).c_str());
+    hb_font_destroy(tt_font);
+    hb_face_destroy(tt_face);
+    hb_blob_destroy(tt_blob);
   }
 
   // ICU: grapheme clusters (a family emoji is one) and line breaks.

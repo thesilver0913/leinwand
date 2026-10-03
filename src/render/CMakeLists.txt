@@ -3,6 +3,7 @@ find_package(unofficial-skia CONFIG REQUIRED)
 
 add_library(render STATIC
   document_renderer.cpp
+  skia_path_ops.cpp
   test_document.cpp
   view.cpp
 )
