@@ -11,8 +11,9 @@ class QJSEngine;
 
 // The preferences (spec 7.3), as the QML singleton `Preferences`: one
 // property per setting, saved to a JSON file in the settings folder
-// (%APPDATA%\Leinwand on Windows, ~/.config/leinwand on Linux) whenever one
-// changes. Unknown keys in the file are kept.
+// (%APPDATA%\Leinwand on Windows, ~/Library/Application Support/Leinwand on
+// macOS, ~/.config/leinwand on Linux) whenever one changes. Unknown keys in
+// the file are kept.
 class Preferences : public QQmlPropertyMap {
   Q_OBJECT
   QML_ELEMENT

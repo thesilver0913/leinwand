@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Leinwand icon on the Spectrum 20x20 grid: Align panel, Distribute horizontal space. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
+  <rect x="2" y="4" width="3.5" height="12" rx="0.75" fill="var(--iconPrimary, #222)"/><rect x="8.25" y="6" width="3.5" height="8" rx="0.75" fill="var(--iconPrimary, #222)"/><rect x="14.5" y="4" width="3.5" height="12" rx="0.75" fill="var(--iconPrimary, #222)"/><path d="M5.5 17.5 L8.25 17.5" stroke="var(--iconPrimary, #222)" stroke-width="1.5" stroke-linecap="round"/><path d="M11.75 17.5 L14.5 17.5" stroke="var(--iconPrimary, #222)" stroke-width="1.5" stroke-linecap="round"/>
+</svg>

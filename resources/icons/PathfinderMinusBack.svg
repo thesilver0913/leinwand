@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Leinwand icon on the Spectrum 20x20 grid: Pathfinder, Minus Back. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
+  <path d="M2.75 2.75 H11.75 V11.75 H2.75 Z" fill="none" stroke="var(--iconPrimary, #222)" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="2 1.5"/><path d="M12.5 7.5 H18 V18 H7.5 V12.5 H12.5 Z" fill="var(--iconPrimary, #222)"/>
+</svg>

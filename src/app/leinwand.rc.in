@@ -22,7 +22,7 @@ BEGIN
       VALUE "LegalCopyright", "GPL-3.0-or-later"
       VALUE "OriginalFilename", "leinwand.exe"
       VALUE "ProductName", "Leinwand"
-      VALUE "ProductVersion", "@PROJECT_VERSION@"
+      VALUE "ProductVersion", "@LEINWAND_VERSION_STRING@"
     END
   END
   BLOCK "VarFileInfo"

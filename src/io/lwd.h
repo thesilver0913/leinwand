@@ -21,7 +21,7 @@ namespace leinwand::io {
 
 // The format version written (spec 3.3: major.minor).
 inline constexpr int kFormatMajor = 1;
-inline constexpr int kFormatMinor = 0;
+inline constexpr int kFormatMinor = 1;  // 1.1: "coverTemplate".
 inline constexpr std::string_view kMimeType = "application/x-leinwand-document";
 
 enum class LoadError {

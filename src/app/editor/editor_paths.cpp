@@ -151,8 +151,9 @@ void Editor::PenDown(Point p, Modifiers modifiers, double pick) {
   drag_ = {};
   drag_.kind = DragKind::kPen;
   drag_.pen = action;
-  drag_.start = drag_.current = drag_.space_from = p;
+  drag_.start = drag_.current = drag_.space_from = drag_.grab = p;
   drag_.threshold = pick / 2;
+  drag_.pick = pick;
   drag_.modifiers = modifiers;
   drag_.base = history_.current().document;
 
@@ -677,21 +678,47 @@ void Editor::CutAtSelectedAnchor() {
   const AnchorRef a = *anchors_.begin();
   auto ref = GetPath(document(), a.id);
   if (!ref) return;
-  const auto pieces = geometry::CutAt(ref->path, a.index);
-  if (pieces.size() == 1 && pieces[0] == ref->path) return;  // An end: nothing to cut.
-  ref->path = pieces[0];
-  core::Document result = WithPath(document(), *ref);
-  core::IdSet selection = {a.id};
+  CutPath(*ref, a.index, document());
+}
+
+void Editor::CutPath(PathRef ref, int index, core::Document base) {
+  const auto pieces = geometry::CutAt(ref.path, index);
+  if (pieces.size() == 1 && pieces[0] == ref.path) return;  // An end: nothing to cut.
+  const std::string id = ref.id;
+  ref.path = pieces[0];
+  core::Document result = WithPath(base, ref);
+  core::IdSet selection = {id};
   if (pieces.size() == 2) {
     // The second half becomes a new path just in front of the first.
     core::IdSet copies;
-    result = core::DuplicateObjects(result, {a.id}, ids_, &copies);
-    PathRef second{*copies.begin(), ref->to_document, pieces[1]};
+    result = core::DuplicateObjects(result, {id}, ids_, &copies);
+    PathRef second{*copies.begin(), ref.to_document, pieces[1]};
     result = WithPath(result, second);
     selection.insert(second.id);
   }
   anchors_.clear();
   Commit("cut path", {std::move(result), std::move(selection)});
+}
+
+void Editor::ScissorsDown(Point p, double pick) {
+  // The frontmost path under the pointer, cut at an anchor there or at a
+  // new anchor on the segment.
+  const auto hit = geometry::HitTest(document(), p, pick);
+  if (!hit) return;
+  auto ref = GetPath(document(), hit->leaf_id);
+  if (!ref) return;
+  const Point local = Inverse(ref->to_document).Map(p);
+  const double local_pick = LocalPick(ref->to_document, pick);
+  for (int i = 0; i < static_cast<int>(ref->path.anchors.size()); ++i) {
+    if (Distance(local, ref->path.anchors[size_t(i)].position) <= local_pick) {
+      CutPath(*ref, i, document());
+      return;
+    }
+  }
+  const auto near = geometry::NearestSegment(ref->path, local);
+  if (!near || near->distance > local_pick) return;
+  const int index = geometry::InsertAnchor(ref->path, near->segment, near->t);
+  CutPath(*ref, index, document());
 }
 
 void Editor::JoinSelectedEnds() {

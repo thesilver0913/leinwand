@@ -31,6 +31,8 @@ cmake --build --preset windows-release
 ctest --preset windows-release
 ```
 
+macOS(Apple Silicon)では Xcode のコマンドラインツール、CMake、Ninja、Qt 6.8、vcpkg を用意し、環境変数 `QT_ROOT_DIR`(Qt の `macos` フォルダ)と `VCPKG_ROOT` を設定してから、プリセット `macos-release` で同じ手順を実行します。`tools/package-macos.sh` で dmg を作れます。
+
 ## ライセンス
 
 GPL-3.0-or-later([LICENSE](LICENSE))。同梱しているライブラリ、フォント、アイコンのライセンスは [NOTICE.md](NOTICE.md) にあります。

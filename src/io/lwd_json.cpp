@@ -729,6 +729,16 @@ std::string WriteDocumentJson(const Document& document, std::string_view app_ver
   Json layers = Json::array();
   for (const auto& layer : document.layers) layers.push_back(LayerJson(*layer));
   j["layers"] = std::move(layers);
+  if (document.cover) {
+    const CoverSpec& c = *document.cover;
+    Json cover = {{"width", Num(c.width)},
+                  {"height", Num(c.height)},
+                  {"pages", c.pages},
+                  {"paperThickness", Num(c.paper_thickness)},
+                  {"bleed", Num(c.bleed)}};
+    if (c.spine) cover["spine"] = Num(*c.spine);
+    j["coverTemplate"] = std::move(cover);
+  }
   AppendUnknown(j, document.unknown_fields);
   return j.dump(2) + "\n";
 }
@@ -796,6 +806,17 @@ LoadResult ReadDocumentJson(std::string_view text) {
     if (const Json* layers = r.Take("layers")) {
       if (!layers->is_array()) throw Corrupt("\"layers\" must be a list");
       for (const auto& layer : *layers) document.layers.push_back(LayerOf(layer, result.report));
+    }
+    if (const Json* cover = r.Take("coverTemplate")) {
+      Reader c(*cover);
+      CoverSpec spec;
+      spec.width = c.Number("width", 0.0);
+      spec.height = c.Number("height", 0.0);
+      spec.pages = static_cast<int>(c.Number("pages", 0.0));
+      spec.paper_thickness = c.Number("paperThickness", 0.0);
+      spec.bleed = c.Number("bleed", 0.0);
+      if (const Json* spine = c.Take("spine")) spec.spine = spine->get<double>();
+      document.cover = spec;
     }
     document.unknown_fields = r.Unknown();
     result.document = std::move(document);

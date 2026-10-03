@@ -15,22 +15,22 @@ Adobe Illustrator 相当を最終目標とする、デスクトップ向けベ�
 | 項目 | 決定 |
 | --- | --- |
 | 言語・ライブラリ | C++20、Skia、Qt 6(Qt Quick / QML)。Qt は LGPLv3 で動的リンク。GPL 専用の Qt モジュールは使わない |
-| 描画 | 最初から GPU。Vulkan が第一候補(macOS 対応時に Metal を追加) |
-| 対応 OS | Windows → Linux → macOS の順。フェーズ1のリリースは Windows のみ。Linux はビルドとテストを通し続ける |
+| 描画 | 最初から GPU。Windows と Linux は Vulkan、macOS は Metal |
+| 対応 OS | Windows → Linux → macOS の順。フェーズ1のリリースは Windows のみ。Linux はビルドとテストを通し続ける。macOS(Apple Silicon)はフェーズ2の前にビルド、テスト、試用版の dmg まで |
 | ライセンス | GPL-3.0-or-later。ソースファイル先頭に `SPDX-License-Identifier: GPL-3.0-or-later` |
 | 保存形式 | 拡張子 `.lwd`。ZIP コンテナ内に `document.json`(インデント付き、キー順固定) |
 | 座標系 | 単位はポイント、倍精度、原点は左上で Y 軸は下向き |
 | 操作体系 | ほぼ Illustrator 互換(ツール、修飾キー、メニュー、パネル名、ショートカット) |
 | デザイン言語 | Adobe Spectrum 2。デザイントークンとワークフローアイコン(ともに Apache 2.0)を使う。Adobe Clean フォントは使用不可。UI フォントは Source Sans 3 と源ノ角ゴシック |
 | UI 言語 | 日本語と英語。文言は Qt の翻訳(.ts)で管理し、ソースに直接書かない |
-| 配布 | Windows は Inno Setup の Web インストーラー、Linux は deb。配布元は GitHub Releases |
+| 配布 | Windows は Inno Setup の Web インストーラー、Linux は deb、macOS は dmg(アドホック署名、公証なし)。配布元は GitHub Releases |
 
 ## アーキテクチャの約束
 
 - 層の依存は一方向: `app` → `ui` / `render` / `io` → `geometry` → `core`。
 - `core`(ドキュメントモデル、コマンド、取り消し履歴)は Qt にも Skia にも依存させない。
 - Skia の型は `render` の外に出さない。パス演算は `geometry` のインターフェース越しに呼ぶ(最初の実装は Skia PathOps)。
-- OS 固有の処理(フォント列挙、設定フォルダ、IME など)は `platform` の裏に置く。
+- OS 固有の処理(設定フォルダ、IME など)は `platform` の裏に置く。フォント列挙は例外で、OS ごとの違いを吸収する Skia のフォント管理を使う。窓口(インターフェース)は Skia に依存しない文字の層に置き、実装は `render` に置く(パス演算と同じ形。2026-10-03 決定)。
 - すべての編集はコマンドとして記録し、取り消し/やり直しできるようにする。
 - モデルは不変データ構造(構造共有)を基本とする。
 - 読み込みで対応できなかった要素は黙って捨てない(読み込みレポートに出す)。
@@ -46,13 +46,13 @@ Adobe Illustrator 相当を最終目標とする、デスクトップ向けベ�
 
 ## 現在の位置
 
-フェーズ1の M0(環境構築と技術検証)。技術検証3件は結論が出た(結果は `docs/m0-verification.md`)。
+フェーズ1(M0〜M7)は完了し、v0.1.0(Windows)を公開した。M0 の技術検証3件の結果は `docs/m0-verification.md`。
 
 1. Skia と Qt Quick のシーングラフが同じ Vulkan コンテキストで描画できるか → 成立。
 2. 1万個のパスを表示して、ズームとパンが滑らかに動くか → 60Hz で成立。
 3. KDDockWidgets の見た目を Spectrum に合わせられるか → パッチを当てて採用。
 
-M0〜M6 は完了(M3〜M6 はアプリでの手動確認待ち)。M7(スプラッシュ、ウェルカムスクリーン、環境設定、ショートカットの編集、日本語と英語の UI、アイコン、Web インストーラー)は実装済みで、v0.1.0 の公開待ち。フェーズ1のあとはフェーズ2(仕様書8章)。実装で合意したことは `docs/implementation-notes.md` にまとめる。
+M3〜M7 はアプリでの手動確認待ち。macOS 対応(Metal 描画、アプリバンドル、dmg)は済み。いまはフェーズ2(`docs/phase2-plan.md`)。M8〜M11 は実装済みで、v0.2.0-alpha.1 として Windows と macOS のプレリリースを出す。次は M12(グラデーション)。実装で合意したことは `docs/implementation-notes.md` にまとめる。
 
 ## 未検証の前提(鵜呑みにしないこと)
 

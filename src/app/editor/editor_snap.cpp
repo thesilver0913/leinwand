@@ -102,6 +102,16 @@ Point Editor::SnapDrag(Point p) {
     case DragKind::kMoveAnchors:
       for (const auto& a : anchors_) exclude.insert(a.id);
       break;
+    case DragKind::kMoveHandle:
+    case DragKind::kDragSegment:
+      // Handle ends and dragged segments snap to other objects (not to the
+      // path itself, whose anchor would pull a short handle to zero).
+      exclude.insert(drag_.path_id);
+      break;
+    case DragKind::kPen:
+      // The handle being pulled out of a new anchor.
+      exclude.insert(pen_.path_id);
+      break;
     default:
       return p;
   }

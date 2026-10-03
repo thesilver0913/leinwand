@@ -12,8 +12,8 @@
 class Session;
 
 // The document canvas: a view of the Session's document. Skia draws into the
-// item's texture with the Vulkan device Qt Quick already uses; the render
-// thread gets an immutable snapshot each frame.
+// item's texture with the GPU device Qt Quick already uses (Vulkan, or Metal
+// on macOS); the render thread gets an immutable snapshot each frame.
 //
 // Navigation follows Illustrator: the wheel scrolls (Ctrl+wheel sideways),
 // Alt+wheel zooms at the cursor, Space+drag or middle-drag pans, and the hand
@@ -55,7 +55,8 @@ class CanvasItem : public QQuickRhiItem {
   const leinwand::render::View& view() const { return view_; }
   leinwand::render::Overlay overlay(double pixel_ratio) const;
 
-  Q_INVOKABLE void fitArtboard();  // Ctrl+0
+  Q_INVOKABLE void fitArtboard();  // Ctrl+0: the active artboard.
+  Q_INVOKABLE void fitAll();       // Alt+Ctrl+0: every artboard.
   Q_INVOKABLE void actualSize();   // Ctrl+1
   Q_INVOKABLE void zoomIn();       // Ctrl+=
   Q_INVOKABLE void zoomOut();      // Ctrl+-

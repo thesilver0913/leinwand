@@ -27,8 +27,9 @@ SvgImport ImportSvg(std::string_view xml);
 
 struct SvgExportOptions {
   int decimals = 3;  // Spec 6.1: 1-7, default 3.
-  // The first artboard's area (the default), or the bounds of everything.
+  // An artboard's area (the default), or the bounds of everything.
   bool whole_document = false;
+  int artboard = 0;  // Which artboard; out of range means the first.
 };
 
 // Presentation attributes, Inkscape-style layers, preserved elements back in

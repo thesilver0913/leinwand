@@ -9,6 +9,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QQmlEngine>
+#include <QRegularExpression>
 #include <QStandardPaths>
 #include <QThreadPool>
 #include <algorithm>
@@ -34,6 +35,9 @@ using leinwand::editor::Tool;
 
 constexpr int kHand = 12;
 constexpr int kZoom = 13;
+// Editor tools after the eyedropper come after the view tools in QML's
+// numbering: QML's 14 is the editor's kScissors, 15 its kArtboard.
+constexpr int kAfterView = 2;
 
 Session* g_instance = nullptr;
 
@@ -180,6 +184,8 @@ void Session::SetDocument(leinwand::core::Document document) {
   const bool guides = editor_ ? editor_->smart_guides() : true;
   editor_ = std::make_unique<leinwand::editor::Editor>(std::move(document));
   editor_->SetSmartGuides(guides);
+  editor_->SetPathOpsEngine(&path_ops_);
+  editor_->SetArtboardNamePrefix(tr("Artboard").toStdString());
   view_tool_ = -1;
   ApplyPreferences();
   saved_revision_ = autosaved_revision_ = editor_->history().revision();
@@ -219,8 +225,11 @@ void Session::SetReport(const leinwand::io::ImportReport& report) {
 
 void Session::newDocument(double width, double height, double bleed) {
   RemoveRecovery();
-  SetDocument(leinwand::core::NewDocument(tr("Layer 1").toStdString(), std::max(width, 1.0),
-                                          std::max(height, 1.0), std::max(bleed, 0.0)));
+  leinwand::core::Document document =
+      leinwand::core::NewDocument(tr("Layer 1").toStdString(), std::max(width, 1.0),
+                                  std::max(height, 1.0), std::max(bleed, 0.0));
+  document.artboards.front().name = tr("Artboard %1").arg(1).toStdString();
+  SetDocument(std::move(document));
   file_path_.clear();
   display_name_ = tr("Untitled-%1").arg(++untitled_);
   emit fileChanged();
@@ -310,22 +319,43 @@ QVariantList Session::svgExportIssues() const {
 
 bool Session::exportSvg(const QUrl& url) {
   const QString path = LocalPath(url);
-  const std::string svg = leinwand::io::ExportSvg(editor_->document());
+  leinwand::io::SvgExportOptions options;
+  options.artboard = editor_->active_artboard();
+  const std::string svg = leinwand::io::ExportSvg(editor_->document(), options);
   if (!WriteBytes(path, std::vector<std::uint8_t>(svg.begin(), svg.end()))) {
     return Fail(tr("Could not write %1.").arg(QFileInfo(path).fileName()));
   }
   return true;
 }
 
-bool Session::exportPng(const QUrl& url, double scale, bool transparent) {
+bool Session::exportPng(const QUrl& url, double scale, bool transparent, bool all_artboards) {
   const QString path = LocalPath(url);
   const auto& document = editor_->document();
   if (document.artboards.empty()) return Fail(tr("The document has no artboard to export."));
-  const auto png = leinwand::render::DocumentRenderer::ExportPng(
-      document, document.artboards.front().bounds, scale, transparent);
-  if (png.empty()) return Fail(tr("The image would be too large at this resolution."));
-  if (!WriteBytes(path, png))
-    return Fail(tr("Could not write %1.").arg(QFileInfo(path).fileName()));
+  std::vector<std::pair<QString, leinwand::core::Rect>> files;
+  if (all_artboards) {
+    // name.png -> name-Artboard 1.png, ... (characters files cannot hold
+    // become "_").
+    const QFileInfo info(path);
+    static const QRegularExpression bad(QStringLiteral(R"([\\/:*?"<>|])"));
+    for (const auto& artboard : document.artboards) {
+      QString name = QString::fromStdString(artboard.name);
+      name.replace(bad, QStringLiteral("_"));
+      files.push_back({info.dir().filePath(info.completeBaseName() + QStringLiteral("-") + name +
+                                           QStringLiteral(".png")),
+                       artboard.bounds});
+    }
+  } else {
+    files.push_back({path, document.artboards[size_t(editor_->active_artboard())].bounds});
+  }
+  for (const auto& [file, area] : files) {
+    const auto png =
+        leinwand::render::DocumentRenderer::ExportPng(document, area, scale, transparent);
+    if (png.empty()) return Fail(tr("The image would be too large at this resolution."));
+    if (!WriteBytes(file, png)) {
+      return Fail(tr("Could not write %1.").arg(QFileInfo(file).fileName()));
+    }
+  }
   return true;
 }
 
@@ -416,7 +446,9 @@ QString Session::redoAction() const {
 }
 
 int Session::tool() const {
-  return view_tool_ >= 0 ? view_tool_ : static_cast<int>(editor_->tool());
+  if (view_tool_ >= 0) return view_tool_;
+  const int tool = static_cast<int>(editor_->tool());
+  return tool > static_cast<int>(Tool::kEyedropper) ? tool + kAfterView : tool;
 }
 
 void Session::setTool(int tool) {
@@ -425,7 +457,8 @@ void Session::setTool(int tool) {
     editor_->FinishPath();
     view_tool_ = tool;
   } else {
-    if (tool < 0 || tool > static_cast<int>(Tool::kEyedropper)) return;
+    if (tool > kZoom) tool -= kAfterView;
+    if (tool < 0 || tool > static_cast<int>(Tool::kArtboard)) return;
     if (view_tool_ < 0 && tool == static_cast<int>(editor_->chosen_tool()) &&
         tool == this->tool()) {
       return;
@@ -486,9 +519,164 @@ LEINWAND_COMMAND(ungroup, Ungroup)
 LEINWAND_COMMAND(removeAnchors, RemoveSelectedAnchors)
 LEINWAND_COMMAND(cutAtAnchor, CutAtSelectedAnchor)
 LEINWAND_COMMAND(joinEnds, JoinSelectedEnds)
+LEINWAND_COMMAND(makeCompoundPath, MakeCompoundPath)
+LEINWAND_COMMAND(releaseCompoundPath, ReleaseCompoundPath)
 LEINWAND_COMMAND(swapFillAndStroke, SwapFillAndStroke)
 LEINWAND_COMMAND(defaultFillAndStroke, DefaultFillAndStroke)
 #undef LEINWAND_COMMAND
+
+QVariantList Session::artboards() const {
+  QVariantList list;
+  for (const auto& artboard : editor_->document().artboards) {
+    const auto& b = artboard.bounds;
+    list.append(QVariantMap{{"name", QString::fromStdString(artboard.name)},
+                            {"x", b.left},
+                            {"y", b.top},
+                            {"width", b.width()},
+                            {"height", b.height()}});
+  }
+  return list;
+}
+
+void Session::setActiveArtboard(int index) {
+  if (index == activeArtboard()) return;
+  editor_->SetActiveArtboard(index);
+  emit documentChanged();
+}
+
+namespace {
+
+leinwand::core::CoverSpec CoverOf(double width, double height, int pages, double thickness,
+                                  double spine, double bleed) {
+  leinwand::core::CoverSpec spec;
+  spec.width = width;
+  spec.height = height;
+  spec.pages = pages;
+  spec.paper_thickness = thickness;
+  if (!std::isnan(spine)) spec.spine = spine;
+  spec.bleed = std::max(bleed, 0.0);
+  return spec;
+}
+
+leinwand::core::CoverNames CoverNames() {
+  return {QCoreApplication::translate("Session", "Cover spread").toStdString(),
+          QCoreApplication::translate("Session", "Back cover").toStdString(),
+          QCoreApplication::translate("Session", "Spine").toStdString(),
+          QCoreApplication::translate("Session", "Front cover").toStdString()};
+}
+
+}  // namespace
+
+void Session::newCoverDocument(double width, double height, int pages, double thickness,
+                               double spine, double bleed) {
+  const auto spec = CoverOf(width, height, pages, thickness, spine, bleed);
+  if (spec.width <= 0 || spec.height <= 0) return;
+  RemoveRecovery();
+  leinwand::core::Document document =
+      leinwand::core::NewDocument(tr("Layer 1").toStdString(), 1, 1, 0);
+  document.artboards.clear();
+  SetDocument(leinwand::core::WithCover(std::move(document), spec, CoverNames()));
+  file_path_.clear();
+  display_name_ = tr("Untitled-%1").arg(++untitled_);
+  emit fileChanged();
+}
+
+void Session::setCover(double width, double height, int pages, double thickness, double spine,
+                       double bleed) {
+  editor_->SetCover(CoverOf(width, height, pages, thickness, spine, bleed), CoverNames());
+  Changed();
+}
+
+QVariantMap Session::cover() const {
+  const auto& cover = editor_->document().cover;
+  if (!cover) return {};
+  return {{"width", cover->width},
+          {"height", cover->height},
+          {"pages", cover->pages},
+          {"thickness", cover->paper_thickness},
+          {"spine", cover->spine ? QVariant(*cover->spine) : QVariant()},
+          {"spineWidth", leinwand::core::SpineWidth(*cover)},
+          {"bleed", cover->bleed}};
+}
+
+void Session::addArtboard() {
+  // Same size as the active one, to the right of everything, 20 pt apart.
+  const auto& artboards = editor_->document().artboards;
+  leinwand::core::Rect size = {0, 0, 595.28, 841.89};
+  double right = 0, top = 0;
+  if (!artboards.empty()) {
+    size = artboards[size_t(editor_->active_artboard())].bounds;
+    right = artboards.front().bounds.right;
+    top = artboards.front().bounds.top;
+    for (const auto& a : artboards) right = std::max(right, a.bounds.right);
+  }
+  editor_->AddArtboard(
+      leinwand::core::Rect::FromXYWH(right + 20, top, size.width(), size.height()));
+  Changed();
+}
+
+void Session::removeArtboard() {
+  editor_->RemoveActiveArtboard();
+  Changed();
+}
+
+void Session::moveArtboard(int from, int to) {
+  editor_->MoveArtboard(from, to);
+  Changed();
+}
+
+void Session::renameArtboard(int index, const QString& name) {
+  editor_->RenameArtboard(index, name.trimmed().toStdString());
+  Changed();
+}
+
+void Session::setArtboardBounds(int index, double x, double y, double width, double height) {
+  editor_->SetArtboardBounds(index, leinwand::core::Rect::FromXYWH(x, y, width, height));
+  Changed();
+}
+
+void Session::setAlignTo(int to) {
+  if (to < 0 || to > 2 || to == alignTo()) return;
+  editor_->SetAlignTo(static_cast<leinwand::editor::AlignTo>(to));
+  emit documentChanged();
+}
+
+void Session::align(int edge) {
+  if (edge < 0 || edge > 5) return;
+  editor_->AlignSelection(static_cast<leinwand::editor::AlignEdge>(edge));
+  Changed();
+}
+
+void Session::distribute(int edge) {
+  if (edge < 0 || edge > 5) return;
+  editor_->DistributeSelection(static_cast<leinwand::editor::AlignEdge>(edge));
+  Changed();
+}
+
+void Session::distributeSpacing(bool horizontal, double spacing) {
+  editor_->DistributeSpacing(horizontal,
+                             std::isnan(spacing) ? std::nullopt : std::optional<double>(spacing));
+  Changed();
+}
+
+void Session::average(int axis) {
+  editor_->AverageAnchors(axis != 1, axis != 0);
+  Changed();
+}
+
+void Session::pathfinder(int operation) {
+  using leinwand::editor::Editor;
+  if (operation < 0 || operation > static_cast<int>(leinwand::geometry::Pathfinder::kMinusBack)) {
+    return;
+  }
+  const auto outcome =
+      editor_->ApplyPathfinder(static_cast<leinwand::geometry::Pathfinder>(operation));
+  if (outcome == Editor::PathfinderOutcome::kFailed) {
+    Fail(tr("The path operation could not be completed. Nothing was changed."));
+    return;
+  }
+  Changed();
+}
 
 void Session::arrange(int how) {
   using leinwand::core::Arrange;
