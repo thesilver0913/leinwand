@@ -19,6 +19,8 @@ $cmakeLists = Get-Content (Join-Path $root 'CMakeLists.txt') -Raw
 if ($cmakeLists -notmatch 'project\(Leinwand VERSION ([0-9.]+)') { throw 'No version in CMakeLists.txt.' }
 $version = $Matches[1]
 $name = "Leinwand-$version-windows-x64"
+# Qt's deploy step needs an absolute install prefix.
+$Out = [IO.Path]::GetFullPath([IO.Path]::Combine($root, $Out))
 $stage = Join-Path $Out $name
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Force $Out | Out-Null
