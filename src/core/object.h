@@ -20,6 +20,7 @@ namespace leinwand::core {
 
 struct Object;
 using ObjectPtr = std::shared_ptr<const Object>;
+struct OpacityMask;
 
 // Fields every object has (spec 3.2, "オブジェクトの共通フィールド").
 struct ObjectCommon {
@@ -30,6 +31,8 @@ struct ObjectCommon {
   double opacity = 1.0;
   BlendMode blend_mode = BlendMode::kNormal;
   Appearance appearance;
+  // The opacity mask (spec 7.2, the Transparency panel), or none.
+  std::shared_ptr<const OpacityMask> mask;
   // Fields of a newer file version this one does not know, as JSON object
   // text; written back unchanged (spec 3.3, "未知のフィールド").
   std::string unknown_fields;
@@ -53,6 +56,8 @@ struct GroupObject {
   // Clipping group: the frontmost child (children.back()) is the clipping
   // path and is not painted itself, as in Illustrator.
   bool clipped = false;
+  // Isolate blending: the children's blend modes act within the group only.
+  bool isolated = false;
   Matrix transform;
 };
 
@@ -83,6 +88,17 @@ struct Object
   using variant::variant;
   // std::visit on classes derived from std::variant needs C++23 (P2162).
   const variant& base() const { return *this; }
+};
+
+// An opacity mask: the art's luminance becomes the masked object's opacity
+// (white shows, black hides). The art is in the same coordinates as the
+// masked object (its parent's) and moves with it.
+struct OpacityMask {
+  ObjectPtr art;
+  // Outside the art the object is hidden (Illustrator's "Clip"); otherwise
+  // it shows there.
+  bool clip = true;
+  bool invert = false;  // Dark shows, light hides.
 };
 
 template <typename T>

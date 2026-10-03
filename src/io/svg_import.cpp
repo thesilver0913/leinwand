@@ -9,6 +9,7 @@
 #include <sstream>
 
 #include "core/edit.h"
+#include "core/style.h"
 #include "core/transform.h"
 #include "geometry/bezier.h"
 #include "io/svg.h"
@@ -62,6 +63,11 @@ bool HasPrefix(const char* name) { return std::string(name).find(':') != std::st
 
 // Applies a transform to an object's coordinates. Paths and shapes take it
 // into their geometry, so their strokes are scaled too, as SVG draws them.
+bool Covers(const Rect& outer, const Rect& inner) {
+  return outer.left <= inner.left && outer.top <= inner.top && outer.right >= inner.right &&
+         outer.bottom >= inner.bottom;
+}
+
 ObjectPtr Bake(const ObjectPtr& object, const Matrix& m) {
   if (m.IsIdentity()) return object;
   ObjectPtr result = core::Transformed(object, m);
@@ -289,7 +295,8 @@ class Importer {
                                                 "filter",
                                                 "mix-blend-mode",
                                                 "paint-order",
-                                                "clip-rule"};
+                                                "clip-rule",
+                                                "isolation"};
     Properties p;
     for (const char* name : kPresentation) {
       if (const pugi::xml_attribute a = node.attribute(name)) p[name] = a.value();
@@ -555,9 +562,6 @@ class Importer {
     if (!Value(p, "filter").empty() && Value(p, "filter") != "none") {
       out_.report.Add("filter", ReportAction::kDiscarded);
     }
-    if (!Value(p, "mask").empty() && Value(p, "mask") != "none") {
-      out_.report.Add("mask", ReportAction::kDiscarded);
-    }
     if (!painted) return;
     Appearance appearance;
     if (const auto stroke = Resolve(s.stroke, common.id, "stroke", bbox);
@@ -629,8 +633,9 @@ class Importer {
         if (auto o = Element(child, s, ancestors)) group.children.push_back(*o);
       }
       ApplyCommon(group.common, p, s, false);
+      group.isolated = Value(p, "isolation") == "isolate";
       object = MakeObject(std::move(group));
-      return WithClip(*object, node, p);
+      return WithMask(WithClip(*object, node, p), node, p);
     }
     if (!foreign && name == "svg") {
       // A nested viewport: its content, placed at x, y.
@@ -719,7 +724,7 @@ class Importer {
       shape->common.id = id;
       ApplyCommon(shape->common, p, s, true, geometry::Bounds(*MakeObject(*shape)));
       object = Bake(MakeObject(*shape), transform);
-      return WithClip(*object, node, p);
+      return WithMask(WithClip(*object, node, p), node, p);
     }
     if (outline) {
       std::erase_if(*outline, [](const PathData& d) { return d.anchors.empty(); });
@@ -741,7 +746,7 @@ class Importer {
         object = MakeObject(std::move(compound));
       }
       object = Bake(*object, transform);
-      return WithClip(*object, node, p);
+      return WithMask(WithClip(*object, node, p), node, p);
     }
 
     // Everything else is kept as XML (spec 6.1): written back in place.
@@ -832,6 +837,126 @@ class Importer {
          o = o.next_sibling(), c = c.next_sibling()) {
       if (o.type() == pugi::node_element) InlineCss(c, o, ancestors);
     }
+  }
+
+  // The element a "url(#id)" reference points to, if it is a `kind`.
+  std::optional<pugi::xml_node> Referenced(const std::string& value, const char* kind) const {
+    if (value.rfind("url(", 0) != 0) return std::nullopt;
+    std::string ref = value.substr(4, value.find(')') - 4);
+    ref.erase(std::remove_if(ref.begin(), ref.end(),
+                             [](char c) { return c == '\'' || c == '"' || c == ' ' || c == '#'; }),
+              ref.end());
+    const auto it = by_id_.find(ref);
+    if (it == by_id_.end() || LocalName(it->second.name()) != kind) return std::nullopt;
+    return it->second;
+  }
+
+  // Whether a filter only inverts colors (as Leinwand writes inverted masks).
+  bool IsInvertFilter(const std::string& value) const {
+    const auto filter = Referenced(value, "filter");
+    if (!filter) return false;
+    int count = 0;
+    pugi::xml_node only;
+    for (pugi::xml_node child : filter->children()) {
+      if (child.type() != pugi::node_element) continue;
+      ++count;
+      only = child;
+    }
+    if (count != 1 || LocalName(only.name()) != "feColorMatrix") return false;
+    const auto v = svg::ParseNumberList(only.attribute("values").value());
+    static const double kInvert[20] = {-1, 0, 0,  0, 1, 0, -1, 0, 0, 1,
+                                       0,  0, -1, 0, 1, 0, 0,  0, 1, 0};
+    return v.size() == 20 && std::equal(v.begin(), v.end(), kInvert);
+  }
+
+  // mask="url(#id)": a luminance mask becomes the object's opacity mask
+  // (spec 6.1). The mask's content is in the element's user space, which
+  // includes its transform; the model keeps it in the parent's.
+  ObjectPtr WithMask(const ObjectPtr& object, pugi::xml_node node, const Properties& p) {
+    const std::string value = Value(p, "mask");
+    if (value.empty() || value == "none") return object;
+    const std::string id = CommonOf(*object).id;
+    const auto mask_node = Referenced(value, "mask");
+    if (!mask_node) {
+      out_.report.Add("mask (missing <mask>, ignored)", ReportAction::kDiscarded, id);
+      return object;
+    }
+    if (std::string(mask_node->attribute("maskContentUnits").value()) == "objectBoundingBox") {
+      out_.report.Add("mask in object units (ignored)", ReportAction::kDiscarded, id);
+      return object;
+    }
+    if (std::string(mask_node->attribute("mask-type").value()) == "alpha") {
+      out_.report.Add("alpha mask (as a luminance mask)", ReportAction::kApproximated, id);
+    }
+    if (std::string(mask_node->attribute("maskUnits").value()) != "userSpaceOnUse" &&
+        (mask_node->attribute("x") || mask_node->attribute("width"))) {
+      out_.report.Add("mask region (ignored)", ReportAction::kApproximated, id);
+    }
+    Matrix element_transform;
+    if (const auto m = svg::ParseTransform(node.attribute("transform").value()))
+      element_transform = *m;
+
+    OpacityMask mask;
+    pugi::xml_node content = *mask_node;
+    {
+      // Leinwand's inverted masks: everything inside one color-inverting group.
+      std::vector<pugi::xml_node> elements;
+      for (pugi::xml_node child : content.children()) {
+        if (child.type() == pugi::node_element) elements.push_back(child);
+      }
+      if (elements.size() == 1 && LocalName(elements[0].name()) == "g" &&
+          IsInvertFilter(elements[0].attribute("filter").value())) {
+        mask.invert = true;
+        content = elements[0];
+      }
+    }
+    const Rect masked = geometry::Bounds(*object);
+    std::vector<ObjectPtr> art;
+    bool first = true;
+    for (pugi::xml_node child : content.children()) {
+      if (child.type() != pugi::node_element) continue;
+      Inherited plain;
+      auto o = Element(child, plain, {root_, *mask_node});
+      if (!o) continue;
+      ObjectPtr placed = Bake(*o, element_transform);
+      // A first rectangle in plain white or black over the whole object is
+      // the background: white shows the object where there is no other art.
+      if (first && LocalName(child.name()) == "rect") {
+        const Fill* fill = core::FrontFill(CommonOf(*placed).appearance);
+        const RgbColor* rgb =
+            fill && !fill->gradient ? std::get_if<RgbColor>(&fill->paint) : nullptr;
+        const bool white = rgb && *rgb == RgbColor{1, 1, 1};
+        const bool black = rgb && *rgb == RgbColor{0, 0, 0};
+        if ((white || black) && fill->opacity == 1.0 && Covers(geometry::Bounds(*placed), masked)) {
+          mask.clip = mask.invert ? black : !white;
+          first = false;
+          continue;
+        }
+      }
+      first = false;
+      art.push_back(placed);
+    }
+    if (art.empty()) {
+      if (mask.clip == mask.invert) return object;  // All white: no mask.
+      GroupObject empty;
+      empty.common.id = FreshId("mask");
+      art.push_back(MakeObject(std::move(empty)));
+    }
+    if (art.size() == 1) {
+      mask.art = art.front();
+    } else {
+      GroupObject group;
+      group.common.id = FreshId("mask");
+      group.children = std::move(art);
+      mask.art = MakeObject(std::move(group));
+    }
+    return std::visit(
+        [&](const auto& o) -> ObjectPtr {
+          auto copy = o;
+          copy.common.mask = std::make_shared<const OpacityMask>(std::move(mask));
+          return MakeObject(std::move(copy));
+        },
+        object->base());
   }
 
   // clip-path="url(#id)": the object goes into a clipping group with the

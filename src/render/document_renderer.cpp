@@ -14,6 +14,7 @@
 #include "include/core/SkBlurTypes.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkColor.h"
+#include "include/core/SkColorFilter.h"
 #include "include/core/SkData.h"
 #include "include/core/SkImageInfo.h"
 #include "include/core/SkMaskFilter.h"
@@ -25,6 +26,7 @@
 #include "include/core/SkSurface.h"
 #include "include/effects/SkDashPathEffect.h"
 #include "include/effects/SkGradient.h"
+#include "include/effects/SkLumaColorFilter.h"
 #include "include/encode/SkPngEncoder.h"
 #include "render/document_renderer_impl.h"
 
@@ -332,10 +334,14 @@ void DocumentRenderer::Impl::DrawObject(SkCanvas* canvas, const core::ObjectPtr&
   }
   ++stats.drawn;
 
-  // Object opacity and blending apply to the object as a whole, so it is
-  // composited from its own layer.
+  // Object opacity, blending and the opacity mask apply to the object as a
+  // whole, so it is composited from its own layer. So is a group with
+  // isolated blending.
+  const auto* as_group = std::get_if<core::GroupObject>(object.get());
+  const bool masked = !outline_ && common.mask && common.mask->art;
   const bool isolate =
-      !outline_ && (common.opacity < 1.0 || common.blend_mode != core::BlendMode::kNormal);
+      !outline_ && (common.opacity < 1.0 || common.blend_mode != core::BlendMode::kNormal ||
+                    masked || (as_group && as_group->isolated));
   if (isolate) {
     SkPaint layer_paint;
     layer_paint.setAlphaf(static_cast<float>(common.opacity));
@@ -379,7 +385,30 @@ void DocumentRenderer::Impl::DrawObject(SkCanvas* canvas, const core::ObjectPtr&
     DrawShape(canvas, *object, entry.path);
   }
 
+  if (masked) DrawMask(canvas, *common.mask, ToSk(entry.bounds), visible);
   if (isolate) canvas->restore();
+}
+
+// Keeps what is drawn so far in the layer where the mask art is light
+// (spec 7.2, "不透明マスク"): the art's luminance becomes alpha, composited
+// with destination-in.
+void DocumentRenderer::Impl::DrawMask(SkCanvas* canvas, const core::OpacityMask& mask,
+                                      const SkRect& bounds, const Rect& visible) {
+  sk_sp<SkColorFilter> filter = SkLumaColorFilter::Make();
+  if (mask.invert) {
+    // alpha' = 1 - alpha
+    const float invert[20] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 1};
+    filter = SkColorFilters::Compose(SkColorFilters::Matrix(invert), filter);
+  }
+  SkPaint layer_paint;
+  layer_paint.setColorFilter(std::move(filter));
+  layer_paint.setBlendMode(SkBlendMode::kDstIn);
+  canvas->saveLayer(&bounds, &layer_paint);
+  // Without "Clip" the object shows where there is no mask art: the art
+  // goes over white instead of nothing.
+  if (!mask.clip) canvas->drawColor(SK_ColorWHITE);
+  DrawObject(canvas, mask.art, visible);
+  canvas->restore();
 }
 
 void DocumentRenderer::Impl::DrawShape(SkCanvas* canvas, const core::Object& object,

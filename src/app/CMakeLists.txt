@@ -82,6 +82,7 @@ qt_add_qml_module(leinwand
     qml/panels/PropertiesPanel.qml
     qml/panels/StrokePanel.qml
     qml/panels/SwatchesPanel.qml
+    qml/panels/TransparencyPanel.qml
     qml/panels/TransformFields.qml
     qml/panels/TransformPanel.qml
   SOURCES

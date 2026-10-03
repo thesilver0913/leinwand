@@ -6,6 +6,7 @@ add_library(editor STATIC
   editor_align.cpp
   editor_artboards.cpp
   editor_gradient.cpp
+  editor_transparency.cpp
   editor_paths.cpp
   editor_pathfinder.cpp
   editor_snap.cpp

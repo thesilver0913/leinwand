@@ -37,6 +37,8 @@ struct DocumentRenderer::Impl {
   void DrawLayer(SkCanvas* canvas, const core::Layer& layer, const core::Rect& visible);
   void DrawObject(SkCanvas* canvas, const core::ObjectPtr& object, const core::Rect& visible);
   void DrawShape(SkCanvas* canvas, const core::Object& object, const SkPath& path);
+  void DrawMask(SkCanvas* canvas, const core::OpacityMask& mask, const SkRect& bounds,
+                const core::Rect& visible);
   void DrawOverlay(SkCanvas* canvas, const core::Document& document, const Overlay& overlay,
                    float px);
   void DrawOutline(SkCanvas* canvas, const core::ObjectPtr& object, float anchor_half);

@@ -2,6 +2,7 @@
 #include "core/edit.h"
 
 #include <algorithm>
+#include <functional>
 #include <utility>
 #include <variant>
 
@@ -125,6 +126,11 @@ ObjectPtr WithFreshIds(const ObjectPtr& object, IdGenerator& ids) {
         if constexpr (std::is_same_v<T, GroupObject>) {
           for (auto& child : copy.children) child = WithFreshIds(child, ids);
         }
+        if (copy.common.mask && copy.common.mask->art) {
+          OpacityMask mask = *copy.common.mask;
+          mask.art = WithFreshIds(mask.art, ids);
+          copy.common.mask = std::make_shared<const OpacityMask>(std::move(mask));
+        }
         return MakeObject(std::move(copy));
       },
       object->base());
@@ -172,7 +178,17 @@ Document AddObject(const Document& document, ObjectPtr object, const std::string
 
 IdSet AllObjectIds(const Document& document) {
   IdSet ids;
-  VisitObjects(document, [&](const Object& object) { ids.insert(CommonOf(object).id); });
+  // Opacity masks' art too, so that new ids never clash with it.
+  std::function<void(const Object&)> add = [&](const Object& object) {
+    ids.insert(CommonOf(object).id);
+    const auto& mask = CommonOf(object).mask;
+    if (!mask || !mask->art) return;
+    add(*mask->art);
+    if (const auto* group = std::get_if<GroupObject>(mask->art.get())) {
+      for (const auto& child : group->children) add(*child);
+    }
+  };
+  VisitObjects(document, add);
   return ids;
 }
 

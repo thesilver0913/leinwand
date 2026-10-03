@@ -56,6 +56,10 @@ class Session : public QObject {
   // "strokeWidth", "cap", "join", "miterLimit", "align", "dashed", "dashes",
   // "hasStroke", "opacity", "opacityMixed".
   Q_PROPERTY(QVariantMap style READ style NOTIFY documentChanged)
+  // Transparency panel: "selected", "opacity", "opacityMixed", "blendMode"
+  // (core::BlendMode order), "blendMixed", "hasMask", "maskClip",
+  // "maskInvert", "hasGroup", "isolated".
+  Q_PROPERTY(QVariantMap transparency READ transparency NOTIFY documentChanged)
   // Which of fill and stroke the Color and Swatches panels edit (X).
   Q_PROPERTY(bool fillActive READ fillActive WRITE setFillActive NOTIFY documentChanged)
   // The document's swatches: {id, name, color, spot}.
@@ -112,6 +116,7 @@ class Session : public QObject {
   void UpdateTemporaryTool(Qt::KeyboardModifiers modifiers);
   QVariantMap selectionInfo() const;
   QVariantMap style() const;
+  QVariantMap transparency() const;
   bool fillActive() const { return editor_->fill_active(); }
   void setFillActive(bool fill);
   QVariantList swatches() const;
@@ -200,6 +205,14 @@ class Session : public QObject {
   Q_INVOKABLE void setArtboardBounds(int index, double x, double y, double width, double height);
   Q_INVOKABLE void makeCompoundPath();     // Ctrl+8
   Q_INVOKABLE void releaseCompoundPath();  // Alt+Shift+Ctrl+8
+  Q_INVOKABLE void makeClippingMask();     // Ctrl+7
+  Q_INVOKABLE void releaseClippingMask();  // Alt+Ctrl+7
+  Q_INVOKABLE void makeOpacityMask();
+  Q_INVOKABLE void releaseOpacityMask();
+  Q_INVOKABLE void setBlendMode(int mode);
+  Q_INVOKABLE void setIsolated(bool isolated);
+  Q_INVOKABLE void setMaskClip(bool clip);
+  Q_INVOKABLE void setMaskInvert(bool invert);
 
   // Transform panel edits; each is one undo step.
   Q_INVOKABLE void setBounds(double x, double y, double width, double height);

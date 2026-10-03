@@ -106,6 +106,18 @@ void TransformGradients(Appearance& appearance, const Matrix& matrix) {
 
 }  // namespace
 
+namespace {
+
+// The opacity mask moves with its object.
+void TransformMask(ObjectCommon& common, const Matrix& matrix) {
+  if (!common.mask || !common.mask->art) return;
+  OpacityMask mask = *common.mask;
+  mask.art = Transformed(mask.art, matrix);
+  common.mask = std::make_shared<const OpacityMask>(std::move(mask));
+}
+
+}  // namespace
+
 ObjectPtr Transformed(const ObjectPtr& object, const Matrix& matrix) {
   if (matrix.IsIdentity()) return object;
   return std::visit(
@@ -121,6 +133,7 @@ ObjectPtr Transformed(const ObjectPtr& object, const Matrix& matrix) {
         } else if constexpr (std::is_same_v<T, ShapeObject>) {
           if (auto shape = TransformedShape(o, matrix * o.transform)) {
             TransformGradients(shape->common.appearance, matrix);
+            TransformMask(shape->common, matrix);
             return MakeObject(*shape);
           }
           // Shear or uneven scale: becomes a plain path (spec 4.1).
@@ -128,6 +141,7 @@ ObjectPtr Transformed(const ObjectPtr& object, const Matrix& matrix) {
         } else {
           copy.transform = matrix * o.transform;
         }
+        TransformMask(copy.common, matrix);
         return MakeObject(std::move(copy));
       },
       object->base());

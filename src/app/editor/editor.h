@@ -88,6 +88,18 @@ struct StyleState {
   bool opacity_mixed = false;
 };
 
+// What the Transparency panel shows for the selection (spec 7.2).
+struct TransparencyState {
+  bool selected = false;
+  double opacity = 1.0;
+  bool opacity_mixed = false;
+  core::BlendMode blend_mode = core::BlendMode::kNormal;
+  bool blend_mixed = false;
+  std::optional<core::OpacityMask> mask;  // The first selected object's mask.
+  bool has_group = false;                 // Isolated blending applies to groups.
+  bool isolated = false;
+};
+
 // What the transform panel shows for the current selection.
 struct SelectionInfo {
   core::Rect bounds;  // Geometric bounds in document coordinates.
@@ -420,8 +432,28 @@ class Editor {
   void MakeCompoundPath();
   void ReleaseCompoundPath();
 
+  // Clipping masks and the Transparency panel (editor_transparency.cpp,
+  // spec 7.2). Ctrl+7: the frontmost selected path clips the others, in a
+  // new group; Alt+Ctrl+7 turns selected clipping groups back into groups.
+  void MakeClippingMask();
+  void ReleaseClippingMask();
+  TransparencyState Transparency() const;
+  void SetBlendMode(core::BlendMode mode);
+  void SetIsolated(bool isolated);
+  // The frontmost selected object becomes the opacity mask of the others
+  // (grouped when there are several); releasing puts it back in front.
+  void MakeOpacityMask();
+  void ReleaseOpacityMask();
+  void SetMaskClip(bool clip);
+  void SetMaskInvert(bool invert);
+
  private:
   void Commit(const std::string& action, core::EditorState state);
+  // Replaces each selected object (not those inside selected groups) by
+  // what `edit` returns; one undo step when anything changed.
+  void EditSelected(const std::string& action,
+                    const std::function<core::ObjectPtr(const core::ObjectPtr&)>& edit);
+  void EditMask(const std::function<void(core::OpacityMask&)>& edit);
   void SetSelection(core::IdSet selection);
   void UpdatePreview(Modifiers modifiers);
   void UpdateDrawing();

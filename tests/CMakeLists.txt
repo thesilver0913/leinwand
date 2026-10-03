@@ -39,6 +39,7 @@ add_executable(editor_tests
   editor/align_test.cpp
   editor/artboards_test.cpp
   editor/gradient_test.cpp
+  editor/transparency_test.cpp
 )
 # The pathfinder tests run on render's Skia PathOps engine.
 target_link_libraries(editor_tests PRIVATE editor render Catch2::Catch2WithMain)

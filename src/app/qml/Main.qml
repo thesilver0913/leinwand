@@ -185,6 +185,12 @@ ApplicationWindow {
                 SpPanel { GradientPanel { anchors.fill: parent } }
             }
             KDDW.DockWidget {
+                id: transparencyPanel
+                uniqueName: "transparency"
+                title: qsTr("Transparency")
+                SpPanel { TransparencyPanel { anchors.fill: parent } }
+            }
+            KDDW.DockWidget {
                 id: stroke
                 uniqueName: "stroke"
                 title: qsTr("Stroke")
@@ -199,7 +205,7 @@ ApplicationWindow {
 
             // Illustrator's default workspace, roughly: properties, layers and
             // artboards; transform, align and pathfinder; color and swatches;
-            // stroke and gradient.
+            // stroke, gradient and transparency.
             Component.onCompleted: {
                 addDockWidget(properties, KDDW.KDDockWidgets.Location_OnRight, null,
                               Qt.size(Spectrum.standardPanelWidth + 20, 0));
@@ -216,6 +222,7 @@ ApplicationWindow {
                 // Stroke and Gradient together, as in Illustrator.
                 addDockWidget(stroke, KDDW.KDDockWidgets.Location_OnBottom, colorPanel);
                 stroke.addDockWidgetAsTab(gradientPanel);
+                stroke.addDockWidgetAsTab(transparencyPanel);
                 properties.setAsCurrentTab();
                 transform.setAsCurrentTab();
                 colorPanel.setAsCurrentTab();
@@ -223,7 +230,7 @@ ApplicationWindow {
                 const panels = { properties: properties, layers: layers, transform: transform,
                                  align: alignPanel, pathfinder: pathfinderPanel,
                                  artboards: artboardsPanel,
-                                 color: colorPanel, swatches: swatches, gradient: gradientPanel,
+                                 color: colorPanel, swatches: swatches, gradient: gradientPanel, transparency: transparencyPanel,
                                  stroke: stroke };
                 for (const name of window.argValue("tabs").split(","))
                     if (panels[name])
@@ -238,6 +245,13 @@ ApplicationWindow {
         onActivated: {
             alignPanel.open();
             alignPanel.setAsCurrentTab();
+        }
+    }
+    Shortcut {
+        sequences: Shortcuts.windowTransparency
+        onActivated: {
+            transparencyPanel.open();
+            transparencyPanel.setAsCurrentTab();
         }
     }
     Shortcut {
@@ -286,7 +300,7 @@ ApplicationWindow {
 
     readonly property var panels: [properties, layers, artboardsPanel, transform, alignPanel, pathfinderPanel,
                                    colorPanel,
-                                   swatches, gradientPanel, stroke, importReport]
+                                   swatches, gradientPanel, transparencyPanel, stroke, importReport]
     property alias openDialog: openDialog
     property alias saveAsDialog: saveAsDialog
     property alias pngOptions: pngOptions

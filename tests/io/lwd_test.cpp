@@ -31,7 +31,8 @@ TEST_CASE("The showcase document survives a JSON round trip unchanged") {
   CHECK(RoundTrip(document) == json);
   // Spot colors, swatch references, clip groups and hidden layers are all in
   // there (live shapes have a test of their own).
-  for (const char* expected : {"\"spot\"", "\"swatch\"", "\"clipped\"", "\"visible\""}) {
+  for (const char* expected :
+       {"\"spot\"", "\"swatch\"", "\"clipped\"", "\"visible\"", "\"mask\"", "\"invert\""}) {
     CHECK(json.find(expected) != std::string::npos);
   }
 }
@@ -94,7 +95,7 @@ TEST_CASE("document.json follows the spec's shape: fixed key order, defaults omi
         R"({"p":[50,150],"in":[20,0],"out":[0,-30],"kind":"smooth"})");
   CHECK(object["appearance"][0].dump() ==
         R"({"type":"stroke","paint":{"space":"rgb","values":[0,0,0]},"width":2})");
-  CHECK(j["format"]["version"] == "1.2");
+  CHECK(j["format"]["version"] == "1.3");
 }
 
 TEST_CASE("Unknown fields, enum values and object types are kept and written back") {
@@ -243,4 +244,35 @@ TEST_CASE("Gradients survive a JSON round trip") {
   const auto& a = core::CommonOf(*loaded.document->FindObject("g")).appearance;
   CHECK(core::FrontFill(a)->gradient == fill.gradient);
   CHECK(core::FrontStroke(a)->gradient == stroke.gradient);
+}
+
+TEST_CASE("Opacity masks and isolated groups survive a JSON round trip") {
+  core::PathObject art;
+  art.common.id = "art";
+  art.path.anchors = {{{0, 0}}, {{10, 0}}, {{10, 10}}};
+  core::GroupObject group;
+  group.common.id = "g";
+  group.isolated = true;
+  group.common.mask = std::make_shared<const core::OpacityMask>(
+      core::OpacityMask{core::MakeObject(art), false, true});
+  core::Layer layer;
+  layer.id = "l";
+  layer.children = {core::MakeObject(group)};
+  core::Document document;
+  document.layers = {core::MakeLayer(std::move(layer))};
+  const std::string json = io::WriteDocumentJson(document, "test");
+  CHECK(json.find("\"clip\": false") != std::string::npos);
+  const auto loaded = io::ReadDocumentJson(json);
+  REQUIRE(loaded.document);
+  const auto& g = std::get<core::GroupObject>(*loaded.document->FindObject("g"));
+  CHECK(g.isolated);
+  REQUIRE(g.common.mask);
+  CHECK(!g.common.mask->clip);
+  CHECK(g.common.mask->invert);
+  CHECK(core::CommonOf(*g.common.mask->art).id == "art");
+  // A mask without its art is a broken file, not a silent drop.
+  CHECK(!io::ReadDocumentJson(
+             R"({"format": {"version": "1.3"}, "layers": [{"id": "l", "type": "layer",
+             "children": [{"id": "p", "type": "path", "mask": {"clip": false}}]}]})")
+             .document);
 }

@@ -523,6 +523,10 @@ LEINWAND_COMMAND(cutAtAnchor, CutAtSelectedAnchor)
 LEINWAND_COMMAND(joinEnds, JoinSelectedEnds)
 LEINWAND_COMMAND(makeCompoundPath, MakeCompoundPath)
 LEINWAND_COMMAND(releaseCompoundPath, ReleaseCompoundPath)
+LEINWAND_COMMAND(makeClippingMask, MakeClippingMask)
+LEINWAND_COMMAND(releaseClippingMask, ReleaseClippingMask)
+LEINWAND_COMMAND(makeOpacityMask, MakeOpacityMask)
+LEINWAND_COMMAND(releaseOpacityMask, ReleaseOpacityMask)
 LEINWAND_COMMAND(swapFillAndStroke, SwapFillAndStroke)
 LEINWAND_COMMAND(defaultFillAndStroke, DefaultFillAndStroke)
 #undef LEINWAND_COMMAND
@@ -846,6 +850,43 @@ QVariantMap Session::style() const {
     map["gradientStop"] = -1;
   }
   return map;
+}
+
+QVariantMap Session::transparency() const {
+  const auto state = editor_->Transparency();
+  QVariantMap map;
+  map["selected"] = state.selected;
+  map["opacity"] = state.opacity;
+  map["opacityMixed"] = state.opacity_mixed;
+  map["blendMode"] = static_cast<int>(state.blend_mode);
+  map["blendMixed"] = state.blend_mixed;
+  map["hasMask"] = state.mask.has_value();
+  map["maskClip"] = state.mask ? state.mask->clip : true;
+  map["maskInvert"] = state.mask ? state.mask->invert : false;
+  map["hasGroup"] = state.has_group;
+  map["isolated"] = state.isolated;
+  return map;
+}
+
+void Session::setBlendMode(int mode) {
+  if (mode < 0 || mode > static_cast<int>(leinwand::core::BlendMode::kLuminosity)) return;
+  editor_->SetBlendMode(static_cast<leinwand::core::BlendMode>(mode));
+  Changed();
+}
+
+void Session::setIsolated(bool isolated) {
+  editor_->SetIsolated(isolated);
+  Changed();
+}
+
+void Session::setMaskClip(bool clip) {
+  editor_->SetMaskClip(clip);
+  Changed();
+}
+
+void Session::setMaskInvert(bool invert) {
+  editor_->SetMaskInvert(invert);
+  Changed();
 }
 
 void Session::applyGradient(int type) {

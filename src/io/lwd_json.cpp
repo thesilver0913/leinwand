@@ -581,6 +581,7 @@ Json ObjectJson(const ObjectPtr& object) {
         } else if constexpr (std::is_same_v<T, GroupObject>) {
           WriteCommon(j, o.common, "group");
           if (o.clipped) j["clipped"] = true;
+          if (o.isolated) j["isolated"] = true;
           if (!o.transform.IsIdentity()) j["transform"] = MatrixJson(o.transform);
           Json children = Json::array();
           for (const auto& child : o.children) children.push_back(ObjectJson(child));
@@ -591,11 +592,21 @@ Json ObjectJson(const ObjectPtr& object) {
           if (!o.transform.IsIdentity()) j["transform"] = MatrixJson(o.transform);
         }
         if (!o.common.appearance.empty()) j["appearance"] = AppearanceJson(o.common.appearance);
+        if (o.common.mask && o.common.mask->art) {
+          // The opacity mask (format 1.3).
+          Json mask;
+          mask["object"] = ObjectJson(o.common.mask->art);
+          if (!o.common.mask->clip) mask["clip"] = false;
+          if (o.common.mask->invert) mask["invert"] = true;
+          j["mask"] = std::move(mask);
+        }
         AppendUnknown(j, o.common.unknown_fields);
         return j;
       },
       object->base());
 }
+
+ObjectPtr ObjectOf(const Json& j, ImportReport& report);
 
 ObjectCommon CommonOf(Reader& r, ImportReport& report) {
   ObjectCommon common;
@@ -608,6 +619,16 @@ ObjectCommon CommonOf(Reader& r, ImportReport& report) {
   common.blend_mode = r.Enum("blendMode", kBlendModes, BlendMode::kNormal);
   if (const Json* appearance = r.Take("appearance")) {
     common.appearance = AppearanceOf(*appearance, report, common.id);
+  }
+  if (const Json* mask = r.Take("mask")) {
+    if (!mask->is_object() || !mask->contains("object")) {
+      throw Corrupt("an opacity mask needs \"object\"");
+    }
+    OpacityMask m;
+    m.art = ObjectOf((*mask)["object"], report);
+    m.clip = mask->value("clip", true);
+    m.invert = mask->value("invert", false);
+    common.mask = std::make_shared<const OpacityMask>(std::move(m));
   }
   return common;
 }
@@ -683,6 +704,7 @@ ObjectPtr ObjectOf(const Json& j, ImportReport& report) {
   if (type == "group") {
     GroupObject o;
     o.clipped = r.Bool("clipped", false);
+    o.isolated = r.Bool("isolated", false);
     if (const Json* m = r.Take("transform")) o.transform = MatrixOf(*m);
     if (const Json* children = r.Take("children")) {
       if (!children->is_array()) throw Corrupt("\"children\" must be a list");

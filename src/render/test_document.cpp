@@ -197,6 +197,34 @@ core::Document MakeShowcaseDocument() {
                                    core::Point{500, 480}};
   colors.push_back(b.Path(Rectangle(470, 470, 90, 40), {radial}));
 
+  // Row 4: opacity masks. Stripes fading out under a gradient mask; a mask
+  // without "Clip" (a black circle punches a hole); an inverted one.
+  std::vector<core::ObjectPtr> fading;
+  for (int i = 0; i < 15; ++i) {
+    fading.push_back(b.Path(Rectangle(180 + i * 18, 530, 9, 50), {Fill{Rgb(0x2d6cdf)}}));
+  }
+  Fill fade{Rgb(0xffffff)};
+  fade.gradient = core::Gradient{core::GradientType::kLinear,
+                                 {{0.0, Rgb(0xffffff), 1.0, 0.5}, {1.0, Rgb(0x000000), 1.0, 0.5}},
+                                 {180, 555},
+                                 {450, 555}};
+  const auto masked = [&](core::ObjectPtr object, core::ObjectPtr art, bool clip, bool invert) {
+    return std::visit(
+        [&](const auto& o) -> core::ObjectPtr {
+          auto copy = o;
+          copy.common.mask = std::make_shared<const core::OpacityMask>(
+              core::OpacityMask{std::move(art), clip, invert});
+          return core::MakeObject(std::move(copy));
+        },
+        object->base());
+  };
+  colors.push_back(masked(b.Group(std::move(fading)), b.Path(Rectangle(180, 530, 270, 50), {fade}),
+                          true, false));
+  colors.push_back(masked(b.Path(Rectangle(470, 530, 90, 50), {Fill{Rgb(0x3fbf7f)}}),
+                          b.Path(Circle(515, 555, 18), {Fill{Rgb(0x000000)}}), false, false));
+  colors.push_back(masked(b.Path(Rectangle(60, 530, 90, 50), {Fill{Rgb(0xff5a36)}}),
+                          b.Path(Circle(105, 555, 18), {Fill{Rgb(0xffffff)}}), true, true));
+
   // A sublayer with a rotated group.
   core::Layer rotated;
   rotated.id = "sublayer";

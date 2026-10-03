@@ -10,6 +10,7 @@
 
 #include "core/edit.h"
 #include "core/style.h"
+#include "geometry/bezier.h"
 #include "render/document_renderer.h"
 #include "render/image_compare.h"
 #include "render/test_document.h"
@@ -217,4 +218,53 @@ TEST_CASE("SVG gradients: user space, transforms, inherited stops, radial") {
   CHECK(b->aspect == Approx(0.25));
   REQUIRE(b->focal);
   CHECK(b->focal->x == Approx(50));
+}
+
+TEST_CASE("SVG opacity masks: clip, invert and isolated groups come back") {
+  const core::Document original = render::MakeShowcaseDocument();
+  const auto again = io::ImportSvg(io::ExportSvg(original));
+  REQUIRE(again.document);
+  // The masked objects come back inside a group that carries the mask.
+  std::vector<core::OpacityMask> masks;
+  core::VisitObjects(*again.document, [&](const core::Object& o) {
+    if (const auto& mask = core::CommonOf(o).mask) masks.push_back(*mask);
+  });
+  REQUIRE(masks.size() == 3);
+  CHECK((masks[0].clip && !masks[0].invert));
+  CHECK((!masks[1].clip && !masks[1].invert));
+  CHECK((masks[2].clip && masks[2].invert));
+  for (const auto& row : again.report.rows) CHECK(row.kind.find("mask") == std::string::npos);
+
+  const auto isolated = io::ImportSvg(R"(<svg xmlns="http://www.w3.org/2000/svg" width="10"
+      height="10"><g id="g" style="isolation:isolate"><rect width="5" height="5"/></g></svg>)");
+  REQUIRE(isolated.document);
+  CHECK(std::get<core::GroupObject>(*isolated.document->FindObject("g")).isolated);
+}
+
+TEST_CASE("SVG masks from other programs: user-space content, element transform") {
+  const auto result = io::ImportSvg(R"svg(<svg xmlns="http://www.w3.org/2000/svg" width="100"
+      height="100"><defs><mask id="m"><circle cx="10" cy="10" r="5" fill="white"/></mask></defs>
+      <rect id="r" x="0" y="0" width="20" height="20" transform="translate(30 0)"
+      mask="url(#m)"/><rect id="s" width="5" height="5" mask="url(#missing)"/></svg>)svg");
+  REQUIRE(result.document);
+  const core::Object* r = result.document->FindObject("r");
+  REQUIRE(r);
+  const auto& mask = core::CommonOf(*r).mask;
+  REQUIRE(mask);
+  // In the parent's coordinates, like the rectangle itself.
+  const core::Rect bounds = geometry::Bounds(*mask->art);
+  CHECK(bounds.left == Approx(35));
+  CHECK(bounds.right == Approx(45));
+  CHECK(HasRow(result.report, "mask (missing", io::ReportAction::kDiscarded));
+}
+
+// Writes the showcase as SVG and PNG for comparing in a browser:
+// LEINWAND_TEST_OUTPUT_DIR/svg/showcase.svg and .png.
+TEST_CASE("Showcase as SVG for a browser", "[.][showcase-svg]") {
+  const core::Document showcase = render::MakeShowcaseDocument();
+  const std::filesystem::path path =
+      std::filesystem::path(LEINWAND_TEST_OUTPUT_DIR) / "svg" / "showcase.svg";
+  std::filesystem::create_directories(path.parent_path());
+  std::ofstream(path, std::ios::binary) << io::ExportSvg(showcase);
+  Dump(showcase, "svg/showcase.png");
 }

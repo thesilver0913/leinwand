@@ -271,15 +271,72 @@ class Exporter {
     return a;
   }
 
-  std::string CommonAttributes(const ObjectCommon& common) {
+  std::string CommonAttributes(const ObjectCommon& common, bool isolated = false) {
     std::string a = " id=\"" + Escape(common.id) + "\"";
     if (!common.name.empty()) a += " data-name=\"" + Escape(common.name) + "\"";
     if (!common.visible) a += " display=\"none\"";
     if (common.opacity != 1.0) a += " opacity=\"" + N(common.opacity) + "\"";
+    std::string style;
     if (const char* blend = BlendName(common.blend_mode)) {
-      a += " style=\"mix-blend-mode:" + std::string(blend) + "\"";
+      style += "mix-blend-mode:" + std::string(blend);
     }
+    if (isolated) style += std::string(style.empty() ? "" : ";") + "isolation:isolate";
+    if (!style.empty()) a += " style=\"" + style + "\"";
     return a;
+  }
+
+  // An object with an opacity mask: a group that carries the mask, the
+  // object's opacity and its blend mode around the object itself, so that
+  // the mask is in the object's parent's coordinates (as in the model) and
+  // is applied before blending.
+  void WriteMasked(std::ostream& out, const ObjectPtr& object, int depth) {
+    const std::string indent(depth * 2, ' ');
+    const ObjectCommon& common = CommonOf(*object);
+    const OpacityMask& mask = *common.mask;
+    const std::string mask_id = common.id + "-mask";
+    // Far beyond any artwork: the mask region and the background.
+    const std::string everywhere =
+        " x=\"-100000\" y=\"-100000\" width=\"200000\" height=\"200000\"";
+    std::ostringstream content;
+    content << "    <mask id=\"" << Escape(mask_id) << "\" maskUnits=\"userSpaceOnUse\""
+            << everywhere << ">\n";
+    std::string close;
+    if (mask.invert) {
+      // Inverting the colors inverts the luminance. A background makes the
+      // area without art invert too, as on screen.
+      const std::string filter_id = common.id + "-invert";
+      defs_ << "    <filter id=\"" << Escape(filter_id)
+            << "\" filterUnits=\"userSpaceOnUse\" color-interpolation-filters=\"sRGB\""
+            << everywhere << "><feColorMatrix type=\"matrix\" values=\"-1 0 0 0 1 0 -1 0 0 1 "
+            << "0 0 -1 0 1 0 0 0 1 0\"/></filter>\n";
+      content << "      <g filter=\"url(#" << Escape(filter_id) << ")\">\n";
+      content << "        <rect" << everywhere << " fill=\"" << (mask.clip ? "black" : "white")
+              << "\"/>\n";
+      close = "      </g>\n";
+    } else if (!mask.clip) {
+      content << "      <rect" << everywhere << " fill=\"white\"/>\n";
+    }
+    WriteObject(content, mask.art, mask.invert ? 4 : 3);
+    content << close << "    </mask>\n";
+    defs_ << content.str();
+
+    out << indent << "<g mask=\"url(#" << Escape(mask_id) << ")\"";
+    if (common.opacity != 1.0) out << " opacity=\"" << N(common.opacity) << "\"";
+    if (const char* blend = BlendName(common.blend_mode)) {
+      out << " style=\"mix-blend-mode:" << blend << "\"";
+    }
+    out << ">\n";
+    ObjectPtr inner = std::visit(
+        [](const auto& o) -> ObjectPtr {
+          auto copy = o;
+          copy.common.mask.reset();
+          copy.common.opacity = 1.0;
+          copy.common.blend_mode = BlendMode::kNormal;
+          return MakeObject(std::move(copy));
+        },
+        object->base());
+    WriteObject(out, inner, depth + 1);
+    out << indent << "</g>\n";
   }
 
   // One element per fill and stroke when the appearance is more than a fill
@@ -340,6 +397,10 @@ class Exporter {
 
   void WriteObject(std::ostream& out, const ObjectPtr& object, int depth) {
     const std::string indent(depth * 2, ' ');
+    if (const auto& mask = CommonOf(*object).mask; mask && mask->art) {
+      WriteMasked(out, object, depth);
+      return;
+    }
     std::visit(
         [&](const auto& o) {
           using T = std::decay_t<decltype(o)>;
@@ -356,8 +417,8 @@ class Exporter {
               defs_ << "/></clipPath>\n";
               clip = " clip-path=\"url(#" + Escape(clip_id) + ")\"";
             }
-            out << indent << "<g" << CommonAttributes(o.common) << Transform(o.transform) << clip
-                << ">\n";
+            out << indent << "<g" << CommonAttributes(o.common, o.isolated)
+                << Transform(o.transform) << clip << ">\n";
             for (auto it = o.children.begin(); it != end; ++it) WriteObject(out, *it, depth + 1);
             out << indent << "</g>\n";
           } else if constexpr (std::is_same_v<T, PreservedObject>) {

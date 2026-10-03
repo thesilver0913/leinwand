@@ -95,6 +95,11 @@ MenuBar {
             Action { text: qsTr("&Make"); shortcut: root.key("objectCompoundMake"); onTriggered: Session.makeCompoundPath() }
             Action { text: qsTr("&Release"); shortcut: root.key("objectCompoundRelease"); onTriggered: Session.releaseCompoundPath() }
         }
+        Menu {
+            title: qsTr("Clipping &Mask")
+            Action { text: qsTr("&Make"); shortcut: root.key("objectClipMake"); onTriggered: Session.makeClippingMask() }
+            Action { text: qsTr("&Release"); shortcut: root.key("objectClipRelease"); onTriggered: Session.releaseClippingMask() }
+        }
     }
     Menu {
         title: qsTr("&Select")
