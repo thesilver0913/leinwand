@@ -48,7 +48,11 @@ class Exporter {
   std::string Run() {
     Rect area;
     if (!options_.whole_document && !document_.artboards.empty()) {
-      area = document_.artboards.front().bounds;
+      const size_t index =
+          options_.artboard >= 0 && size_t(options_.artboard) < document_.artboards.size()
+              ? size_t(options_.artboard)
+              : 0;
+      area = document_.artboards[index].bounds;
     } else {
       for (const auto& layer : document_.layers) area = area.Union(LayerBounds(*layer));
       if (!area.IsValid()) area = Rect::FromXYWH(0, 0, 100, 100);

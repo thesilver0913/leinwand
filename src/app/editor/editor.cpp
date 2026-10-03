@@ -298,6 +298,16 @@ Overlay Editor::overlay() const {
     }
     return overlay;
   }
+  if (tool == Tool::kArtboard) {
+    // The artboard tool shows the active artboard with its handles instead
+    // of the selection.
+    overlay.selection.clear();
+    overlay.key_object.reset();
+    if (const int active = active_artboard(); active >= 0) {
+      overlay.bounding_box = document().artboards[size_t(active)].bounds;
+    }
+    return overlay;
+  }
   // The box hides while the selection is being transformed, as in Illustrator.
   if (drag_.kind == DragKind::kNone || drag_.kind == DragKind::kPending ||
       drag_.kind == DragKind::kMarquee) {
@@ -390,6 +400,9 @@ void Editor::PointerDown(Point p, Modifiers modifiers, double pick) {
     case Tool::kScissors:
       ScissorsDown(p, pick);
       return;
+    case Tool::kArtboard:
+      ArtboardDown(p, pick);
+      return;
     case Tool::kRectangle:
     case Tool::kEllipse:
     case Tool::kPolygon:
@@ -451,6 +464,11 @@ void Editor::PointerMove(Point p, Modifiers modifiers) {
     case DragKind::kMoveHandle:
     case DragKind::kDragSegment:
       DirectMove();
+      return;
+    case DragKind::kArtboardDraw:
+    case DragKind::kArtboardMove:
+    case DragKind::kArtboardResize:
+      ArtboardDrag();
       return;
     default:
       break;
@@ -561,6 +579,20 @@ void Editor::PointerUp(Point p, Modifiers modifiers) {
     SetSelection(std::move(selection));
     return;
   }
+  if (kind == DragKind::kArtboardDraw || kind == DragKind::kArtboardMove ||
+      kind == DragKind::kArtboardResize) {
+    drag_.modifiers = modifiers;
+    ArtboardDrag();
+    std::optional<core::EditorState> result = std::move(drag_.preview);
+    const int index = drag_.index;
+    drag_ = {};
+    if (result) {
+      Commit(kind == DragKind::kArtboardDraw ? "add artboard" : "edit artboard",
+             std::move(*result));
+      active_artboard_ = index;
+    }
+    return;
+  }
   if (kind == DragKind::kDraw) {
     drag_.modifiers = modifiers;
     UpdateDrawing();
@@ -601,6 +633,10 @@ void Editor::SelectAll() { SetSelection(TopLevelSelectable(document())); }
 void Editor::Deselect() { SetSelection({}); }
 
 void Editor::Delete() {
+  if (tool() == Tool::kArtboard) {
+    RemoveActiveArtboard();
+    return;
+  }
   if (tool() == Tool::kDirectSelection && !anchors_.empty()) {
     DeleteSelectedAnchors();
     return;

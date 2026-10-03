@@ -4,6 +4,7 @@
 add_library(editor STATIC
   editor.cpp
   editor_align.cpp
+  editor_artboards.cpp
   editor_paths.cpp
   editor_pathfinder.cpp
   editor_snap.cpp

@@ -54,6 +54,8 @@ qt_add_qml_module(leinwand
     qml/WelcomeScreen.qml
     qml/AppMenuBar.qml
     qml/AverageDialog.qml
+    qml/CoverDialog.qml
+    qml/CoverForm.qml
     qml/ControlBar.qml
     qml/FillStroke.qml
     qml/StatusBar.qml
@@ -73,6 +75,7 @@ qt_add_qml_module(leinwand
     qml/panels/ColorPanel.qml
     qml/panels/ImportReportPanel.qml
     qml/panels/AlignPanel.qml
+    qml/panels/ArtboardsPanel.qml
     qml/panels/LayersPanel.qml
     qml/panels/PathfinderPanel.qml
     qml/panels/PropertiesPanel.qml

@@ -115,6 +115,12 @@ ApplicationWindow {
                 SpPanel { LayersPanel { anchors.fill: parent } }
             }
             KDDW.DockWidget {
+                id: artboardsPanel
+                uniqueName: "artboards"
+                title: qsTr("Artboards")
+                SpPanel { ArtboardsPanel { anchors.fill: parent } }
+            }
+            KDDW.DockWidget {
                 id: transform
                 uniqueName: "transform"
                 title: qsTr("Transform")
@@ -163,6 +169,7 @@ ApplicationWindow {
                 addDockWidget(properties, KDDW.KDDockWidgets.Location_OnRight, null,
                               Qt.size(Spectrum.standardPanelWidth + 20, 0));
                 properties.addDockWidgetAsTab(layers);
+                properties.addDockWidgetAsTab(artboardsPanel);
                 properties.addDockWidgetAsTab(transform);
                 properties.addDockWidgetAsTab(alignPanel);
                 properties.addDockWidgetAsTab(pathfinderPanel);
@@ -174,6 +181,7 @@ ApplicationWindow {
                 colorPanel.setAsCurrentTab();
                 const panels = { properties: properties, layers: layers, transform: transform,
                                  align: alignPanel, pathfinder: pathfinderPanel,
+                                 artboards: artboardsPanel,
                                  color: colorPanel, swatches: swatches, stroke: stroke };
                 for (const name of window.argValue("tabs").split(","))
                     if (panels[name])
@@ -212,6 +220,7 @@ ApplicationWindow {
     Shortcut { sequences: Shortcuts.toolEllipse; enabled: Session.hasDocument; onActivated: Session.tool = 2 }
     Shortcut { sequences: Shortcuts.toolEyedropper; enabled: Session.hasDocument; onActivated: Session.tool = 11 }
     Shortcut { sequences: Shortcuts.toolScissors; enabled: Session.hasDocument; onActivated: Session.tool = 14 }
+    Shortcut { sequences: Shortcuts.toolArtboard; enabled: Session.hasDocument; onActivated: Session.tool = 15 }
     Shortcut { sequences: Shortcuts.toolHand; enabled: Session.hasDocument; onActivated: Session.tool = 12 }
     Shortcut { sequences: Shortcuts.toolZoom; enabled: Session.hasDocument; onActivated: Session.tool = 13 }
 
@@ -225,7 +234,8 @@ ApplicationWindow {
 
     // --- Files (spec 3.3, 6) ---------------------------------------------------
 
-    readonly property var panels: [properties, layers, transform, alignPanel, pathfinderPanel, colorPanel,
+    readonly property var panels: [properties, layers, artboardsPanel, transform, alignPanel, pathfinderPanel,
+                                   colorPanel,
                                    swatches, stroke, importReport]
     property alias openDialog: openDialog
     property alias saveAsDialog: saveAsDialog
@@ -233,6 +243,7 @@ ApplicationWindow {
     property alias aboutDialog: aboutDialog
     property alias preferencesDialog: preferencesDialog
     property alias averageDialog: averageDialog
+    property alias coverDialog: coverDialog
     property alias shortcutsDialog: shortcutsDialog
 
     function showWelcome() {
@@ -318,11 +329,12 @@ ApplicationWindow {
         id: exportPngDialog
         property real scale: 1
         property bool transparent: false
+        property bool allArtboards: false
         title: qsTr("Export as PNG")
         fileMode: FileDialog.SaveFile
         defaultSuffix: "png"
         nameFilters: [qsTr("PNG images (*.png)")]
-        onAccepted: Session.exportPng(selectedFile, scale, transparent)
+        onAccepted: Session.exportPng(selectedFile, scale, transparent, allArtboards)
     }
 
     MessageDialog {
@@ -400,10 +412,18 @@ ApplicationWindow {
                 id: transparentBackground
                 text: qsTr("Transparent background")
             }
+            SpLabel { text: qsTr("Range"); subdued: false }
+            SpPicker {
+                id: exportRange
+                Layout.preferredWidth: 260
+                model: [qsTr("Active artboard"), qsTr("All artboards (one file each)")]
+                currentIndex: 0
+            }
         }
         onAccepted: {
             exportPngDialog.scale = [1, 150 / 72, 300 / 72][resolution.currentIndex];
             exportPngDialog.transparent = transparentBackground.checked;
+            exportPngDialog.allArtboards = exportRange.currentIndex === 1;
             exportPngDialog.open();
         }
     }
@@ -445,6 +465,7 @@ ApplicationWindow {
         transientParent: window
     }
     AverageDialog { id: averageDialog }
+    CoverDialog { id: coverDialog }
     PreferencesDialog {
         id: preferencesDialog
         transientParent: window

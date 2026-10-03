@@ -42,6 +42,7 @@ enum class Tool {
   kDirectSelection,
   kEyedropper,
   kScissors,  // Cuts a path where it is clicked (C).
+  kArtboard,  // Draws, moves and resizes artboards (Shift+O).
 };
 
 // What a pen click would do at a point (spec 4.2: the cursor shows it).
@@ -245,6 +246,9 @@ class Editor {
     kMoveAnchors,
     kMoveHandle,
     kDragSegment,
+    kArtboardDraw,    // The artboard tool outside every artboard.
+    kArtboardMove,    // Inside one: moves it with the artwork on it.
+    kArtboardResize,  // On a handle of the active one.
   };
   struct Drag {
     DragKind kind = DragKind::kNone;
@@ -272,6 +276,7 @@ class Editor {
     std::optional<core::Document> base;      // Document the drag edits from.
     double pick = 0.0;          // Pick radius at the press, also the snapping distance.
     std::string key_candidate;  // A selected object pressed: the key if not dragged.
+    core::IdSet carried;        // kArtboardMove: the artwork that moves along.
     core::Point grab;           // The point that snaps: a grabbed anchor, or the press.
   };
 
@@ -364,6 +369,20 @@ class Editor {
   // their mean position, along one axis or both.
   void AverageAnchors(bool horizontal, bool vertical);
 
+  // Artboards (editor_artboards.cpp, spec 7.2). The active artboard is a
+  // view state: alignment, export and "fit artboard" use it. Each edit is
+  // one undo step; the last artboard cannot be removed.
+  int active_artboard() const;
+  void SetActiveArtboard(int index);
+  void SetArtboardNamePrefix(std::string prefix) { artboard_prefix_ = std::move(prefix); }
+  void AddArtboard(const core::Rect& bounds);  // Becomes the active one.
+  void RemoveActiveArtboard();
+  void MoveArtboard(int from, int to);  // In the list (the panel's order).
+  void RenameArtboard(int index, const std::string& name);
+  void SetArtboardBounds(int index, const core::Rect& bounds);
+  // Lays the cover's artboards out again (spec 7.5); one undo step.
+  void SetCover(const core::CoverSpec& spec, const core::CoverNames& names);
+
   // Object > Compound Path (Ctrl+8, Alt+Shift+Ctrl+8). Make joins the
   // selected paths and compound paths into one compound path with the
   // backmost one's appearance (as in Illustrator), placed where the
@@ -385,6 +404,11 @@ class Editor {
   core::IdGenerator ids_;
   const geometry::PathOpsEngine* path_ops_ = nullptr;
   std::optional<core::Rect> KeyObjectBounds() const;  // Document coordinates.
+  void ArtboardDown(core::Point p, double pick);
+  void ArtboardDrag();  // Updates drag_.preview.
+  std::string NewArtboardName(const core::Document& document) const;
+  int active_artboard_ = 0;
+  std::string artboard_prefix_ = "Artboard";
   AlignTo align_to_ = AlignTo::kSelection;
   std::string key_object_;
   Drag drag_;

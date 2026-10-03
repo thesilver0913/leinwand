@@ -36,6 +36,10 @@ class Session : public QObject {
   // The Align panel: 0 selection, 1 key object, 2 artboard.
   Q_PROPERTY(int alignTo READ alignTo WRITE setAlignTo NOTIFY documentChanged)
   Q_PROPERTY(bool hasKeyObject READ hasKeyObject NOTIFY documentChanged)
+  // The Artboards panel: {name, x, y, width, height} in list order.
+  Q_PROPERTY(QVariantList artboards READ artboards NOTIFY documentChanged)
+  Q_PROPERTY(int activeArtboard READ activeArtboard WRITE setActiveArtboard NOTIFY documentChanged)
+  Q_PROPERTY(bool hasCover READ hasCover NOTIFY documentChanged)
   Q_PROPERTY(int anchorCount READ anchorCount NOTIFY documentChanged)
   Q_PROPERTY(QString undoAction READ undoAction NOTIFY documentChanged)
   Q_PROPERTY(QString redoAction READ redoAction NOTIFY documentChanged)
@@ -94,6 +98,10 @@ class Session : public QObject {
   int alignTo() const { return static_cast<int>(editor_->align_to()); }
   void setAlignTo(int to);
   bool hasKeyObject() const { return !editor_->key_object().empty(); }
+  QVariantList artboards() const;
+  int activeArtboard() const { return editor_->active_artboard(); }
+  bool hasCover() const { return editor_->document().cover.has_value(); }
+  void setActiveArtboard(int index);
   int anchorCount() const { return static_cast<int>(editor_->anchor_selection().size()); }
   QString undoAction() const;
   QString redoAction() const;
@@ -133,7 +141,10 @@ class Session : public QObject {
   // Export the first artboard (spec 6.1, 6 "PNG").
   Q_INVOKABLE QVariantList svgExportIssues() const;
   Q_INVOKABLE bool exportSvg(const QUrl& url);
-  Q_INVOKABLE bool exportPng(const QUrl& url, double scale, bool transparent);
+  // The active artboard, or every artboard to its own file (the name gets
+  // the artboard's name after a hyphen).
+  Q_INVOKABLE bool exportPng(const QUrl& url, double scale, bool transparent,
+                             bool all_artboards = false);
   // Opens a recovery file as an unsaved document; it is deleted once the
   // document is saved or closed.
   Q_INVOKABLE bool restore(const QString& path);
@@ -174,6 +185,19 @@ class Session : public QObject {
   Q_INVOKABLE void distributeSpacing(bool horizontal, double spacing);
   // Object > Path > Average: 0 horizontal, 1 vertical, 2 both.
   Q_INVOKABLE void average(int axis);
+  // Artboards (spec 7.2): a new one goes to the right of the last.
+  // Book covers (spec 7.5). Lengths in points; a NaN spine is worked out
+  // from the pages and the paper thickness.
+  Q_INVOKABLE void newCoverDocument(double width, double height, int pages, double thickness,
+                                    double spine, double bleed);
+  Q_INVOKABLE void setCover(double width, double height, int pages, double thickness, double spine,
+                            double bleed);
+  Q_INVOKABLE QVariantMap cover() const;  // Empty when the document is not a cover.
+  Q_INVOKABLE void addArtboard();
+  Q_INVOKABLE void removeArtboard();  // The active one; the last one stays.
+  Q_INVOKABLE void moveArtboard(int from, int to);
+  Q_INVOKABLE void renameArtboard(int index, const QString& name);
+  Q_INVOKABLE void setArtboardBounds(int index, double x, double y, double width, double height);
   Q_INVOKABLE void makeCompoundPath();     // Ctrl+8
   Q_INVOKABLE void releaseCompoundPath();  // Alt+Shift+Ctrl+8
 

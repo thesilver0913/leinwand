@@ -12,6 +12,7 @@ add_executable(core_tests
   core/style_test.cpp
   core/layers_test.cpp
   core/number_test.cpp
+  core/cover_test.cpp
 )
 target_link_libraries(core_tests PRIVATE core Catch2::Catch2WithMain)
 catch_discover_tests(core_tests)
@@ -35,6 +36,7 @@ add_executable(editor_tests
   editor/number_input_test.cpp
   editor/pathfinder_test.cpp
   editor/align_test.cpp
+  editor/artboards_test.cpp
 )
 # The pathfinder tests run on render's Skia PathOps engine.
 target_link_libraries(editor_tests PRIVATE editor render Catch2::Catch2WithMain)

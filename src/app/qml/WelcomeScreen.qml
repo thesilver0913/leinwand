@@ -33,12 +33,24 @@ Window {
         { group: qsTr("Print"), name: qsTr("B5"), w: 182, h: 257, unit: 0, bleed: 3 },
         { group: qsTr("Print"), name: qsTr("Postcard"), w: 100, h: 148, unit: 0, bleed: 3 },
         { group: qsTr("Print"), name: qsTr("Business card"), w: 91, h: 55, unit: 0, bleed: 3 },
+        // Book covers: back, spine and front from the page count (spec 7.5).
+        { group: qsTr("Book"), name: qsTr("Book cover"), w: 2 * 148 + 2, h: 210, unit: 0, bleed: 3, cover: true },
+        // Japanese sizes (JIS B series, book formats, envelopes).
+        { group: qsTr("Print"), name: qsTr("A5"), w: 148, h: 210, unit: 0, bleed: 3 },
+        { group: qsTr("Print"), name: qsTr("B4"), w: 257, h: 364, unit: 0, bleed: 3 },
+        { group: qsTr("Print"), name: qsTr("B6"), w: 128, h: 182, unit: 0, bleed: 3 },
+        { group: qsTr("Book"), name: qsTr("Bunko (A6)"), w: 105, h: 148, unit: 0, bleed: 3 },
+        { group: qsTr("Book"), name: qsTr("Shinsho"), w: 103, h: 182, unit: 0, bleed: 3 },
+        { group: qsTr("Book"), name: qsTr("Shiroku-ban"), w: 127, h: 188, unit: 0, bleed: 3 },
+        { group: qsTr("Book"), name: qsTr("Kiku-ban"), w: 150, h: 220, unit: 0, bleed: 3 },
+        { group: qsTr("Print"), name: qsTr("Envelope Naga 3"), w: 120, h: 235, unit: 0, bleed: 3 },
         { group: qsTr("Web"), name: "1920 × 1080", w: 1920, h: 1080, unit: 2, bleed: 0 },
         { group: qsTr("Web"), name: "1280 × 720", w: 1280, h: 720, unit: 2, bleed: 0 },
         { group: qsTr("Icon"), name: "256 × 256", w: 256, h: 256, unit: 2, bleed: 0 },
         { group: qsTr("Icon"), name: "1024 × 1024", w: 1024, h: 1024, unit: 2, bleed: 0 }
     ]
     property int selectedPreset: 0
+    readonly property bool coverMode: presets[selectedPreset].cover === true
     property bool listView: false
 
     function applyPreset(i) {
@@ -50,6 +62,14 @@ Window {
         bleedField.value = p.bleed;
     }
     function create() {
+        if (coverMode) {
+            const c = coverForm.values();
+            guard(() => {
+                Session.newCoverDocument(c.width, c.height, c.pages, c.thickness, c.spine, c.bleed);
+                root.close();
+            });
+            return;
+        }
         const k = units[unitPicker.currentIndex].points;
         const w = widthField.value * k, h = heightField.value * k, b = bleedField.value * k;
         guard(() => {
@@ -116,7 +136,12 @@ Window {
                     }
                 }
             }
+            CoverForm {
+                id: coverForm
+                visible: root.coverMode
+            }
             GridLayout {
+                visible: !root.coverMode
                 columns: 4
                 columnSpacing: 8
                 rowSpacing: 6
@@ -130,7 +155,7 @@ Window {
                 SpNumberField { id: bleedField; unit: ""; decimals: 2; minimum: 0; Layout.preferredWidth: 90; onCommitted: v => value = v }
                 SpLabel { text: qsTr("Color mode") }
                 SpPicker {
-                    // Phases 1-3 create RGB documents only (spec 3).
+                    // Phases 1-2 create RGB documents only (spec 3).
                     model: ["RGB"]
                     enabled: false
                     Layout.preferredWidth: 90

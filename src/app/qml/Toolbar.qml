@@ -18,6 +18,7 @@ Rectangle {
     // Tool ids follow Session.tool. Shortcuts are listed in the tooltips.
     readonly property var groups: [
         [{ tool: 0, icon: "Select", tip: qsTr("Selection Tool (V)") }],
+        [{ tool: 15, icon: "Artboard", tip: qsTr("Artboard Tool (Shift+O)") }],
         [{ tool: 10, icon: "DirectSelect", tip: qsTr("Direct Selection Tool (A)") }],
         [{ tool: 6, icon: "Pen", tip: qsTr("Pen Tool (P)") },
          { tool: 7, icon: "PenAdd", tip: qsTr("Add Anchor Point Tool (+)") },

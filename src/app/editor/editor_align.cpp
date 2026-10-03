@@ -98,7 +98,7 @@ void Editor::AlignSelection(AlignEdge edge) {
       it->second.second.push_back(a.index);
     }
     const Rect target = align_to_ == AlignTo::kArtboard && !document().artboards.empty()
-                            ? document().artboards[0].bounds
+                            ? document().artboards[size_t(active_artboard())].bounds
                             : bounds;
     const double line = EdgeOf(target, edge);
     core::Document result = document();
@@ -122,7 +122,7 @@ void Editor::AlignSelection(AlignEdge edge) {
   std::optional<Rect> target;
   const std::string key = key_object();
   if ((align_to_ == AlignTo::kArtboard || placed.size() == 1) && !document().artboards.empty()) {
-    target = document().artboards[0].bounds;
+    target = document().artboards[size_t(active_artboard())].bounds;
   } else if (align_to_ == AlignTo::kKeyObject && !key.empty()) {
     target = KeyObjectBounds();
   }

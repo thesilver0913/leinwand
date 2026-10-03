@@ -176,178 +176,211 @@
     </message>
     <message>
         <location filename="../src/app/qml/AppMenuBar.qml" line="50"/>
+        <source>Co&amp;ver Setup...</source>
+        <translation>表紙の設定(&amp;V)...</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="52"/>
         <source>E&amp;xit</source>
         <translation>終了(&amp;X)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="53"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="55"/>
         <source>&amp;Edit</source>
         <translation>編集(&amp;E)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="55"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="57"/>
         <source>&amp;Undo</source>
         <translation>取り消し(&amp;U)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="61"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="63"/>
         <source>&amp;Redo</source>
         <translation>やり直し(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="67"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="69"/>
         <source>C&amp;lear</source>
         <translation>消去(&amp;L)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="69"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="71"/>
         <source>&amp;Keyboard Shortcuts...</source>
         <translation>キーボードショートカット(&amp;K)...</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="70"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="72"/>
         <source>Pre&amp;ferences...</source>
         <translation>環境設定(&amp;F)...</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="73"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="75"/>
         <source>&amp;Object</source>
         <translation>オブジェクト(&amp;O)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="76"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="78"/>
         <source>&amp;Arrange</source>
         <translation>重ね順(&amp;A)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="77"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="79"/>
         <source>Bring to &amp;Front</source>
         <translation>最前面へ(&amp;F)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="78"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="80"/>
         <source>Bring &amp;Forward</source>
         <translation>前面へ(&amp;O)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="79"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="81"/>
         <source>Send &amp;Backward</source>
         <translation>背面へ(&amp;B)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="80"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="82"/>
         <source>Send to Bac&amp;k</source>
         <translation>最背面へ(&amp;K)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="83"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="85"/>
         <source>&amp;Group</source>
         <translation>グループ(&amp;G)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="84"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="86"/>
         <source>&amp;Ungroup</source>
         <translation>グループ解除(&amp;U)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="87"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="89"/>
         <source>&amp;Path</source>
         <translation>パス(&amp;P)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="88"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="90"/>
         <source>&amp;Join</source>
         <translation>連結(&amp;J)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="89"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="91"/>
         <source>&amp;Average...</source>
         <translation>平均(&amp;A)...</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="92"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="94"/>
         <source>Compound Pat&amp;h</source>
         <translation>複合パス(&amp;H)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="93"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="95"/>
         <source>&amp;Make</source>
         <translation>作成(&amp;M)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="94"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="96"/>
         <source>&amp;Release</source>
         <translation>解除(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="98"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="100"/>
         <source>&amp;Select</source>
         <translation>選択(&amp;S)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="100"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="102"/>
         <source>&amp;All</source>
         <translation>すべてを選択(&amp;A)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="101"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="103"/>
         <source>&amp;Deselect</source>
         <translation>選択を解除(&amp;D)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="104"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="106"/>
         <source>&amp;View</source>
         <translation>表示(&amp;V)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="106"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="108"/>
         <source>&amp;Outline</source>
         <translation>アウトライン(&amp;O)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="113"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="115"/>
         <source>Zoom &amp;In</source>
         <translation>ズームイン(&amp;I)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="114"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="116"/>
         <source>Zoom &amp;Out</source>
         <translation>ズームアウト(&amp;O)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="115"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="117"/>
         <source>&amp;Fit Artboard in Window</source>
         <translation>アートボードを全体表示(&amp;F)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="116"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="118"/>
+        <source>Fit A&amp;ll in Window</source>
+        <translation>すべてのアートボードを全体表示(&amp;L)</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="119"/>
         <source>&amp;Actual Size</source>
         <translation>100% 表示(&amp;A)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="119"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="122"/>
         <source>&amp;Smart Guides</source>
         <translation>スマートガイド(&amp;S)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="128"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="131"/>
         <source>&amp;Window</source>
         <translation>ウィンドウ(&amp;W)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="144"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="147"/>
         <source>&amp;Help</source>
         <translation>ヘルプ(&amp;H)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="145"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="148"/>
         <source>&amp;Welcome Screen</source>
         <translation>ウェルカムスクリーン(&amp;W)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/AppMenuBar.qml" line="146"/>
+        <location filename="../src/app/qml/AppMenuBar.qml" line="149"/>
         <source>&amp;About Leinwand</source>
         <translation>Leinwand について(&amp;A)</translation>
+    </message>
+</context>
+<context>
+    <name>ArtboardsPanel</name>
+    <message>
+        <location filename="../src/app/qml/panels/ArtboardsPanel.qml" line="116"/>
+        <source>Move Up</source>
+        <translation>上へ移動</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/panels/ArtboardsPanel.qml" line="122"/>
+        <source>Move Down</source>
+        <translation>下へ移動</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/panels/ArtboardsPanel.qml" line="128"/>
+        <source>New Artboard</source>
+        <translation>新規アートボード</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/panels/ArtboardsPanel.qml" line="133"/>
+        <source>Delete Artboard</source>
+        <translation>アートボードを削除</translation>
     </message>
 </context>
 <context>
@@ -494,6 +527,87 @@
         <location filename="../src/app/qml/ControlBar.qml" line="115"/>
         <source>H</source>
         <translation>H</translation>
+    </message>
+</context>
+<context>
+    <name>CoverDialog</name>
+    <message>
+        <location filename="../src/app/qml/CoverDialog.qml" line="10"/>
+        <source>Cover Setup</source>
+        <translation>表紙の設定</translation>
+    </message>
+</context>
+<context>
+    <name>CoverForm</name>
+    <message>
+        <location filename="../src/app/qml/CoverForm.qml" line="13"/>
+        <source>A5</source>
+        <translation>A5</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/CoverForm.qml" line="13"/>
+        <source>B5</source>
+        <translation>B5</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/CoverForm.qml" line="14"/>
+        <source>A4</source>
+        <translation>A4</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/CoverForm.qml" line="14"/>
+        <source>B6</source>
+        <translation>B6</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/CoverForm.qml" line="15"/>
+        <source>Bunko (A6)</source>
+        <translation>文庫(A6)</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/CoverForm.qml" line="15"/>
+        <source>Shinsho</source>
+        <translation>新書</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/CoverForm.qml" line="16"/>
+        <source>Shiroku-ban</source>
+        <translation>四六判</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/CoverForm.qml" line="50"/>
+        <source>Size</source>
+        <translation>判型</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/CoverForm.qml" line="56"/>
+        <source>Pages</source>
+        <translation>ページ数</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/CoverForm.qml" line="59"/>
+        <source>Paper thickness</source>
+        <translation>本文用紙の厚さ</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/CoverForm.qml" line="63"/>
+        <source>mm per sheet</source>
+        <translation>mm(1枚あたり)</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/CoverForm.qml" line="65"/>
+        <source>Spine width</source>
+        <translation>背幅</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/CoverForm.qml" line="67"/>
+        <source>From pages</source>
+        <translation>ページ数から計算</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/CoverForm.qml" line="72"/>
+        <source>Bleed</source>
+        <translation>裁ち落とし</translation>
     </message>
 </context>
 <context>
@@ -662,149 +776,169 @@
     </message>
     <message>
         <location filename="../src/app/qml/Main.qml" line="120"/>
+        <source>Artboards</source>
+        <translation>アートボード</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/Main.qml" line="126"/>
         <source>Transform</source>
         <translation>変形</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="126"/>
+        <location filename="../src/app/qml/Main.qml" line="132"/>
         <source>Align</source>
         <translation>整列</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="132"/>
+        <location filename="../src/app/qml/Main.qml" line="138"/>
         <source>Pathfinder</source>
         <translation>パスファインダー</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="138"/>
+        <location filename="../src/app/qml/Main.qml" line="144"/>
         <source>Color</source>
         <translation>カラー</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="144"/>
+        <location filename="../src/app/qml/Main.qml" line="150"/>
         <source>Swatches</source>
         <translation>スウォッチ</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="150"/>
+        <location filename="../src/app/qml/Main.qml" line="156"/>
         <source>Stroke</source>
         <translation>線</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="156"/>
+        <location filename="../src/app/qml/Main.qml" line="162"/>
         <source>Import Report</source>
         <translation>読み込みレポート</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="290"/>
+        <location filename="../src/app/qml/Main.qml" line="301"/>
         <source>Open</source>
         <translation>開く</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="291"/>
+        <location filename="../src/app/qml/Main.qml" line="302"/>
         <source>Leinwand and SVG files (*.lwd *.svg)</source>
         <translation>Leinwand と SVG のファイル (*.lwd *.svg)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="291"/>
-        <location filename="../src/app/qml/Main.qml" line="301"/>
+        <location filename="../src/app/qml/Main.qml" line="302"/>
+        <location filename="../src/app/qml/Main.qml" line="312"/>
         <source>Leinwand documents (*.lwd)</source>
         <translation>Leinwand ドキュメント (*.lwd)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="292"/>
-        <location filename="../src/app/qml/Main.qml" line="314"/>
+        <location filename="../src/app/qml/Main.qml" line="303"/>
+        <location filename="../src/app/qml/Main.qml" line="325"/>
         <source>SVG files (*.svg)</source>
         <translation>SVG ファイル (*.svg)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="298"/>
+        <location filename="../src/app/qml/Main.qml" line="309"/>
         <source>Save As</source>
         <translation>別名で保存</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="311"/>
-        <location filename="../src/app/qml/Main.qml" line="415"/>
+        <location filename="../src/app/qml/Main.qml" line="322"/>
+        <location filename="../src/app/qml/Main.qml" line="435"/>
         <source>Export as SVG</source>
         <translation>SVG形式で書き出し</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="321"/>
+        <location filename="../src/app/qml/Main.qml" line="333"/>
         <source>Export as PNG</source>
         <translation>PNG形式で書き出し</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="324"/>
+        <location filename="../src/app/qml/Main.qml" line="336"/>
         <source>PNG images (*.png)</source>
         <translation>PNG 画像 (*.png)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="330"/>
+        <location filename="../src/app/qml/Main.qml" line="342"/>
         <source>Save changes to %1?</source>
         <translation>%1 への変更を保存しますか?</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="331"/>
+        <location filename="../src/app/qml/Main.qml" line="343"/>
         <source>Your changes will be lost if you don&apos;t save them.</source>
         <translation>保存しないと、変更は失われます。</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="363"/>
+        <location filename="../src/app/qml/Main.qml" line="375"/>
         <source>Leinwand did not close normally last time.</source>
         <translation>前回、Leinwand は正常に終了しませんでした。</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="364"/>
+        <location filename="../src/app/qml/Main.qml" line="376"/>
         <source>Recover the unsaved changes to %1 from %2?</source>
         <translation>%2 時点の %1 の未保存の変更を復元しますか?</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="365"/>
+        <location filename="../src/app/qml/Main.qml" line="377"/>
         <source>an untitled document</source>
         <translation>名称未設定のドキュメント</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="386"/>
+        <location filename="../src/app/qml/Main.qml" line="398"/>
         <source>PNG Export Options</source>
         <translation>PNG 書き出しオプション</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="392"/>
+        <location filename="../src/app/qml/Main.qml" line="404"/>
         <source>Resolution</source>
         <translation>解像度</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="396"/>
+        <location filename="../src/app/qml/Main.qml" line="408"/>
         <source>Screen (72 ppi)</source>
         <translation>スクリーン (72 ppi)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="396"/>
+        <location filename="../src/app/qml/Main.qml" line="408"/>
         <source>Medium (150 ppi)</source>
         <translation>高解像度 (150 ppi)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="396"/>
+        <location filename="../src/app/qml/Main.qml" line="408"/>
         <source>High (300 ppi)</source>
         <translation>高画質 (300 ppi)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="401"/>
+        <location filename="../src/app/qml/Main.qml" line="413"/>
         <source>Transparent background</source>
         <translation>背景を透明にする</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="427"/>
+        <location filename="../src/app/qml/Main.qml" line="415"/>
+        <source>Range</source>
+        <translation>範囲</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/Main.qml" line="419"/>
+        <source>Active artboard</source>
+        <translation>作業中のアートボード</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/Main.qml" line="419"/>
+        <source>All artboards (one file each)</source>
+        <translation>すべてのアートボード(アートボードごとのファイル)</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/Main.qml" line="447"/>
         <source>SVG cannot hold everything in this document as it is:</source>
         <translation>このドキュメントの次の内容は、SVG ではそのまま表せません:</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="464"/>
+        <location filename="../src/app/qml/Main.qml" line="485"/>
         <source>About Leinwand</source>
         <translation>Leinwand について</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Main.qml" line="470"/>
+        <location filename="../src/app/qml/Main.qml" line="491"/>
         <source>Leinwand %1, a vector graphics editor.
 Licensed under the GNU GPL, version 3 or later.
 Not affiliated with or endorsed by Adobe. Adobe, Illustrator and Spectrum are
@@ -1118,74 +1252,106 @@ Adobe Inc. の商標です。</translation>
 <context>
     <name>Session</name>
     <message>
-        <location filename="../src/app/session.cpp" line="226"/>
+        <location filename="../src/app/session.cpp" line="188"/>
+        <source>Artboard</source>
+        <translation>アートボード</translation>
+    </message>
+    <message>
+        <location filename="../src/app/session.cpp" line="229"/>
+        <location filename="../src/app/session.cpp" line="574"/>
         <source>Layer 1</source>
         <translation>レイヤー 1</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="229"/>
+        <location filename="../src/app/session.cpp" line="230"/>
+        <source>Artboard %1</source>
+        <translation>アートボード %1</translation>
+    </message>
+    <message>
+        <location filename="../src/app/session.cpp" line="233"/>
+        <location filename="../src/app/session.cpp" line="578"/>
         <source>Untitled-%1</source>
         <translation>名称未設定-%1</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="238"/>
-        <location filename="../src/app/session.cpp" line="260"/>
+        <location filename="../src/app/session.cpp" line="242"/>
+        <location filename="../src/app/session.cpp" line="264"/>
         <source>Could not read %1.</source>
         <translation>%1 を読み込めませんでした。</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="242"/>
+        <location filename="../src/app/session.cpp" line="246"/>
         <source>%1 is not a readable SVG file (%2).</source>
         <translation>%1 は読み込める SVG ファイルではありません (%2)。</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="262"/>
+        <location filename="../src/app/session.cpp" line="266"/>
         <source>%1 is not a Leinwand document.</source>
         <translation>%1 は Leinwand のドキュメントではありません。</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="264"/>
+        <location filename="../src/app/session.cpp" line="268"/>
         <source>%1 was made with a newer version of Leinwand (format %2). Update Leinwand to open it.</source>
         <translation>%1 は新しいバージョンの Leinwand で作成されたファイルです (形式 %2)。開くには Leinwand を更新してください。</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="268"/>
+        <location filename="../src/app/session.cpp" line="272"/>
         <source>%1 is damaged and cannot be opened (%2).</source>
         <translation>%1 は壊れているため開けません (%2)。</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="296"/>
+        <location filename="../src/app/session.cpp" line="300"/>
         <source>Could not save %1 (%2). The file on disk was not changed.</source>
         <translation>%1 を保存できませんでした (%2)。ディスク上のファイルは変更されていません。</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="319"/>
-        <location filename="../src/app/session.cpp" line="332"/>
+        <location filename="../src/app/session.cpp" line="325"/>
+        <location filename="../src/app/session.cpp" line="354"/>
         <source>Could not write %1.</source>
         <translation>%1 を書き出せませんでした。</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="327"/>
+        <location filename="../src/app/session.cpp" line="333"/>
         <source>The document has no artboard to export.</source>
         <translation>書き出すアートボードがありません。</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="330"/>
+        <location filename="../src/app/session.cpp" line="352"/>
         <source>The image would be too large at this resolution.</source>
         <translation>この解像度では画像が大きくなりすぎます。</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="338"/>
+        <location filename="../src/app/session.cpp" line="362"/>
         <source>The recovery file could not be read.</source>
         <translation>復元データを読み込めませんでした。</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="351"/>
+        <location filename="../src/app/session.cpp" line="375"/>
         <source>Recovered</source>
         <translation>復元したドキュメント</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="538"/>
+        <location filename="../src/app/session.cpp" line="560"/>
+        <source>Cover spread</source>
+        <translation>表紙(見開き)</translation>
+    </message>
+    <message>
+        <location filename="../src/app/session.cpp" line="561"/>
+        <source>Back cover</source>
+        <translation>表4</translation>
+    </message>
+    <message>
+        <location filename="../src/app/session.cpp" line="562"/>
+        <source>Spine</source>
+        <translation>背</translation>
+    </message>
+    <message>
+        <location filename="../src/app/session.cpp" line="563"/>
+        <source>Front cover</source>
+        <translation>表1</translation>
+    </message>
+    <message>
+        <location filename="../src/app/session.cpp" line="672"/>
         <source>The path operation could not be completed. Nothing was changed.</source>
         <translation>パスの演算を完了できませんでした。何も変更していません。</translation>
     </message>
@@ -1270,7 +1436,7 @@ Adobe Inc. の商標です。</translation>
     </message>
     <message>
         <location filename="../src/app/qml/ShortcutsDialog.qml" line="30"/>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="134"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="135"/>
         <source>Close</source>
         <translation>閉じる</translation>
     </message>
@@ -1351,182 +1517,197 @@ Adobe Inc. の商標です。</translation>
     </message>
     <message>
         <location filename="../src/app/qml/ShortcutsDialog.qml" line="37"/>
+        <source>Artboards</source>
+        <translation>アートボード</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="38"/>
         <source>Align</source>
         <translation>整列</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="37"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="38"/>
         <source>Average</source>
         <translation>平均</translation>
     </message>
     <message>
         <location filename="../src/app/qml/ShortcutsDialog.qml" line="38"/>
+        <source>Fit All in Window</source>
+        <translation>すべてのアートボードを全体表示</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="38"/>
+        <source>Artboard Tool</source>
+        <translation>アートボードツール</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="39"/>
         <source>All</source>
         <translation>すべてを選択</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="38"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="39"/>
         <source>Deselect</source>
         <translation>選択を解除</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="39"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="40"/>
         <source>Outline</source>
         <translation>アウトライン</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="39"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="40"/>
         <source>Zoom In</source>
         <translation>ズームイン</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="39"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="40"/>
         <source>Zoom Out</source>
         <translation>ズームアウト</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="40"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="41"/>
         <source>Fit Artboard in Window</source>
         <translation>アートボードを全体表示</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="40"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="41"/>
         <source>Actual Size</source>
         <translation>100% 表示</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="41"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="42"/>
         <source>Smart Guides</source>
         <translation>スマートガイド</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="42"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="43"/>
         <source>Selection Tool</source>
         <translation>選択ツール</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="42"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="43"/>
         <source>Direct Selection Tool</source>
         <translation>ダイレクト選択ツール</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="43"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="44"/>
         <source>Pen Tool</source>
         <translation>ペンツール</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="43"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="44"/>
         <source>Add Anchor Point Tool</source>
         <translation>アンカーポイントの追加ツール</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="44"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="45"/>
         <source>Delete Anchor Point Tool</source>
         <translation>アンカーポイントの削除ツール</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="44"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="45"/>
         <source>Anchor Point Tool</source>
         <translation>アンカーポイントツール</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="45"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="46"/>
         <source>Line Segment Tool</source>
         <translation>直線ツール</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="45"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="46"/>
         <source>Rectangle Tool</source>
         <translation>長方形ツール</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="46"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="47"/>
         <source>Ellipse Tool</source>
         <translation>楕円形ツール</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="46"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="47"/>
         <source>Polygon Tool</source>
         <translation>多角形ツール</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="46"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="47"/>
         <source>Star Tool</source>
         <translation>スターツール</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="47"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="48"/>
         <source>Eyedropper Tool</source>
         <translation>スポイトツール</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="47"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="48"/>
         <source>Hand Tool</source>
         <translation>手のひらツール</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="47"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="48"/>
         <source>Zoom Tool</source>
         <translation>ズームツール</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="47"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="48"/>
         <source>Scissors Tool</source>
         <translation>はさみツール</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="48"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="49"/>
         <source>Toggle Fill and Stroke</source>
         <translation>塗りと線の切り替え</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="48"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="49"/>
         <source>Swap Fill and Stroke</source>
         <translation>塗りと線を入れ替え</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="49"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="50"/>
         <source>Default Fill and Stroke</source>
         <translation>初期設定の塗りと線</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="49"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="50"/>
         <source>None</source>
         <translation>なし</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="91"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="92"/>
         <source>Press keys...</source>
         <translation>キーを押してください...</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="112"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="113"/>
         <source>%1 is also used by: %2</source>
         <translation>%1 は次でも使われています: %2</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="130"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="131"/>
         <source>Reset All</source>
         <translation>すべてリセット</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="131"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="132"/>
         <source>Export...</source>
         <translation>書き出し...</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="132"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="133"/>
         <source>Import...</source>
         <translation>読み込み...</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="142"/>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="147"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="143"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="148"/>
         <source>Shortcut sets (*.json)</source>
         <translation>ショートカットセット (*.json)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/ShortcutsDialog.qml" line="148"/>
+        <location filename="../src/app/qml/ShortcutsDialog.qml" line="149"/>
         <source>This file is not a shortcut set.</source>
         <translation>このファイルはショートカットセットではありません。</translation>
     </message>
@@ -1643,6 +1824,11 @@ Adobe Inc. の商標です。</translation>
         <location filename="../src/app/qml/StatusBar.qml" line="18"/>
         <source>Scissors</source>
         <translation>はさみ</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/StatusBar.qml" line="18"/>
+        <source>Artboard</source>
+        <translation>アートボード</translation>
     </message>
     <message>
         <location filename="../src/app/qml/StatusBar.qml" line="47"/>
@@ -1838,71 +2024,76 @@ Adobe Inc. の商標です。</translation>
     </message>
     <message>
         <location filename="../src/app/qml/Toolbar.qml" line="21"/>
+        <source>Artboard Tool (Shift+O)</source>
+        <translation>アートボードツール (Shift+O)</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/Toolbar.qml" line="22"/>
         <source>Direct Selection Tool (A)</source>
         <translation>ダイレクト選択ツール (A)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Toolbar.qml" line="22"/>
+        <location filename="../src/app/qml/Toolbar.qml" line="23"/>
         <source>Pen Tool (P)</source>
         <translation>ペンツール (P)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Toolbar.qml" line="23"/>
+        <location filename="../src/app/qml/Toolbar.qml" line="24"/>
         <source>Add Anchor Point Tool (+)</source>
         <translation>アンカーポイントの追加ツール (+)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Toolbar.qml" line="24"/>
+        <location filename="../src/app/qml/Toolbar.qml" line="25"/>
         <source>Delete Anchor Point Tool (-)</source>
         <translation>アンカーポイントの削除ツール (-)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Toolbar.qml" line="25"/>
+        <location filename="../src/app/qml/Toolbar.qml" line="26"/>
         <source>Anchor Point Tool (Shift+C)</source>
         <translation>アンカーポイントツール (Shift+C)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Toolbar.qml" line="26"/>
+        <location filename="../src/app/qml/Toolbar.qml" line="27"/>
         <source>Line Segment Tool (%1)</source>
         <translation>直線ツール (%1)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Toolbar.qml" line="27"/>
+        <location filename="../src/app/qml/Toolbar.qml" line="28"/>
         <source>Scissors Tool (C)</source>
         <translation>はさみツール (C)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Toolbar.qml" line="28"/>
+        <location filename="../src/app/qml/Toolbar.qml" line="29"/>
         <source>Rectangle Tool (M)</source>
         <translation>長方形ツール (M)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Toolbar.qml" line="29"/>
+        <location filename="../src/app/qml/Toolbar.qml" line="30"/>
         <source>Ellipse Tool (L)</source>
         <translation>楕円形ツール (L)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Toolbar.qml" line="30"/>
+        <location filename="../src/app/qml/Toolbar.qml" line="31"/>
         <source>Polygon Tool</source>
         <translation>多角形ツール</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Toolbar.qml" line="31"/>
+        <location filename="../src/app/qml/Toolbar.qml" line="32"/>
         <source>Star Tool</source>
         <translation>スターツール</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Toolbar.qml" line="32"/>
+        <location filename="../src/app/qml/Toolbar.qml" line="33"/>
         <source>Eyedropper Tool (I)</source>
         <translation>スポイトツール (I)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Toolbar.qml" line="33"/>
+        <location filename="../src/app/qml/Toolbar.qml" line="34"/>
         <source>Hand Tool (H)</source>
         <translation>手のひらツール (H)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/Toolbar.qml" line="34"/>
+        <location filename="../src/app/qml/Toolbar.qml" line="35"/>
         <source>Zoom Tool (Z)</source>
         <translation>ズームツール (Z)</translation>
     </message>
@@ -2028,6 +2219,10 @@ Adobe Inc. の商標です。</translation>
         <location filename="../src/app/qml/WelcomeScreen.qml" line="33"/>
         <location filename="../src/app/qml/WelcomeScreen.qml" line="34"/>
         <location filename="../src/app/qml/WelcomeScreen.qml" line="35"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="39"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="40"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="41"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="46"/>
         <source>Print</source>
         <translation>印刷</translation>
     </message>
@@ -2057,79 +2252,133 @@ Adobe Inc. の商標です。</translation>
         <translation>名刺</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/WelcomeScreen.qml" line="36"/>
         <location filename="../src/app/qml/WelcomeScreen.qml" line="37"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="42"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="43"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="44"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="45"/>
+        <source>Book</source>
+        <translation>本</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="37"/>
+        <source>Book cover</source>
+        <translation>同人誌・冊子の表紙</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="39"/>
+        <source>A5</source>
+        <translation>A5</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="40"/>
+        <source>B4</source>
+        <translation>B4</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="41"/>
+        <source>B6</source>
+        <translation>B6</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="42"/>
+        <source>Bunko (A6)</source>
+        <translation>文庫(A6)</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="43"/>
+        <source>Shinsho</source>
+        <translation>新書</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="44"/>
+        <source>Shiroku-ban</source>
+        <translation>四六判</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="45"/>
+        <source>Kiku-ban</source>
+        <translation>菊判</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="46"/>
+        <source>Envelope Naga 3</source>
+        <translation>長形3号封筒</translation>
+    </message>
+    <message>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="47"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="48"/>
         <source>Web</source>
         <translation>Web</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/WelcomeScreen.qml" line="38"/>
-        <location filename="../src/app/qml/WelcomeScreen.qml" line="39"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="49"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="50"/>
         <source>Icon</source>
         <translation>アイコン</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/WelcomeScreen.qml" line="72"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="92"/>
         <source>New Document</source>
         <translation>新規ドキュメント</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/WelcomeScreen.qml" line="123"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="148"/>
         <source>Width</source>
         <translation>幅</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/WelcomeScreen.qml" line="125"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="150"/>
         <source>Height</source>
         <translation>高さ</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/WelcomeScreen.qml" line="127"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="152"/>
         <source>Units</source>
         <translation>単位</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/WelcomeScreen.qml" line="129"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="154"/>
         <source>Bleed</source>
         <translation>裁ち落とし</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/WelcomeScreen.qml" line="131"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="156"/>
         <source>Color mode</source>
         <translation>カラーモード</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/WelcomeScreen.qml" line="141"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="166"/>
         <source>Open...</source>
         <translation>開く...</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/WelcomeScreen.qml" line="144"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="169"/>
         <source>Show at startup</source>
         <translation>起動時に表示</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/WelcomeScreen.qml" line="148"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="173"/>
         <source>Create</source>
         <translation>作成</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/WelcomeScreen.qml" line="160"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="185"/>
         <source>Recent Files</source>
         <translation>最近使用したファイル</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/WelcomeScreen.qml" line="163"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="188"/>
         <source>Grid</source>
         <translation>グリッド</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/WelcomeScreen.qml" line="163"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="188"/>
         <source>List</source>
         <translation>リスト</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/WelcomeScreen.qml" line="169"/>
+        <location filename="../src/app/qml/WelcomeScreen.qml" line="194"/>
         <source>Files you open or save appear here.</source>
         <translation>開いたり保存したりしたファイルがここに表示されます。</translation>
     </message>

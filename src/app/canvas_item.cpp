@@ -240,7 +240,16 @@ void CanvasItem::setOutlineView(bool outline) {
 void CanvasItem::fitArtboard() {
   const auto& artboards = document().artboards;
   if (artboards.empty() || width() <= 0 || height() <= 0) return;
-  SetView(View::Fit(artboards.front().bounds, width(), height()), /*by_user=*/false);
+  const int active = std::max(0, editor().active_artboard());
+  SetView(View::Fit(artboards[size_t(active)].bounds, width(), height()), /*by_user=*/false);
+}
+
+void CanvasItem::fitAll() {
+  const auto& artboards = document().artboards;
+  if (artboards.empty() || width() <= 0 || height() <= 0) return;
+  leinwand::core::Rect all;
+  for (const auto& artboard : artboards) all = all.Union(artboard.bounds);
+  SetView(View::Fit(all, width(), height()), /*by_user=*/true);
 }
 
 void CanvasItem::actualSize() {

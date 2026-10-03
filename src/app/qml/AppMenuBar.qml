@@ -47,6 +47,8 @@ MenuBar {
             Action { text: qsTr("Export as &PNG..."); shortcut: root.key("fileExportPng"); onTriggered: root.window.pngOptions.open() }
         }
         MenuSeparator {}
+        Action { text: qsTr("Co&ver Setup..."); enabled: root.hasDocument && Session.hasCover; onTriggered: root.window.coverDialog.open() }
+        MenuSeparator {}
         Action { text: qsTr("E&xit"); shortcut: root.key("fileQuit"); onTriggered: root.window.close() }
     }
     Menu {
@@ -113,6 +115,7 @@ MenuBar {
         Action { text: qsTr("Zoom &In"); shortcut: root.key("viewZoomIn"); onTriggered: if (root.canvas) root.canvas.zoomIn() }
         Action { text: qsTr("Zoom &Out"); shortcut: root.key("viewZoomOut"); onTriggered: if (root.canvas) root.canvas.zoomOut() }
         Action { text: qsTr("&Fit Artboard in Window"); shortcut: root.key("viewFitArtboard"); onTriggered: if (root.canvas) root.canvas.fitArtboard() }
+        Action { text: qsTr("Fit A&ll in Window"); shortcut: root.key("viewFitAll"); onTriggered: if (root.canvas) root.canvas.fitAll() }
         Action { text: qsTr("&Actual Size"); shortcut: root.key("viewActualSize"); onTriggered: if (root.canvas) root.canvas.actualSize() }
         MenuSeparator {}
         Action {

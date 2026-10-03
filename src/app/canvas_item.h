@@ -55,7 +55,8 @@ class CanvasItem : public QQuickRhiItem {
   const leinwand::render::View& view() const { return view_; }
   leinwand::render::Overlay overlay(double pixel_ratio) const;
 
-  Q_INVOKABLE void fitArtboard();  // Ctrl+0
+  Q_INVOKABLE void fitArtboard();  // Ctrl+0: the active artboard.
+  Q_INVOKABLE void fitAll();       // Alt+Ctrl+0: every artboard.
   Q_INVOKABLE void actualSize();   // Ctrl+1
   Q_INVOKABLE void zoomIn();       // Ctrl+=
   Q_INVOKABLE void zoomOut();      // Ctrl+-

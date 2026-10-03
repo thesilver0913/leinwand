@@ -93,7 +93,7 @@ TEST_CASE("document.json follows the spec's shape: fixed key order, defaults omi
         R"({"p":[50,150],"in":[20,0],"out":[0,-30],"kind":"smooth"})");
   CHECK(object["appearance"][0].dump() ==
         R"({"type":"stroke","paint":{"space":"rgb","values":[0,0,0]},"width":2})");
-  CHECK(j["format"]["version"] == "1.0");
+  CHECK(j["format"]["version"] == "1.1");
 }
 
 TEST_CASE("Unknown fields, enum values and object types are kept and written back") {
@@ -199,4 +199,16 @@ TEST_CASE("Saving replaces the file only after the new one reads back") {
   }
   CHECK(io::LoadLwd(dir / "junk.lwd").error == LoadError::kNotLeinwand);
   std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("A book cover keeps its template settings") {
+  core::CoverSpec spec{419.53, 595.28, 36, 0.283, std::nullopt, 8.5};
+  const core::Document document = core::WithCover({}, spec);
+  const auto loaded = io::ReadDocumentJson(io::WriteDocumentJson(document, "test"));
+  REQUIRE(loaded.document);
+  REQUIRE(loaded.document->cover);
+  CHECK(*loaded.document->cover == spec);
+  spec.spine = 12.0;
+  const auto given = io::ReadDocumentJson(io::WriteDocumentJson(core::WithCover({}, spec), "test"));
+  CHECK(given.document->cover->spine == 12.0);
 }
