@@ -17,6 +17,9 @@ cd "$root"
 
 version=$(sed -n 's/^project(Leinwand VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
 [ -n "$version" ] || { echo "No version in CMakeLists.txt." >&2; exit 1; }
+# A pre-release label (LEINWAND_PRERELEASE) is part of the file name.
+prerelease=$(sed -n 's/^set(LEINWAND_PRERELEASE "\([^"]*\)")/\1/p' CMakeLists.txt)
+if [ -n "$prerelease" ]; then version=$version-$prerelease; fi
 name=Leinwand-$version-macos-arm64
 stage=$out/$name
 rm -rf "$stage"

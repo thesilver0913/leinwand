@@ -145,7 +145,8 @@
 - **カーソル**: ツールバーのアイコンから作る(黒に白の縁取り)。ペンは操作に応じた記号を添える。ダイレクト選択は白い矢印を描く。
 - **配布物**: `cmake --install` で、Qt(windeployqt)、vcpkg の DLL、MSVC ランタイムの DLL、フォント、ライセンスを集める。描画は Vulkan だけなので、ソフトウェア OpenGL と Direct3D・DXC のシェーダーコンパイラーは入れない(パッケージは約40MB)。
 - **Web インストーラー**: GitHub Releases の API(`/repos/thesilver0913/leinwand/releases`)から一覧を取り、`-windows-x64.zip` と `.zip.sha256` を添付したリリースだけを候補にする。既定は最新版で、「他のバージョン...」で選び直せる。パッケージは SHA-256 を確かめてから PowerShell の `Expand-Archive` で展開し、前の版の `bin` などを消してから置く。.lwd を関連付け、.svg・.ai・.pdf は「プログラムから開く」の候補にだけ入れる。ユーザー単位と全ユーザーのどちらにも入れられる。アンインストールで、作ったレジストリのキーは空なら消す。
-- **リリース**: `v<版>` のタグを push すると `.github/workflows/release.yml` がビルド、テスト、パッケージ作成をして GitHub Releases に公開する。タグは `CMakeLists.txt` の版と一致させる。
+- **リリース**: `v<版>` のタグを push すると `.github/workflows/release.yml` が Windows と macOS でビルド、テスト、パッケージ作成をして、1つの GitHub Release に公開する。タグは `CMakeLists.txt` の版(`VERSION` と `LEINWAND_PRERELEASE`)と一致させる。リリースノートは `.github/release-notes/`。
+- **プレリリース**: `LEINWAND_PRERELEASE`(例: `alpha.1`)を設定すると版は `0.2.0-alpha.1`、タグは `v0.2.0-alpha.1` になり、GitHub のプレリリースとして公開する。Windows のパッケージは `-windows-x64-preview.zip` という名前にして、Web インストーラーが拾わないようにする(インストーラーは `-windows-x64.zip` で終わるものだけを候補にするので、配布済みの v0.1.0 のインストーラーにも出ない)。プレリリースには Web インストーラーを付けない。正式版にするときは `LEINWAND_PRERELEASE` を空にする。
 - **試し方**: `tools/package-windows.ps1 -ReleasesUrl http://127.0.0.1:8765/releases.json` で、ローカルのサーバーから取るインストーラーを作れる(`/VERYSILENT /CURRENTUSER` で無人インストールを試せる)。
 
 ## パスファインダー(M9)

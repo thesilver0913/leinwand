@@ -3,6 +3,9 @@
 #   Leinwand-<version>-windows-x64.zip         the program, for the web installer
 #   Leinwand-<version>-windows-x64.zip.sha256  its SHA-256, checked by the installer
 #   LeinwandSetup.exe                          the web installer (needs Inno Setup 6)
+# A pre-release (LEINWAND_PRERELEASE in CMakeLists.txt) is packaged as
+# Leinwand-<version>-<label>-windows-x64-preview.zip, a name the web
+# installer does not pick up, and gets no installer of its own.
 #
 #   pwsh tools/package-windows.ps1 [-Build build/windows-release] [-Out dist]
 param(
@@ -18,7 +21,8 @@ Set-Location $root
 $cmakeLists = Get-Content (Join-Path $root 'CMakeLists.txt') -Raw
 if ($cmakeLists -notmatch 'project\(Leinwand VERSION ([0-9.]+)') { throw 'No version in CMakeLists.txt.' }
 $version = $Matches[1]
-$name = "Leinwand-$version-windows-x64"
+$prerelease = if ($cmakeLists -match 'set\(LEINWAND_PRERELEASE "([^"]*)"\)') { $Matches[1] } else { '' }
+$name = if ($prerelease) { "Leinwand-$version-$prerelease-windows-x64-preview" } else { "Leinwand-$version-windows-x64" }
 # Qt's deploy step needs an absolute install prefix.
 $Out = [IO.Path]::GetFullPath([IO.Path]::Combine($root, $Out))
 $stage = Join-Path $Out $name
@@ -35,6 +39,7 @@ $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
 Set-Content -NoNewline -Encoding ascii "$zip.sha256" "$hash  $name.zip"
 Write-Output "Package: $zip ($hash)"
 
+if ($prerelease) { exit 0 }  # Pre-releases are not offered by the web installer.
 $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
           "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } |
         Select-Object -First 1

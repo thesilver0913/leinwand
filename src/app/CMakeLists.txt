@@ -146,7 +146,7 @@ target_link_libraries(leinwand PRIVATE
   editor render io Qt6::Gui Qt6::GuiPrivate Qt6::Quick Qt6::QuickControls2 Qt6::Svg
   KDAB::kddockwidgets
 )
-target_compile_definitions(leinwand PRIVATE LEINWAND_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(leinwand PRIVATE LEINWAND_VERSION="${LEINWAND_VERSION_STRING}")
 
 # The splash artwork and the window icon (spec 9).
 file(GLOB app_icons ${PROJECT_SOURCE_DIR}/resources/icons/app/leinwand-*.png)

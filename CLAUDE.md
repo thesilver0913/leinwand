@@ -52,7 +52,7 @@ Adobe Illustrator 相当を最終目標とする、デスクトップ向けベ�
 2. 1万個のパスを表示して、ズームとパンが滑らかに動くか → 60Hz で成立。
 3. KDDockWidgets の見た目を Spectrum に合わせられるか → パッチを当てて採用。
 
-M3〜M7 はアプリでの手動確認待ち。いまはフェーズ2の前の macOS 対応(Metal 描画、アプリバンドル、dmg。`docs/implementation-notes.md` の「macOS 対応」)。そのあとフェーズ2(仕様書8章)。実装で合意したことは `docs/implementation-notes.md` にまとめる。
+M3〜M7 はアプリでの手動確認待ち。macOS 対応(Metal 描画、アプリバンドル、dmg)は済み。いまはフェーズ2(`docs/phase2-plan.md`)。M8〜M11 は実装済みで、v0.2.0-alpha.1 として Windows と macOS のプレリリースを出す。次は M12(グラデーション)。実装で合意したことは `docs/implementation-notes.md` にまとめる。
 
 ## 未検証の前提(鵜呑みにしないこと)
 

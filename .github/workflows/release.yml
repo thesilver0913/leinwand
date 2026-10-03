@@ -1,8 +1,13 @@
-# Release (spec 9): on a version tag (v0.1.0, ...), builds and tests the
-# Windows release, packages it and publishes a GitHub release with
+# Release (spec 9): on a version tag (v0.1.0, v0.2.0-alpha.1, ...), builds and
+# tests Windows and macOS, packages them and publishes one GitHub release:
 #   Leinwand-<version>-windows-x64.zip(.sha256)  for the web installer
 #   LeinwandSetup.exe                            the web installer
-# The tag must match the version in CMakeLists.txt.
+#   Leinwand-<version>-macos-arm64.dmg(.sha256)  Apple Silicon disk image
+# A tag with a label (v0.2.0-alpha.1) is published as a pre-release; its
+# Windows package is named ...-windows-x64-preview.zip so that the web
+# installer does not offer it, and it has no installer of its own.
+# The tag must match the version in CMakeLists.txt (VERSION and
+# LEINWAND_PRERELEASE).
 name: Release
 
 on:
@@ -17,69 +22,115 @@ env:
   VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-cache,readwrite
 
 jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches the project version
+        run: |
+          version=$(sed -n 's/^project(Leinwand VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          label=$(sed -n 's/^set(LEINWAND_PRERELEASE "\([^"]*\)")/\1/p' CMakeLists.txt)
+          expected="v$version${label:+-$label}"
+          if [ "$expected" != "${{ github.ref_name }}" ]; then
+            echo "Tag ${{ github.ref_name }} does not match version $expected" >&2
+            exit 1
+          fi
+
   windows:
+    needs: check
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
-
-      - name: Tag matches the project version
-        shell: pwsh
-        run: |
-          $content = Get-Content CMakeLists.txt -Raw
-          if ($content -notmatch 'project\(Leinwand VERSION ([0-9.]+)') { throw 'No version' }
-          if ("v$($Matches[1])" -ne '${{ github.ref_name }}') {
-            throw "Tag ${{ github.ref_name }} does not match version $($Matches[1])"
-          }
-
       - uses: ilammy/msvc-dev-cmd@v1
       - uses: lukka/get-cmake@latest
       - uses: jurplel/install-qt-action@v4
         with:
           version: "6.8.*"
           cache: true
-
       - name: Restore vcpkg binary cache
         uses: actions/cache@v4
         with:
           path: .vcpkg-cache
           key: vcpkg-windows-2022-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json') }}
           restore-keys: vcpkg-windows-2022-
-
       - uses: lukka/run-vcpkg@v11
         with:
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT }}
-
       - name: Build and test
         run: |
           cmake --preset windows-release
           cmake --build --preset windows-release
           ctest --preset windows-release
-
       - name: Inno Setup
         shell: pwsh
         run: |
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
             choco install innosetup --no-progress -y
           }
-
       - name: Package
         shell: pwsh
         run: ./tools/package-windows.ps1 -Out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            dist/*.zip
+            dist/*.sha256
+            dist/*.exe
 
+  macos:
+    needs: check
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: macOS packages
+        run: brew install autoconf autoconf-archive automake libtool
+      - uses: lukka/get-cmake@latest
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.*"
+          cache: true
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-macos-15-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-macos-15-
+      - uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT }}
+      - name: Build and test
+        run: |
+          cmake --preset macos-release
+          cmake --build --preset macos-release
+          ctest --preset macos-release
+      - name: Package
+        run: sh tools/package-macos.sh build/macos-release dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*.dmg*
+
+  publish:
+    needs: [windows, macos]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Release notes
+        run: |
+          case "${{ github.ref_name }}" in
+            *-*) cp .github/release-notes/prerelease.md notes.md ;;
+            *) cp .github/release-notes/release.md notes.md ;;
+          esac
       - name: Publish the release
         uses: softprops/action-gh-release@v2
         with:
           name: Leinwand ${{ github.ref_name }}
           draft: false
-          prerelease: false
-          files: |
-            dist/Leinwand-*-windows-x64.zip
-            dist/Leinwand-*-windows-x64.zip.sha256
-            dist/LeinwandSetup.exe
-          body: |
-            Windows: download and run **LeinwandSetup.exe**. It downloads this version (or one you choose), checks its SHA-256 and installs it.
-
-            - Needs a graphics driver with Vulkan.
-            - The installer is not code-signed yet, so Windows SmartScreen warns about it: choose "More info", then "Run anyway".
-
-            Leinwand is not affiliated with or endorsed by Adobe. Adobe, Illustrator and Spectrum are trademarks of Adobe Inc.
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          body_path: notes.md
+          files: dist/*
