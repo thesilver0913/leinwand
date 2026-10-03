@@ -6,6 +6,7 @@
 
 #include <QDir>
 #include <QEventLoop>
+#include <QFileOpenEvent>
 #include <QFont>
 #include <QFontDatabase>
 #include <QGuiApplication>
@@ -64,6 +65,16 @@ void ConfigureDocking() {
   config.setViewFactory(new SpectrumViewFactory());
 }
 
+// Files shipped with the program: next to the executable, or in the app
+// bundle's Resources folder on macOS.
+QString ResourceDir() {
+#ifdef Q_OS_MACOS
+  return QCoreApplication::applicationDirPath() + QStringLiteral("/../Resources");
+#else
+  return QCoreApplication::applicationDirPath();
+#endif
+}
+
 // The UI language: the preference, or the system's (Japanese or English).
 QString Language() {
   const QString chosen = Preferences::instance()->Text(QStringLiteral("language"));
@@ -84,7 +95,7 @@ class Translations {
     if (qt_.load(QStringLiteral("qt_%1").arg(language),
                  QLibraryInfo::path(QLibraryInfo::TranslationsPath)) ||
         qt_.load(QStringLiteral("qt_%1").arg(language),
-                 QCoreApplication::applicationDirPath() + QStringLiteral("/translations"))) {
+                 ResourceDir() + QStringLiteral("/translations"))) {
       QCoreApplication::installTranslator(&qt_);
     }
     // Source Han Sans has the Latin of Source Sans; Japanese needs it.
@@ -103,20 +114,44 @@ class Translations {
   QString family_;
 };
 
-// The bundled UI fonts (spec 7: Source Sans 3, Source Han Sans), next to the
-// executable in fonts/.
+// The bundled UI fonts (spec 7: Source Sans 3, Source Han Sans), in fonts/
+// beside the program.
 void LoadFonts() {
-  const QDir dir(QCoreApplication::applicationDirPath() + QStringLiteral("/fonts"));
+  const QDir dir(ResourceDir() + QStringLiteral("/fonts"));
   for (const QString& file : dir.entryList({QStringLiteral("*.otf")}, QDir::Files)) {
     QFontDatabase::addApplicationFont(dir.absoluteFilePath(file));
   }
 }
 
+// macOS hands over files to open (double-click, "Open With", a drop on the
+// Dock icon) as events rather than as arguments.
+class FileOpenFilter : public QObject {
+ public:
+  explicit FileOpenFilter(Session* session) : session_(session) {}
+
+ protected:
+  bool eventFilter(QObject* watched, QEvent* event) override {
+    if (event->type() != QEvent::FileOpen) return QObject::eventFilter(watched, event);
+    const QString path = static_cast<QFileOpenEvent*>(event)->file();
+    // Queued, so that the main window and its panels are set up first.
+    QTimer::singleShot(0, session_, [session = session_, path] { session->openPath(path); });
+    return true;
+  }
+
+ private:
+  Session* session_;
+};
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
-  // Skia draws with Qt Quick's own Vulkan device (M0 check 1).
+  // Skia draws with Qt Quick's own GPU device (M0 check 1): Vulkan, or Metal
+  // on macOS.
+#ifdef Q_OS_MACOS
+  QQuickWindow::setGraphicsApi(QSGRendererInterface::Metal);
+#else
   QQuickWindow::setGraphicsApi(QSGRendererInterface::Vulkan);
+#endif
   // The UI scale (preferences) must be known before Qt starts.
   const double scale = Preferences::ReadEarly(QStringLiteral("uiScale")).toDouble();
   if (scale > 0 && scale != 100 && !qEnvironmentVariableIsSet("QT_SCALE_FACTOR")) {
@@ -199,6 +234,8 @@ int main(int argc, char* argv[]) {
   }
   step(QCoreApplication::translate("Startup", "Preparing the document..."), 0.1);
   Session session;  // The QML singleton `Session`.
+  FileOpenFilter file_open(&session);
+  app.installEventFilter(&file_open);
   step(QCoreApplication::translate("Startup", "Setting up the panels..."), 0.35);
   ConfigureDocking();
   KDDockWidgets::QtQuick::Platform::instance()->setQmlEngine(&engine);

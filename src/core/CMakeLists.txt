@@ -4,6 +4,7 @@ add_library(core STATIC
   document.cpp
   edit.cpp
   layers.cpp
+  number.cpp
   history.cpp
   object.cpp
   shape.cpp

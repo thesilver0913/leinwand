@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 env:
   VCPKG_COMMIT: 9e593bb18ea69cc5095e012465dcd675a822ed0d
@@ -19,6 +20,8 @@ jobs:
             preset: windows-release
           - os: ubuntu-24.04
             preset: linux-release
+          - os: macos-15
+            preset: macos-release
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -54,6 +57,16 @@ jobs:
         run: cmake --build --preset ${{ matrix.preset }}
       - name: Test
         run: ctest --preset ${{ matrix.preset }}
+
+      # A disk image to try the macOS build with (not a release).
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: sh tools/package-macos.sh build/${{ matrix.preset }} dist
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'macOS'
+        with:
+          name: leinwand-macos-arm64
+          path: dist/*.dmg
 
   format:
     if: github.event_name == 'pull_request'

@@ -16,10 +16,12 @@ if (-not $edge) { throw 'Microsoft Edge is needed to render the icons.' }
 $temp = Join-Path ([IO.Path]::GetTempPath()) 'leinwand-icons'
 New-Item -ItemType Directory -Force $temp | Out-Null
 
-function Render([string]$svg, [int]$size, [string]$png) {
+# A $Scale below 1 draws the icon smaller and centred, with clear margins.
+function Render([string]$svg, [int]$size, [string]$png, [double]$Scale = 1) {
   $html = Join-Path $temp "render-$size.html"
   $src = 'file:///' + ((Join-Path $res $svg) -replace '\\', '/')
-  Set-Content -Encoding utf8 $html "<html><body style=`"margin:0;background:transparent`"><img src=`"$src`" width=`"$size`" height=`"$size`" style=`"display:block`"></body></html>"
+  $inner = [int][Math]::Round($size * $Scale); $margin = ($size - $inner) / 2
+  Set-Content -Encoding utf8 $html "<html><body style=`"margin:0;background:transparent`"><img src=`"$src`" width=`"$inner`" height=`"$inner`" style=`"display:block;margin:${margin}px`"></body></html>"
   # Edge reports on stderr; run it as a process so that is not an error.
   $edgeArgs = @('--headless=new', '--disable-gpu', '--hide-scrollbars',
                 '--force-device-scale-factor=1', '--default-background-color=00000000',
@@ -30,9 +32,15 @@ function Render([string]$svg, [int]$size, [string]$png) {
   if (-not (Test-Path $png)) { throw "Rendering $svg at $size failed." }
 }
 
-# The app: a simplified drawing up to 32 px (thin legs vanish otherwise).
+# The app: a simplified drawing up to 32 px (the thin path and handles
+# vanish otherwise).
 foreach ($size in 16, 24, 32) { Render 'leinwand-icon-small.svg' $size (Join-Path $out "leinwand-$size.png") }
 foreach ($size in 48, 64, 128, 256, 512) { Render 'leinwand-icon.svg' $size (Join-Path $out "leinwand-$size.png") }
+# macOS: Apple's icon grid puts an 824 px tile in a 1024 px canvas, and ours
+# fills 980 of 1024, so it is drawn at 824/980. src/app/CMakeLists.txt makes
+# the .icns from these with iconutil.
+foreach ($size in 16, 32) { Render 'leinwand-icon-small.svg' $size (Join-Path $out "mac-$size.png") (824 / 980) }
+foreach ($size in 64, 128, 256, 512, 1024) { Render 'leinwand-icon.svg' $size (Join-Path $out "mac-$size.png") (824 / 980) }
 # .lwd documents.
 foreach ($size in 16, 24, 32, 48, 256) { Render 'leinwand-document.svg' $size (Join-Path $out "document-$size.png") }
 

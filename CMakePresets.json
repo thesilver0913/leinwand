@@ -25,21 +25,39 @@
       "inherits": "base",
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
     },
+    {
+      "name": "macos-base",
+      "hidden": true,
+      "inherits": "base",
+      "cacheVariables": {
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/cmake/triplets",
+        "VCPKG_TARGET_TRIPLET": "arm64-osx",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "12.0"
+      },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" }
+    },
     { "name": "windows-debug", "inherits": "windows-base", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" } },
     { "name": "windows-release", "inherits": "windows-base", "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" } },
     { "name": "linux-debug", "inherits": "linux-base", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" } },
-    { "name": "linux-release", "inherits": "linux-base", "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" } }
+    { "name": "linux-release", "inherits": "linux-base", "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" } },
+    { "name": "macos-debug", "inherits": "macos-base", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" } },
+    { "name": "macos-release", "inherits": "macos-base", "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" } }
   ],
   "buildPresets": [
     { "name": "windows-debug", "configurePreset": "windows-debug" },
     { "name": "windows-release", "configurePreset": "windows-release" },
     { "name": "linux-debug", "configurePreset": "linux-debug" },
-    { "name": "linux-release", "configurePreset": "linux-release" }
+    { "name": "linux-release", "configurePreset": "linux-release" },
+    { "name": "macos-debug", "configurePreset": "macos-debug" },
+    { "name": "macos-release", "configurePreset": "macos-release" }
   ],
   "testPresets": [
     { "name": "windows-debug", "configurePreset": "windows-debug", "output": { "outputOnFailure": true } },
     { "name": "windows-release", "configurePreset": "windows-release", "output": { "outputOnFailure": true } },
     { "name": "linux-debug", "configurePreset": "linux-debug", "output": { "outputOnFailure": true } },
-    { "name": "linux-release", "configurePreset": "linux-release", "output": { "outputOnFailure": true } }
+    { "name": "linux-release", "configurePreset": "linux-release", "output": { "outputOnFailure": true } },
+    { "name": "macos-debug", "configurePreset": "macos-debug", "output": { "outputOnFailure": true } },
+    { "name": "macos-release", "configurePreset": "macos-release", "output": { "outputOnFailure": true } }
   ]
 }

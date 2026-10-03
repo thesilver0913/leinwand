@@ -11,9 +11,15 @@
     {
       "name": "skia",
       "default-features": false,
-      "features": ["jpeg", "pdf", "png", "vulkan"]
+      "features": [
+        "jpeg",
+        "pdf",
+        "png",
+        { "name": "metal", "platform": "osx" },
+        { "name": "vulkan", "platform": "!osx" }
+      ]
     },
-    "vulkan-headers",
-    "vulkan-memory-allocator"
+    { "name": "vulkan-headers", "platform": "!osx" },
+    { "name": "vulkan-memory-allocator", "platform": "!osx" }
   ]
 }

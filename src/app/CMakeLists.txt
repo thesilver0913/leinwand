@@ -2,13 +2,47 @@
 find_package(Qt6 6.8 REQUIRED COMPONENTS Gui Quick QuickControls2 Svg LinguistTools)
 qt_standard_project_setup(REQUIRES 6.8)
 
-qt_add_executable(leinwand WIN32
+qt_add_executable(leinwand WIN32 MACOSX_BUNDLE
   main.cpp
 )
 if(WIN32)
   # The program icon and version information (spec 9).
   configure_file(leinwand.rc.in ${CMAKE_CURRENT_BINARY_DIR}/leinwand.rc @ONLY)
   target_sources(leinwand PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/leinwand.rc)
+elseif(APPLE)
+  # Leinwand.app (spec 9): its description, and the icon made with iconutil
+  # from the PNGs tools/make_icons.ps1 renders.
+  set(iconset ${CMAKE_CURRENT_BINARY_DIR}/leinwand.iconset)
+  set(icns ${CMAKE_CURRENT_BINARY_DIR}/leinwand.icns)
+  set(iconset_commands)
+  foreach(size 16 32 128 256 512)
+    math(EXPR double "${size} * 2")
+    list(APPEND iconset_commands
+      COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/resources/icons/app/mac-${size}.png
+              ${iconset}/icon_${size}x${size}.png
+      COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/resources/icons/app/mac-${double}.png
+              ${iconset}/icon_${size}x${size}@2x.png)
+  endforeach()
+  add_custom_command(
+    OUTPUT ${icns}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${iconset}
+    ${iconset_commands}
+    COMMAND iconutil --convert icns --output ${icns} ${iconset}
+    DEPENDS ${PROJECT_SOURCE_DIR}/resources/icons/app/mac-1024.png
+    COMMENT "Making the macOS app icon"
+  )
+  target_sources(leinwand PRIVATE ${icns})
+  set_source_files_properties(${icns} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+  set_target_properties(leinwand PROPERTIES
+    OUTPUT_NAME Leinwand
+    MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in
+    MACOSX_BUNDLE_GUI_IDENTIFIER io.github.thesilver0913.leinwand
+    MACOSX_BUNDLE_EXECUTABLE_NAME Leinwand
+    MACOSX_BUNDLE_ICON_FILE leinwand.icns
+    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
+    MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
+    MACOSX_BUNDLE_COPYRIGHT "© 2026 the Leinwand authors. GPL-3.0-or-later."
+  )
 endif()
 qt_add_qml_module(leinwand
   URI Leinwand
@@ -124,11 +158,17 @@ qt_add_translations(leinwand
   RESOURCE_PREFIX /i18n
 )
 
-# The bundled UI fonts (SIL OFL), next to the executable.
+# The bundled UI fonts (SIL OFL), next to the executable (in the bundle's
+# Resources on macOS).
 file(GLOB ui_fonts ${PROJECT_SOURCE_DIR}/third_party/fonts/*.otf)
+if(APPLE)
+  set(fonts_dir $<TARGET_BUNDLE_CONTENT_DIR:leinwand>/Resources/fonts)
+else()
+  set(fonts_dir $<TARGET_FILE_DIR:leinwand>/fonts)
+endif()
 add_custom_command(TARGET leinwand POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:leinwand>/fonts
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ui_fonts} $<TARGET_FILE_DIR:leinwand>/fonts
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${fonts_dir}
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ui_fonts} ${fonts_dir}
 )
 
 # Installation (spec 9): the program with its Qt and vcpkg libraries, the UI
@@ -147,7 +187,9 @@ if(WIN32)
     file(INSTALL \${vcpkg_dlls} DESTINATION \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}\")
   ")
 endif()
-install(FILES ${ui_fonts} DESTINATION ${CMAKE_INSTALL_BINDIR}/fonts)
+if(NOT APPLE)  # Already inside the bundle.
+  install(FILES ${ui_fonts} DESTINATION ${CMAKE_INSTALL_BINDIR}/fonts)
+endif()
 install(FILES
   ${PROJECT_SOURCE_DIR}/LICENSE
   ${PROJECT_SOURCE_DIR}/NOTICE.md
@@ -159,16 +201,21 @@ install(FILES
   ${PROJECT_SOURCE_DIR}/third_party/spectrum-tokens/LICENSE
   DESTINATION licenses
 )
-# Drawing is Vulkan only: no software OpenGL or Direct3D shader compiler.
+if(WIN32)
+  # Drawing is Vulkan only: no software OpenGL or Direct3D shader compiler.
+  set(deploy_options --no-opengl-sw --no-system-d3d-compiler --no-system-dxc-compiler
+                     --no-compiler-runtime)
+endif()
 qt_generate_deploy_qml_app_script(
   TARGET leinwand
   OUTPUT_SCRIPT deploy_script
   NO_UNSUPPORTED_PLATFORM_ERROR
-  DEPLOY_TOOL_OPTIONS --no-opengl-sw --no-system-d3d-compiler --no-system-dxc-compiler
-                      --no-compiler-runtime
+  DEPLOY_TOOL_OPTIONS ${deploy_options}
 )
-# The MSVC runtime DLLs next to the program rather than the redistributable
-# installer.
-set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ${CMAKE_INSTALL_BINDIR})
-include(InstallRequiredSystemLibraries)
+if(WIN32)
+  # The MSVC runtime DLLs next to the program rather than the redistributable
+  # installer.
+  set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ${CMAKE_INSTALL_BINDIR})
+  include(InstallRequiredSystemLibraries)
+endif()
 install(SCRIPT ${deploy_script})

@@ -11,6 +11,7 @@ add_executable(core_tests
   core/shape_test.cpp
   core/style_test.cpp
   core/layers_test.cpp
+  core/number_test.cpp
 )
 target_link_libraries(core_tests PRIVATE core Catch2::Catch2WithMain)
 catch_discover_tests(core_tests)

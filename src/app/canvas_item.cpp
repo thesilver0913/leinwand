@@ -14,7 +14,6 @@
 #include <QQuickWindow>
 #include <QRegularExpression>
 #include <QSvgRenderer>
-#include <QVulkanInstance>
 #include <QWheelEvent>
 #include <algorithm>
 #include <cmath>
@@ -24,13 +23,25 @@
 #include "preferences.h"
 #include "render/document_renderer.h"
 #include "render/overlay.h"
-#include "render/vulkan_canvas.h"
 #include "session.h"
+
+#ifdef Q_OS_MACOS
+#include "render/metal_canvas.h"
+#else
+#include <QVulkanInstance>
+
+#include "render/vulkan_canvas.h"
+#endif
 
 namespace {
 
 using leinwand::render::View;
-using leinwand::render::VulkanCanvas;
+// Skia draws with Qt Quick's own GPU device: Metal on macOS, Vulkan elsewhere.
+#ifdef Q_OS_MACOS
+using GpuCanvas = leinwand::render::MetalCanvas;
+#else
+using GpuCanvas = leinwand::render::VulkanCanvas;
+#endif
 
 class CanvasRenderer : public QQuickRhiItemRenderer {
  public:
@@ -74,6 +85,17 @@ class CanvasRenderer : public QQuickRhiItemRenderer {
     if (!canvas_) return;
     QRhiTexture* texture = colorTexture();
     const QRhiTexture::NativeTexture native = texture->nativeTexture();
+    QElapsedTimer timer;
+    timer.start();
+#ifdef Q_OS_MACOS
+    leinwand::render::MetalTarget target;
+    target.texture = reinterpret_cast<const void*>(native.object);
+    target.width = texture->pixelSize().width();
+    target.height = texture->pixelSize().height();
+    if (!canvas_->Draw(renderer_, document_, view_, overlay_, target)) {
+      error_ = QStringLiteral("Skia could not wrap the item's texture");
+    }
+#else
     leinwand::render::VulkanTarget target;
     target.image = reinterpret_cast<VkImage>(native.object);
     target.layout = static_cast<VkImageLayout>(native.layout);
@@ -82,9 +104,6 @@ class CanvasRenderer : public QQuickRhiItemRenderer {
                    VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     target.width = texture->pixelSize().width();
     target.height = texture->pixelSize().height();
-
-    QElapsedTimer timer;
-    timer.start();
     const VkImageLayout final_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     if (canvas_->Draw(renderer_, document_, view_, overlay_, target, final_layout)) {
       // Skia changed the layout behind QRhi's back; tell it.
@@ -92,12 +111,24 @@ class CanvasRenderer : public QQuickRhiItemRenderer {
     } else {
       error_ = QStringLiteral("Skia could not wrap the item's texture");
     }
+#endif
     draw_ns_ += timer.nsecsElapsed();
     if (frames_++ == 0) interval_.start();
   }
 
  private:
-  std::unique_ptr<VulkanCanvas> CreateCanvas(std::string* error) {
+  std::unique_ptr<GpuCanvas> CreateCanvas(std::string* error) {
+#ifdef Q_OS_MACOS
+    if (rhi()->backend() != QRhi::Metal) {
+      *error = "Qt Quick is not running on Metal";
+      return nullptr;
+    }
+    const auto* handles = static_cast<const QRhiMetalNativeHandles*>(rhi()->nativeHandles());
+    leinwand::render::MetalDevice device;
+    device.device = handles->dev;
+    device.queue = handles->cmdQueue;
+    return GpuCanvas::Create(device, error);
+#else
     if (rhi()->backend() != QRhi::Vulkan) {
       *error = "Qt Quick is not running on Vulkan";
       return nullptr;
@@ -116,10 +147,11 @@ class CanvasRenderer : public QQuickRhiItemRenderer {
     device.api_version = VK_MAKE_API_VERSION(0, version.majorVersion(), version.minorVersion(), 0);
     device.get_instance_proc_addr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(
         instance->getInstanceProcAddr("vkGetInstanceProcAddr"));
-    return VulkanCanvas::Create(device, error);
+    return GpuCanvas::Create(device, error);
+#endif
   }
 
-  std::unique_ptr<VulkanCanvas> canvas_;
+  std::unique_ptr<GpuCanvas> canvas_;
   leinwand::render::DocumentRenderer renderer_;
   leinwand::core::Document document_;
   View view_;

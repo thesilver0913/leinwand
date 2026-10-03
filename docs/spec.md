@@ -839,7 +839,7 @@ UIのデザイン言語はAdobeの[Spectrum](https://spectrum.adobe.com/)に準�
 | ファイル管理 | 自動保存の間隔、復元データの保存先、リンク更新の方法 |
 | フォント | オンラインフォントの保存先、キャッシュの削除 |
 
-- 設定はJSONファイルとして、OSごとの設定フォルダに保存する(Windowsは `%APPDATA%\Leinwand`、Linuxは `~/.config/leinwand`)。
+- 設定はJSONファイルとして、OSごとの設定フォルダに保存する(Windowsは `%APPDATA%\Leinwand`、macOSは `~/Library/Application Support/Leinwand`、Linuxは `~/.config/leinwand`)。
 - 「環境設定をリセット」で初期状態に戻せる。
 - キーボードショートカットは別ダイアログで編集し、セットとして保存・書き出し・読み込みができる。
 

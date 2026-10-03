@@ -2,9 +2,10 @@
 #include "editor/number_input.h"
 
 #include <cctype>
-#include <charconv>
 #include <cmath>
 #include <string>
+
+#include "core/number.h"
 
 namespace leinwand::editor {
 
@@ -101,8 +102,9 @@ class Parser {
     }
     if (pos_ == start) return std::nullopt;
     double number = 0;
-    const auto [end, error] = std::from_chars(text_.data() + start, text_.data() + pos_, number);
-    if (error != std::errc{} || end != text_.data() + pos_) return std::nullopt;
+    if (core::ParseDouble(text_.substr(start, pos_ - start), &number) != pos_ - start) {
+      return std::nullopt;
+    }
     return number * UnitFactor();
   }
 

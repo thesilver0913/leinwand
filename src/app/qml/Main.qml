@@ -66,7 +66,11 @@ ApplicationWindow {
             Session.loadShowcase();
         // Spec 9: the welcome screen, unless a file was given or it is off.
         else if (Preferences.showWelcome && !bench)
-            Qt.callLater(showWelcome);
+            Qt.callLater(() => {
+                // Unless a file arrived first (on macOS, as an event).
+                if (!Session.hasDocument)
+                    showWelcome();
+            });
         if (Qt.application.arguments.indexOf("--light") >= 0)
             Spectrum.dark = false;  // For this run only; the preference stays.
         if (Qt.application.arguments.indexOf("--select-all") >= 0)
