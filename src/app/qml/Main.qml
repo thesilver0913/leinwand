@@ -121,6 +121,12 @@ ApplicationWindow {
                 SpPanel { TransformPanel { anchors.fill: parent } }
             }
             KDDW.DockWidget {
+                id: pathfinderPanel
+                uniqueName: "pathfinder"
+                title: qsTr("Pathfinder")
+                SpPanel { PathfinderPanel { anchors.fill: parent } }
+            }
+            KDDW.DockWidget {
                 id: colorPanel
                 uniqueName: "color"
                 title: qsTr("Color")
@@ -152,6 +158,7 @@ ApplicationWindow {
                               Qt.size(Spectrum.standardPanelWidth + 20, 0));
                 properties.addDockWidgetAsTab(layers);
                 properties.addDockWidgetAsTab(transform);
+                properties.addDockWidgetAsTab(pathfinderPanel);
                 addDockWidget(colorPanel, KDDW.KDDockWidgets.Location_OnBottom, properties);
                 colorPanel.addDockWidgetAsTab(swatches);
                 colorPanel.addDockWidgetAsTab(stroke);
@@ -159,11 +166,21 @@ ApplicationWindow {
                 properties.setAsCurrentTab();
                 colorPanel.setAsCurrentTab();
                 const panels = { properties: properties, layers: layers, transform: transform,
+                                 pathfinder: pathfinderPanel,
                                  color: colorPanel, swatches: swatches, stroke: stroke };
                 for (const name of window.argValue("tabs").split(","))
                     if (panels[name])
                         panels[name].setAsCurrentTab();
             }
+        }
+    }
+
+    // Panels with their own keys (Illustrator's Window menu).
+    Shortcut {
+        sequences: Shortcuts.windowPathfinder
+        onActivated: {
+            pathfinderPanel.open();
+            pathfinderPanel.setAsCurrentTab();
         }
     }
 
@@ -193,8 +210,8 @@ ApplicationWindow {
 
     // --- Files (spec 3.3, 6) ---------------------------------------------------
 
-    readonly property var panels: [properties, layers, transform, colorPanel, swatches, stroke,
-                                   importReport]
+    readonly property var panels: [properties, layers, transform, pathfinderPanel, colorPanel,
+                                   swatches, stroke, importReport]
     property alias openDialog: openDialog
     property alias saveAsDialog: saveAsDialog
     property alias pngOptions: pngOptions

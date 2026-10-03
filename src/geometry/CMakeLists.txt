@@ -5,5 +5,6 @@ add_library(geometry STATIC
   hit_test.cpp
   path_edit.cpp
   path_ops.cpp
+  pathfinder.cpp
 )
 target_link_libraries(geometry PUBLIC core)

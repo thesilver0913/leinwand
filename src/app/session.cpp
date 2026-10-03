@@ -180,6 +180,7 @@ void Session::SetDocument(leinwand::core::Document document) {
   const bool guides = editor_ ? editor_->smart_guides() : true;
   editor_ = std::make_unique<leinwand::editor::Editor>(std::move(document));
   editor_->SetSmartGuides(guides);
+  editor_->SetPathOpsEngine(&path_ops_);
   view_tool_ = -1;
   ApplyPreferences();
   saved_revision_ = autosaved_revision_ = editor_->history().revision();
@@ -486,9 +487,25 @@ LEINWAND_COMMAND(ungroup, Ungroup)
 LEINWAND_COMMAND(removeAnchors, RemoveSelectedAnchors)
 LEINWAND_COMMAND(cutAtAnchor, CutAtSelectedAnchor)
 LEINWAND_COMMAND(joinEnds, JoinSelectedEnds)
+LEINWAND_COMMAND(makeCompoundPath, MakeCompoundPath)
+LEINWAND_COMMAND(releaseCompoundPath, ReleaseCompoundPath)
 LEINWAND_COMMAND(swapFillAndStroke, SwapFillAndStroke)
 LEINWAND_COMMAND(defaultFillAndStroke, DefaultFillAndStroke)
 #undef LEINWAND_COMMAND
+
+void Session::pathfinder(int operation) {
+  using leinwand::editor::Editor;
+  if (operation < 0 || operation > static_cast<int>(leinwand::geometry::Pathfinder::kMinusBack)) {
+    return;
+  }
+  const auto outcome =
+      editor_->ApplyPathfinder(static_cast<leinwand::geometry::Pathfinder>(operation));
+  if (outcome == Editor::PathfinderOutcome::kFailed) {
+    Fail(tr("The path operation could not be completed. Nothing was changed."));
+    return;
+  }
+  Changed();
+}
 
 void Session::arrange(int how) {
   using leinwand::core::Arrange;

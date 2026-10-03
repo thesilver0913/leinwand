@@ -15,6 +15,7 @@
 #include "core/document.h"
 #include "editor/editor.h"
 #include "io/import_report.h"
+#include "render/skia_path_ops.h"
 
 class LayersModel;
 class QQmlEngine;
@@ -156,6 +157,13 @@ class Session : public QObject {
   Q_INVOKABLE void cutAtAnchor();
   Q_INVOKABLE void joinEnds();  // Ctrl+J
 
+  // The Pathfinder panel (spec 4.3): geometry::Pathfinder's values, in
+  // order (0 unite ... 9 minus back). Shows an error when the operation
+  // fails, and changes nothing then.
+  Q_INVOKABLE void pathfinder(int operation);
+  Q_INVOKABLE void makeCompoundPath();     // Ctrl+8
+  Q_INVOKABLE void releaseCompoundPath();  // Alt+Shift+Ctrl+8
+
   // Transform panel edits; each is one undo step.
   Q_INVOKABLE void setBounds(double x, double y, double width, double height);
   Q_INVOKABLE void setRotation(double degrees);
@@ -215,6 +223,7 @@ class Session : public QObject {
   void RemoveRecovery();
   void AddRecent(const QString& path);
 
+  leinwand::render::SkiaPathOps path_ops_;  // Before editor_, which points to it.
   std::unique_ptr<leinwand::editor::Editor> editor_;
   std::unique_ptr<LayersModel> layers_;
   int object_count_ = 0;

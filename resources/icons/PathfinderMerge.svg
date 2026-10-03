@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Leinwand icon on the Spectrum 20x20 grid: Pathfinder, Merge. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
+  <path d="M2.75 2.75 H11.75 V8.25 H8.25 V11.75 H2.75 Z" fill="none" stroke="var(--iconPrimary, #222)" stroke-width="1.5" stroke-linejoin="round"/><path d="M8.25 8.25 H18 V18 H8.25 Z" fill="var(--iconPrimary, #222)"/>
+</svg>

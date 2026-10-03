@@ -87,6 +87,11 @@ MenuBar {
             title: qsTr("&Path")
             Action { text: qsTr("&Join"); shortcut: root.key("objectJoin"); onTriggered: Session.joinEnds() }
         }
+        Menu {
+            title: qsTr("Compound Pat&h")
+            Action { text: qsTr("&Make"); shortcut: root.key("objectCompoundMake"); onTriggered: Session.makeCompoundPath() }
+            Action { text: qsTr("&Release"); shortcut: root.key("objectCompoundRelease"); onTriggered: Session.releaseCompoundPath() }
+        }
     }
     Menu {
         title: qsTr("&Select")

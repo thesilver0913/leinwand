@@ -72,6 +72,7 @@ qt_add_qml_module(leinwand
     qml/panels/ColorPanel.qml
     qml/panels/ImportReportPanel.qml
     qml/panels/LayersPanel.qml
+    qml/panels/PathfinderPanel.qml
     qml/panels/PropertiesPanel.qml
     qml/panels/StrokePanel.qml
     qml/panels/SwatchesPanel.qml

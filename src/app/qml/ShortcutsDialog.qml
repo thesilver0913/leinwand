@@ -21,7 +21,8 @@ Window {
 
     readonly property var groups: ({
         file: qsTr("File"), edit: qsTr("Edit"), object: qsTr("Object"), select: qsTr("Select"),
-        view: qsTr("View"), tools: qsTr("Tools"), paint: qsTr("Fill and Stroke")
+        view: qsTr("View"), window: qsTr("Window"), tools: qsTr("Tools"),
+        paint: qsTr("Fill and Stroke")
     })
     readonly property var names: ({
         fileNew: qsTr("New"), fileOpen: qsTr("Open"), fileSave: qsTr("Save"),
@@ -32,6 +33,8 @@ Window {
         objectBringToFront: qsTr("Bring to Front"), objectBringForward: qsTr("Bring Forward"),
         objectSendBackward: qsTr("Send Backward"), objectSendToBack: qsTr("Send to Back"),
         objectGroup: qsTr("Group"), objectUngroup: qsTr("Ungroup"), objectJoin: qsTr("Join"),
+        objectCompoundMake: qsTr("Make Compound Path"), objectCompoundRelease: qsTr("Release Compound Path"),
+        windowPathfinder: qsTr("Pathfinder"),
         selectAll: qsTr("All"), selectDeselect: qsTr("Deselect"),
         viewOutline: qsTr("Outline"), viewZoomIn: qsTr("Zoom In"), viewZoomOut: qsTr("Zoom Out"),
         viewFitArtboard: qsTr("Fit Artboard in Window"), viewActualSize: qsTr("Actual Size"),

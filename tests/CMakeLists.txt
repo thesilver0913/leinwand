@@ -33,8 +33,10 @@ add_executable(editor_tests
   editor/smart_guides_test.cpp
   editor/style_test.cpp
   editor/number_input_test.cpp
+  editor/pathfinder_test.cpp
 )
-target_link_libraries(editor_tests PRIVATE editor Catch2::Catch2WithMain)
+# The pathfinder tests run on render's Skia PathOps engine.
+target_link_libraries(editor_tests PRIVATE editor render Catch2::Catch2WithMain)
 catch_discover_tests(editor_tests)
 
 # Rendering runs on Skia's CPU backend so it works on CI machines without a GPU.
@@ -45,6 +47,7 @@ add_executable(render_tests
   render/image_compare.cpp
   render/view_test.cpp
   render/skia_path_ops_test.cpp
+  render/path_ops_corpus_test.cpp
   render/pathops_probe_test.cpp
   render/text_probe_test.cpp
 )

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Leinwand icon on the Spectrum 20x20 grid: Pathfinder, Trim. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
+  <path d="M2 2 H12.5 V6.75 H6.75 V12.5 H2 Z" fill="var(--iconPrimary, #222)"/><path d="M8.25 8.25 H18 V18 H8.25 Z" fill="var(--iconPrimary, #222)"/>
+</svg>

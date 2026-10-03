@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Leinwand icon on the Spectrum 20x20 grid: Pathfinder, Unite (shape mode). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
+  <path d="M2 2 H12.5 V7.5 H18 V18 H7.5 V12.5 H2 Z" fill="var(--iconPrimary, #222)"/>
+</svg>

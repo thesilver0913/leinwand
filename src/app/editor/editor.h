@@ -18,6 +18,7 @@
 #include "core/id.h"
 #include "core/shape.h"
 #include "core/types.h"
+#include "geometry/pathfinder.h"
 
 namespace leinwand::editor {
 
@@ -322,6 +323,23 @@ class Editor {
   void CutAtSelectedAnchor();
   void JoinSelectedEnds();  // Ctrl+J: two open ends, of one or two paths.
 
+  // The Pathfinder panel (spec 4.3, editor_pathfinder.cpp). The engine
+  // comes from the app (render's Skia PathOps); without one nothing runs.
+  void SetPathOpsEngine(const geometry::PathOpsEngine* engine) { path_ops_ = engine; }
+  enum class PathfinderOutcome {
+    kDone,
+    kNothingToDo,  // Fewer than two objects with an area are selected.
+    kFailed,       // The engine failed; the document is unchanged (spec 4.3).
+  };
+  PathfinderOutcome ApplyPathfinder(geometry::Pathfinder operation);
+
+  // Object > Compound Path (Ctrl+8, Alt+Shift+Ctrl+8). Make joins the
+  // selected paths and compound paths into one compound path with the
+  // backmost one's appearance (as in Illustrator), placed where the
+  // frontmost was. Release splits selected compound paths into paths.
+  void MakeCompoundPath();
+  void ReleaseCompoundPath();
+
  private:
   void Commit(const std::string& action, core::EditorState state);
   void SetSelection(core::IdSet selection);
@@ -334,6 +352,7 @@ class Editor {
 
   core::History history_;
   core::IdGenerator ids_;
+  const geometry::PathOpsEngine* path_ops_ = nullptr;
   Drag drag_;
   Tool tool_ = Tool::kSelection;
   int polygon_sides_ = 6;
