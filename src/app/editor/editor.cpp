@@ -285,7 +285,7 @@ Overlay Editor::overlay() const {
       overlay.marquee = Rect::FromPoint(drag_.start).Union(drag_.current);
     }
     // The pen's next segment follows the pointer (spec 4.2).
-    if (drawing_path() && hover_ && drag_.kind == DragKind::kNone) {
+    if (rubber_band_ && drawing_path() && hover_ && drag_.kind == DragKind::kNone) {
       if (const auto ref = GetPath(document(), pen_.path_id); ref && !ref->path.anchors.empty()) {
         const core::PathData drawn = core::Transformed(
             pen_.reverse ? geometry::Reversed(ref->path) : ref->path, ref->to_document);

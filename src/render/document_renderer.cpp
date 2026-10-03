@@ -230,6 +230,15 @@ void DocumentRenderer::Impl::Draw(SkCanvas* canvas, const core::Document& docume
     canvas->drawRect(rect.makeOffset(0, 2 * px), shadow);
     canvas->drawRect(rect, paper);
     canvas->drawRect(rect, border);
+    if (board.bleed > 0) {
+      // The bleed guide, red as in Illustrator.
+      SkPaint bleed;
+      bleed.setColor(SkColorSetARGB(200, 0xe3, 0x48, 0x50));
+      bleed.setStyle(SkPaint::kStroke_Style);
+      bleed.setStrokeWidth(0);
+      const float b = static_cast<float>(board.bleed);
+      canvas->drawRect(rect.makeOutset(b, b), bleed);
+    }
   }
 
   for (const auto& layer : document.layers) DrawLayer(canvas, *layer, visible);
@@ -412,7 +421,7 @@ void DocumentRenderer::Impl::DrawOverlay(SkCanvas* canvas, const core::Document&
     }
   }
 
-  const float anchor_half = 3.0f * static_cast<float>(overlay.pixel_ratio);
+  const float anchor_half = static_cast<float>(overlay.anchor_size / 2 * overlay.pixel_ratio);
   for (const auto& edited : overlay.paths) DrawEditedPath(canvas, edited, px, anchor_half);
 
   if (overlay.rubber_band) {
@@ -550,6 +559,8 @@ std::vector<std::uint8_t> DocumentRenderer::RenderRaster(const core::Document& d
 }
 
 DocumentRenderer::Stats DocumentRenderer::last_stats() const { return impl_->stats; }
+
+void DocumentRenderer::SetPasteboard(core::RgbColor color) { impl_->settings.pasteboard = color; }
 
 std::vector<std::uint8_t> DocumentRenderer::ExportPng(const core::Document& document,
                                                       const core::Rect& area, double scale,

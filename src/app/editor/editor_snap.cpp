@@ -107,12 +107,12 @@ Point Editor::SnapDrag(Point p) {
   }
   // The grabbed point (an anchor, or the pointer) is what snaps.
   const Point offset = drag_.grab - drag_.start;
-  return Snap(p + offset, drag_.pick, exclude, &guides_) - offset;
+  return Snap(p + offset, drag_.pick * snap_scale_, exclude, &guides_) - offset;
 }
 
 Point Editor::SnapPlaced(Point p, double pick) {
   guides_.clear();
-  return smart_guides_ ? Snap(p, pick, {}, &guides_) : p;
+  return smart_guides_ ? Snap(p, pick * snap_scale_, {}, &guides_) : p;
 }
 
 }  // namespace leinwand::editor

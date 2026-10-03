@@ -60,6 +60,14 @@ TEST_CASE("Live shapes keep their parameters") {
             .points == 7);
 }
 
+TEST_CASE("Artboards keep their bleed") {
+  core::Document document = core::NewDocument("Layer 1", 100, 50, 8.5);
+  const auto loaded = io::ReadDocumentJson(io::WriteDocumentJson(document, "test"));
+  REQUIRE(loaded.document);
+  CHECK(loaded.document->artboards.front().bleed == 8.5);
+  CHECK(loaded.document->artboards.front().bounds.width() == 100);
+}
+
 TEST_CASE("document.json follows the spec's shape: fixed key order, defaults omitted") {
   core::PathObject path;
   path.common.id = "o7f3k2";

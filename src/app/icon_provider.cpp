@@ -6,6 +6,10 @@
 #include <QPainter>
 #include <QRegularExpression>
 #include <QSvgRenderer>
+#include <QUrl>
+#include <filesystem>
+
+#include "io/lwd.h"
 
 IconProvider::IconProvider() : QQuickImageProvider(QQuickImageProvider::Image) {}
 
@@ -36,5 +40,19 @@ QImage IconProvider::requestImage(const QString& id, QSize* size, const QSize& r
   renderer.render(&painter);
   painter.end();
   if (size) *size = target;
+  return image;
+}
+
+ThumbnailProvider::ThumbnailProvider() : QQuickImageProvider(QQuickImageProvider::Image) {}
+
+QImage ThumbnailProvider::requestImage(const QString& id, QSize* size,
+                                       const QSize& requested_size) {
+  const QString path = QUrl::fromPercentEncoding(id.toUtf8());
+  const auto png = leinwand::io::ReadLwdThumbnail(std::filesystem::path(path.toStdWString()));
+  QImage image = QImage::fromData(png.data(), static_cast<int>(png.size()), "PNG");
+  if (!image.isNull() && requested_size.isValid()) {
+    image = image.scaled(requested_size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+  }
+  if (size) *size = image.size();
   return image;
 }

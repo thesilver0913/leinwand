@@ -22,6 +22,7 @@
 #include "io/lwd.h"
 #include "io/svg.h"
 #include "layers_model.h"
+#include "preferences.h"
 #include "render/document_renderer.h"
 #include "render/test_document.h"
 
@@ -56,9 +57,11 @@ QColor ToQColor(const std::optional<Color>& paint, const leinwand::core::Documen
 }
 
 constexpr const char* kAppVersion = "Leinwand " LEINWAND_VERSION;
-constexpr int kAutosaveMs = 2 * 60 * 1000;  // Spec 3.3: every 2 minutes.
 
+// The preferences' recovery folder, or the default in the local data folder.
 QString RecoveryDir() {
+  const QString chosen = Preferences::instance()->Text(QStringLiteral("recoveryFolder"));
+  if (!chosen.isEmpty()) return chosen;
   return QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
          QStringLiteral("/recovery");
 }
@@ -136,10 +139,9 @@ Session::Session(QObject* parent) : QObject(parent), layers_(std::make_unique<La
                                             .arg(QCoreApplication::applicationPid())
                                             .arg(QDateTime::currentMSecsSinceEpoch()));
   autosave_ = new QTimer(this);
-  autosave_->setInterval(kAutosaveMs);
   connect(autosave_, &QTimer::timeout, this, &Session::Autosave);
-  autosave_->start();
-  loadShowcase();
+  connect(Preferences::instance(), &Preferences::changed, this, [this] { ApplyPreferences(); });
+  closeDocument();
 }
 
 Session::~Session() {
@@ -154,16 +156,52 @@ Session* Session::create(QQmlEngine*, QJSEngine*) {
   return g_instance;
 }
 
+void Session::closeDocument() {
+  RemoveRecovery();
+  SetDocument(leinwand::core::Document{});
+  has_document_ = false;
+  file_path_.clear();
+  display_name_.clear();
+  emit fileChanged();
+}
+
+void Session::AddRecent(const QString& path) {
+  Preferences& preferences = *Preferences::instance();
+  QVariantList recent = preferences.value(QStringLiteral("recentFiles")).toList();
+  recent.removeAll(path);
+  recent.prepend(path);
+  while (recent.size() > 20) recent.removeLast();
+  preferences.insert(QStringLiteral("recentFiles"), recent);
+  emit preferences.valueChanged(QStringLiteral("recentFiles"), recent);
+}
+
 void Session::SetDocument(leinwand::core::Document document) {
+  has_document_ = true;
   const bool guides = editor_ ? editor_->smart_guides() : true;
   editor_ = std::make_unique<leinwand::editor::Editor>(std::move(document));
   editor_->SetSmartGuides(guides);
   view_tool_ = -1;
+  ApplyPreferences();
   saved_revision_ = autosaved_revision_ = editor_->history().revision();
   if (!import_report_.isEmpty()) SetReport({});
   Changed();
   emit toolChanged();
   emit documentReplaced();
+}
+
+void Session::ApplyPreferences() {
+  const Preferences& p = *Preferences::instance();
+  const double pick = p.Number(QStringLiteral("pickTolerance"));
+  editor_->SetSnapScale(pick > 0 ? p.Number(QStringLiteral("snapTolerance")) / pick : 1.0);
+  editor_->SetRubberBand(p.Flag(QStringLiteral("rubberBand")));
+  editor_->SetUndoLimit(static_cast<std::size_t>(p.Number(QStringLiteral("undoLimit"))));
+  // Autosave every so many minutes (spec 3.3); 0 turns it off.
+  const double minutes = p.Number(QStringLiteral("autosaveMinutes"));
+  if (minutes > 0) {
+    autosave_->start(static_cast<int>(minutes * 60 * 1000));
+  } else {
+    autosave_->stop();
+  }
 }
 
 bool Session::dirty() const { return editor_->history().revision() != saved_revision_; }
@@ -179,9 +217,10 @@ void Session::SetReport(const leinwand::io::ImportReport& report) {
   emit importReportChanged();
 }
 
-void Session::newDocument() {
+void Session::newDocument(double width, double height, double bleed) {
   RemoveRecovery();
-  SetDocument(leinwand::core::NewDocument(tr("Layer 1").toStdString()));
+  SetDocument(leinwand::core::NewDocument(tr("Layer 1").toStdString(), std::max(width, 1.0),
+                                          std::max(height, 1.0), std::max(bleed, 0.0)));
   file_path_.clear();
   display_name_ = tr("Untitled-%1").arg(++untitled_);
   emit fileChanged();
@@ -206,6 +245,7 @@ bool Session::open(const QUrl& url) {
     display_name_ = info.fileName();
     emit fileChanged();
     SetReport(result.report);
+    AddRecent(info.absoluteFilePath());
     return true;
   }
   auto result = leinwand::io::LoadLwd(FsPath(path));
@@ -230,6 +270,7 @@ bool Session::open(const QUrl& url) {
   display_name_ = info.fileName();
   emit fileChanged();
   SetReport(result.report);
+  AddRecent(file_path_);
   return true;
 }
 
@@ -255,6 +296,7 @@ bool Session::saveAs(const QUrl& url) {
   display_name_ = QFileInfo(path).fileName();
   saved_revision_ = editor_->history().revision();
   RemoveRecovery();  // Saved: nothing to recover.
+  AddRecent(file_path_);
   emit fileChanged();
   emit documentChanged();
   return true;
@@ -351,10 +393,18 @@ void Session::Changed() {
   emit documentChanged();
 }
 
-void Session::loadShowcase() { SetDocument(leinwand::render::MakeShowcaseDocument()); }
+void Session::loadShowcase() {
+  SetDocument(leinwand::render::MakeShowcaseDocument());
+  file_path_.clear();
+  display_name_ = QStringLiteral("Showcase");
+  emit fileChanged();
+}
 
 void Session::loadTestDocument(int pathCount) {
   SetDocument(leinwand::render::MakeTestDocument(pathCount));
+  file_path_.clear();
+  display_name_ = QStringLiteral("Test %1").arg(pathCount);
+  emit fileChanged();
 }
 
 QString Session::undoAction() const {

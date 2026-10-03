@@ -132,6 +132,23 @@ bool SaveLwd(const std::filesystem::path& path, const core::Document& document,
   return true;
 }
 
+std::vector<std::uint8_t> ReadLwdThumbnail(const std::filesystem::path& path) {
+  bool ok = false;
+  const std::vector<std::uint8_t> bytes = ReadFile(path, &ok);
+  mz_zip_archive zip{};
+  if (!ok || !mz_zip_reader_init_mem(&zip, bytes.data(), bytes.size(), 0)) return {};
+  size_t size = 0;
+  void* png = mz_zip_reader_extract_file_to_heap(&zip, kThumbnailEntry, &size, 0);
+  std::vector<std::uint8_t> result;
+  if (png) {
+    const auto* data = static_cast<const std::uint8_t*>(png);
+    result.assign(data, data + size);
+    mz_free(png);
+  }
+  mz_zip_reader_end(&zip);
+  return result;
+}
+
 LoadResult LoadLwd(const std::filesystem::path& path) {
   bool ok = false;
   const std::vector<std::uint8_t> bytes = ReadFile(path, &ok);

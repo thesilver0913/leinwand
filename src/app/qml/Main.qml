@@ -15,7 +15,7 @@ ApplicationWindow {
     width: 1440
     height: 900
     visible: true
-    title: Session.displayName + (Session.dirty ? "*" : "") + " - Leinwand"
+    title: Session.hasDocument ? Session.displayName + (Session.dirty ? "*" : "") + " - Leinwand" : "Leinwand"
 
     readonly property var canvas: Session.canvas
 
@@ -48,21 +48,27 @@ ApplicationWindow {
         return arg ? parseInt(arg.substring(8)) : (bench ? 10000 : 0);
     }
     property var samples: []
-    // Development aids for checking the UI: --light, --select-all, and
-    // --tabs=layers,swatches to bring panels to the front.
+    // Development aids for checking the UI: --showcase (the sample document),
+    // --light, --select-all, and --tabs=layers,swatches to bring panels to
+    // the front.
     function argValue(name) {
         const arg = Qt.application.arguments.find(a => a.startsWith("--" + name + "="));
         return arg ? arg.substring(name.length + 3) : "";
     }
     Component.onCompleted: {
-        if (pathsArg > 0)
-            Session.loadTestDocument(pathsArg);
         // A file to open ("Open with", or a path on the command line).
         const file = Qt.application.arguments.slice(1).find(a => !a.startsWith("--"));
         if (file)
             Qt.callLater(() => Session.openPath(file));  // After the panel layout is set up.
+        else if (pathsArg > 0)
+            Session.loadTestDocument(pathsArg);
+        else if (Qt.application.arguments.indexOf("--showcase") >= 0)
+            Session.loadShowcase();
+        // Spec 9: the welcome screen, unless a file was given or it is off.
+        else if (Preferences.showWelcome && !bench)
+            Qt.callLater(showWelcome);
         if (Qt.application.arguments.indexOf("--light") >= 0)
-            Spectrum.dark = false;
+            Spectrum.dark = false;  // For this run only; the preference stays.
         if (Qt.application.arguments.indexOf("--select-all") >= 0)
             Session.selectAll();
     }
@@ -157,26 +163,27 @@ ApplicationWindow {
         }
     }
 
-    // Tools (spec 4.2).
-    Shortcut { sequence: "V"; onActivated: Session.tool = 0 }
-    Shortcut { sequence: "A"; onActivated: Session.tool = 10 }
-    Shortcut { sequence: "P"; onActivated: Session.tool = 6 }
-    // "+" needs Shift on most layouts; "=" is the same key unshifted on US ones.
-    Shortcut { sequences: ["+", "Shift++", "="]; onActivated: Session.tool = 7 }
-    Shortcut { sequence: "-"; onActivated: Session.tool = 8 }
-    Shortcut { sequence: "Shift+C"; onActivated: Session.tool = 9 }
-    Shortcut { sequence: "\\"; onActivated: Session.tool = 5 }
-    Shortcut { sequence: "M"; onActivated: Session.tool = 1 }
-    Shortcut { sequence: "L"; onActivated: Session.tool = 2 }
-    Shortcut { sequence: "I"; onActivated: Session.tool = 11 }
-    Shortcut { sequence: "H"; onActivated: Session.tool = 12 }
-    Shortcut { sequence: "Z"; onActivated: Session.tool = 13 }
+    // Tools (spec 4.2), keys from the Shortcuts registry (spec 7.3).
+    Shortcut { sequences: Shortcuts.toolSelection; enabled: Session.hasDocument; onActivated: Session.tool = 0 }
+    Shortcut { sequences: Shortcuts.toolDirectSelection; enabled: Session.hasDocument; onActivated: Session.tool = 10 }
+    Shortcut { sequences: Shortcuts.toolPen; enabled: Session.hasDocument; onActivated: Session.tool = 6 }
+    Shortcut { sequences: Shortcuts.toolAddAnchor; enabled: Session.hasDocument; onActivated: Session.tool = 7 }
+    Shortcut { sequences: Shortcuts.toolPolygon; enabled: Session.hasDocument; onActivated: Session.tool = 3 }
+    Shortcut { sequences: Shortcuts.toolStar; enabled: Session.hasDocument; onActivated: Session.tool = 4 }
+    Shortcut { sequences: Shortcuts.toolDeleteAnchor; enabled: Session.hasDocument; onActivated: Session.tool = 8 }
+    Shortcut { sequences: Shortcuts.toolAnchorPoint; enabled: Session.hasDocument; onActivated: Session.tool = 9 }
+    Shortcut { sequences: Shortcuts.toolLine; enabled: Session.hasDocument; onActivated: Session.tool = 5 }
+    Shortcut { sequences: Shortcuts.toolRectangle; enabled: Session.hasDocument; onActivated: Session.tool = 1 }
+    Shortcut { sequences: Shortcuts.toolEllipse; enabled: Session.hasDocument; onActivated: Session.tool = 2 }
+    Shortcut { sequences: Shortcuts.toolEyedropper; enabled: Session.hasDocument; onActivated: Session.tool = 11 }
+    Shortcut { sequences: Shortcuts.toolHand; enabled: Session.hasDocument; onActivated: Session.tool = 12 }
+    Shortcut { sequences: Shortcuts.toolZoom; enabled: Session.hasDocument; onActivated: Session.tool = 13 }
 
     // Fill and stroke.
-    Shortcut { sequence: "X"; onActivated: Session.fillActive = !Session.fillActive }
-    Shortcut { sequence: "Shift+X"; onActivated: Session.swapFillAndStroke() }
-    Shortcut { sequence: "D"; onActivated: Session.defaultFillAndStroke() }
-    Shortcut { sequence: "/"; onActivated: Session.setActiveNone() }
+    Shortcut { sequences: Shortcuts.paintToggle; enabled: Session.hasDocument; onActivated: Session.fillActive = !Session.fillActive }
+    Shortcut { sequences: Shortcuts.paintSwap; enabled: Session.hasDocument; onActivated: Session.swapFillAndStroke() }
+    Shortcut { sequences: Shortcuts.paintDefault; enabled: Session.hasDocument; onActivated: Session.defaultFillAndStroke() }
+    Shortcut { sequences: Shortcuts.paintNone; enabled: Session.hasDocument; onActivated: Session.setActiveNone() }
 
 
 
@@ -188,6 +195,14 @@ ApplicationWindow {
     property alias saveAsDialog: saveAsDialog
     property alias pngOptions: pngOptions
     property alias aboutDialog: aboutDialog
+    property alias preferencesDialog: preferencesDialog
+    property alias shortcutsDialog: shortcutsDialog
+
+    function showWelcome() {
+        welcome.show();
+        welcome.raise();
+        welcome.requestActivate();
+    }
     property var pending: null  // What to do once unsaved changes are dealt with.
     property bool closing: false
 
@@ -386,6 +401,26 @@ ApplicationWindow {
         onAccepted: exportSvgDialog.open()
     }
 
+    WelcomeScreen {
+        id: welcome
+        guard: action => window.guard(action)
+        onOpenRequested: window.guard(() => openDialog.open())
+        transientParent: window
+    }
+    PreferencesDialog {
+        id: preferencesDialog
+        transientParent: window
+    }
+    ShortcutsDialog {
+        id: shortcutsDialog
+        transientParent: window
+    }
+    Connections {
+        target: Session
+        // Opening from anywhere closes the welcome screen.
+        function onFileChanged() { if (Session.hasDocument) welcome.close(); }
+    }
+
     Dialog {
         id: aboutDialog
         title: qsTr("About Leinwand")
@@ -394,7 +429,7 @@ ApplicationWindow {
         standardButtons: Dialog.Ok
         SpLabel {
             subdued: false
-            text: qsTr("Leinwand, a vector graphics editor.\nLicensed under the GNU GPL, version 3 or later.")
+            text: qsTr("Leinwand %1, a vector graphics editor.\nLicensed under the GNU GPL, version 3 or later.\nNot affiliated with or endorsed by Adobe. Adobe, Illustrator and Spectrum are\ntrademarks of Adobe Inc.").arg(Qt.application.version)
         }
     }
 

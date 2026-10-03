@@ -158,6 +158,11 @@ class Editor {
   // objects' anchors and centres, and align with them.
   bool smart_guides() const { return smart_guides_; }
   void SetSmartGuides(bool on) { smart_guides_ = on; }
+  // Preferences (spec 7.3): the snapping distance as a multiple of the pick
+  // radius, the pen's rubber band, and the undo limit (0: unlimited).
+  void SetSnapScale(double scale) { snap_scale_ = scale; }
+  void SetRubberBand(bool on) { rubber_band_ = on; }
+  void SetUndoLimit(std::size_t limit) { history_.SetLimit(limit); }
 
   // Fill and stroke (spec 7.2). They edit the selected objects (a group's
   // contents) and become the style for new objects; with nothing selected
@@ -343,6 +348,8 @@ class Editor {
   std::optional<core::Point> hover_;
   std::set<AnchorRef> anchors_;  // Direct selection.
   bool smart_guides_ = true;
+  double snap_scale_ = 1.0;
+  bool rubber_band_ = true;
   bool fill_active_ = true;
   std::string active_layer_;
   bool gesture_ = false;         // Inside BeginGesture/EndGesture.

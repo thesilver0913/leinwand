@@ -35,7 +35,11 @@ SpTextField {
     horizontalAlignment: TextInput.AlignLeft
 
     onEditingFinished: {
-        const v = unit === "pt" ? Session.evaluateLength(text) : Session.evaluateNumber(text);
+        // A field's own suffix (" px", " min") may be typed back.
+        let entry = text.trim();
+        if (unit !== "pt" && unit.trim() !== "" && entry.endsWith(unit.trim()))
+            entry = entry.slice(0, -unit.trim().length);
+        const v = unit === "pt" ? Session.evaluateLength(entry) : Session.evaluateNumber(entry);
         if (isNaN(v)) {
             text = Qt.binding(() => mixed ? "" : format(value));
             return;

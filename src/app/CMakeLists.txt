@@ -1,14 +1,23 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-find_package(Qt6 6.8 REQUIRED COMPONENTS Gui Quick QuickControls2 Svg)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Gui Quick QuickControls2 Svg LinguistTools)
 qt_standard_project_setup(REQUIRES 6.8)
 
 qt_add_executable(leinwand WIN32
   main.cpp
 )
+if(WIN32)
+  # The program icon and version information (spec 9).
+  configure_file(leinwand.rc.in ${CMAKE_CURRENT_BINARY_DIR}/leinwand.rc @ONLY)
+  target_sources(leinwand PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/leinwand.rc)
+endif()
 qt_add_qml_module(leinwand
   URI Leinwand
   QML_FILES
     qml/Main.qml
+    qml/PreferencesDialog.qml
+    qml/ShortcutsDialog.qml
+    qml/Splash.qml
+    qml/WelcomeScreen.qml
     qml/AppMenuBar.qml
     qml/ControlBar.qml
     qml/FillStroke.qml
@@ -38,6 +47,8 @@ qt_add_qml_module(leinwand
     canvas_item.h canvas_item.cpp
     icon_provider.h icon_provider.cpp
     layers_model.h layers_model.cpp
+    preferences.h preferences.cpp
+    shortcuts.h shortcuts.cpp
     session.h session.cpp
     spectrum_theme.h spectrum_theme.cpp
 )
@@ -96,3 +107,68 @@ target_link_libraries(leinwand PRIVATE
   KDAB::kddockwidgets
 )
 target_compile_definitions(leinwand PRIVATE LEINWAND_VERSION="${PROJECT_VERSION}")
+
+# The splash artwork and the window icon (spec 9).
+file(GLOB app_icons ${PROJECT_SOURCE_DIR}/resources/icons/app/leinwand-*.png)
+qt_add_resources(leinwand splash
+  PREFIX /
+  BASE ${PROJECT_SOURCE_DIR}
+  FILES ${PROJECT_SOURCE_DIR}/resources/splash.png ${app_icons}
+)
+
+# UI translations (spec 7.3): Japanese and English. `cmake --build --target
+# update_translations` refreshes the .ts files from the sources.
+qt_add_translations(leinwand
+  TS_FILES ${PROJECT_SOURCE_DIR}/i18n/leinwand_ja.ts ${PROJECT_SOURCE_DIR}/i18n/leinwand_en.ts
+  PLURALS_TS_FILE ${PROJECT_SOURCE_DIR}/i18n/leinwand_en.ts
+  RESOURCE_PREFIX /i18n
+)
+
+# The bundled UI fonts (SIL OFL), next to the executable.
+file(GLOB ui_fonts ${PROJECT_SOURCE_DIR}/third_party/fonts/*.otf)
+add_custom_command(TARGET leinwand POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:leinwand>/fonts
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ui_fonts} $<TARGET_FILE_DIR:leinwand>/fonts
+)
+
+# Installation (spec 9): the program with its Qt and vcpkg libraries, the UI
+# fonts and the licences. `cmake --install` gives the folder that is zipped
+# into the release package (tools/package-windows.ps1).
+include(GNUInstallDirs)
+install(TARGETS leinwand
+  BUNDLE DESTINATION .
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+if(WIN32)
+  # Skia and the other vcpkg DLLs, which vcpkg copies next to the program
+  # when it is built (Skia's own dependencies are not CMake targets).
+  install(CODE "
+    file(GLOB vcpkg_dlls \"$<TARGET_FILE_DIR:leinwand>/*.dll\")
+    file(INSTALL \${vcpkg_dlls} DESTINATION \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}\")
+  ")
+endif()
+install(FILES ${ui_fonts} DESTINATION ${CMAKE_INSTALL_BINDIR}/fonts)
+install(FILES
+  ${PROJECT_SOURCE_DIR}/LICENSE
+  ${PROJECT_SOURCE_DIR}/NOTICE.md
+  DESTINATION .
+)
+install(FILES
+  ${PROJECT_SOURCE_DIR}/third_party/fonts/LICENSE-SourceSans3.md
+  ${PROJECT_SOURCE_DIR}/third_party/fonts/LICENSE-SourceHanSans.txt
+  ${PROJECT_SOURCE_DIR}/third_party/spectrum-tokens/LICENSE
+  DESTINATION licenses
+)
+# Drawing is Vulkan only: no software OpenGL or Direct3D shader compiler.
+qt_generate_deploy_qml_app_script(
+  TARGET leinwand
+  OUTPUT_SCRIPT deploy_script
+  NO_UNSUPPORTED_PLATFORM_ERROR
+  DEPLOY_TOOL_OPTIONS --no-opengl-sw --no-system-d3d-compiler --no-system-dxc-compiler
+                      --no-compiler-runtime
+)
+# The MSVC runtime DLLs next to the program rather than the redistributable
+# installer.
+set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ${CMAKE_INSTALL_BINDIR})
+include(InstallRequiredSystemLibraries)
+install(SCRIPT ${deploy_script})

@@ -48,10 +48,10 @@ std::vector<Swatch> DefaultSwatches() {
   return swatches;
 }
 
-Document NewDocument(const std::string& layer_name) {
+Document NewDocument(const std::string& layer_name, double width, double height, double bleed) {
   Document document;
-  // A4 in points.
-  document.artboards = {{"artboard-1", "Artboard 1", Rect::FromXYWH(0, 0, 595.28, 841.89), {}}};
+  document.artboards = {
+      {"artboard-1", "Artboard 1", Rect::FromXYWH(0, 0, width, height), {}, bleed}};
   document.swatches = DefaultSwatches();
   Layer layer;
   layer.id = "layer-1";

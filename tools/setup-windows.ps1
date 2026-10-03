@@ -53,6 +53,7 @@ $winget = [ordered]@{
   'OpenJS.NodeJS.LTS'      = 'Node.js (Ponytail plugin hooks)', 'node'
   'LLVM.LLVM'              = 'LLVM (clang-format, clang-tidy)', 'clang-format'
   'GitHub.cli'             = 'GitHub CLI', 'gh'
+  'JRSoftware.InnoSetup'   = 'Inno Setup (Windows installer)', $null
   'Anthropic.ClaudeCode'   = 'Claude Code', 'claude'
 }
 $steps = @()

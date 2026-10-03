@@ -55,7 +55,7 @@ Rectangle {
             iconSize: 14
             text: Spectrum.dark ? qsTr("Dark") : qsTr("Light")
             tip: qsTr("Switch between the light and dark themes")
-            onClicked: Spectrum.dark = !Spectrum.dark
+            onClicked: Preferences.theme = Spectrum.dark ? "light" : "dark"
         }
     }
 }

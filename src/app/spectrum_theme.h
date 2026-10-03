@@ -16,22 +16,26 @@ class SpectrumTheme : public QQmlPropertyMap {
   QML_NAMED_ELEMENT(Spectrum)
   QML_SINGLETON
   Q_PROPERTY(bool dark READ dark WRITE setDark NOTIFY darkChanged)
-  // Adobe Clean is reserved for Adobe products; the spec uses Source Sans 3.
-  Q_PROPERTY(QString fontFamily READ fontFamily CONSTANT)
+  // Adobe Clean is reserved for Adobe products; the spec uses Source Sans 3,
+  // and Source Han Sans for Japanese (set with the language).
+  Q_PROPERTY(QString fontFamily READ fontFamily NOTIFY fontFamilyChanged)
 
  public:
   explicit SpectrumTheme(QObject* parent = nullptr);
 
   bool dark() const { return dark_; }
   void setDark(bool dark);
-  QString fontFamily() const { return QStringLiteral("Source Sans 3"); }
+  QString fontFamily() const { return font_family_; }
+  void setFontFamily(const QString& family);
   static int tokenCount();
 
  signals:
   void darkChanged();
+  void fontFamilyChanged();
 
  private:
   void Load();
 
   bool dark_ = true;
+  QString font_family_ = QStringLiteral("Source Sans 3");
 };

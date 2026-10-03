@@ -31,6 +31,9 @@ class DocumentRenderer {
   DocumentRenderer(const DocumentRenderer&) = delete;
   DocumentRenderer& operator=(const DocumentRenderer&) = delete;
 
+  // The pasteboard color (preferences: the canvas background).
+  void SetPasteboard(core::RgbColor color);
+
   // Renders on the CPU into tightly packed premultiplied RGBA8 pixels.
   std::vector<std::uint8_t> RenderRaster(const core::Document& document, int width, int height,
                                          const View& view, const Overlay* overlay = nullptr);
