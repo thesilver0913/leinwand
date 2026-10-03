@@ -5,6 +5,7 @@
 
 #include <QColor>
 #include <QObject>
+#include <QPrinter>
 #include <QTimer>
 #include <QUrl>
 #include <QVariantList>
@@ -164,6 +165,23 @@ class Session : public QObject {
   Q_INVOKABLE bool exportSvg(const QUrl& url);
   // The active artboard, or every artboard to its own file (the name gets
   // the artboard's name after a hyphen).
+  // PDF (spec 6.2): every artboard or the active one, text as text or as
+  // outlines, trim marks (0 none, 1 Japanese, 2 Western).
+  Q_INVOKABLE bool exportPdf(const QUrl& url, bool all_artboards, bool outline_text, int marks);
+
+  // Printing (spec 7.4, session_print.cpp). Settings: "printer", "paper"
+  // ("printer", "A4", "A3", "B4", "B5", "Letter", "Legal"), "orientation"
+  // (0 auto, 1 portrait, 2 landscape), "range" (0 all artboards, 1 active,
+  // 2 all artwork on one page), "scaling" (0 actual, 1 fit, 2 "percent"),
+  // "position" (0..8, 4 the middle), "marks" (0 none, 1 Japanese, 2
+  // Western), "copies", "collate", and "output" (a PDF file instead).
+  Q_INVOKABLE QStringList printers() const;
+  Q_INVOKABLE QString defaultPrinter() const;
+  Q_INVOKABLE void printerSetup(const QString& printer);  // The OS's dialog.
+  // The first sheet: "pages", "paperWidth", "paperHeight", "x", "y",
+  // "width", "height" (points) and "image" (a data URL).
+  Q_INVOKABLE QVariantMap printPreview(const QVariantMap& settings);
+  Q_INVOKABLE bool print(const QVariantMap& settings);
   Q_INVOKABLE bool exportPng(const QUrl& url, double scale, bool transparent,
                              bool all_artboards = false);
   // Opens a recovery file as an unsaved document; it is deleted once the
@@ -221,6 +239,11 @@ class Session : public QObject {
   Q_INVOKABLE void setArtboardBounds(int index, double x, double y, double width, double height);
   Q_INVOKABLE void makeCompoundPath();     // Ctrl+8
   Q_INVOKABLE void releaseCompoundPath();  // Alt+Shift+Ctrl+8
+  Q_INVOKABLE void createTrimMarks();      // Japanese or Western, by preference.
+  // Preflight (spec 7.5): rows {"check" (editor::PreflightCheck), "ids"}
+  // for the checks turned on in `checks` (one flag per check), with strokes
+  // thinner than `min_stroke_mm` reported.
+  Q_INVOKABLE QVariantList preflight(double min_stroke_mm, const QVariantList& checks) const;
   Q_INVOKABLE void makeClippingMask();     // Ctrl+7
   Q_INVOKABLE void releaseClippingMask();  // Alt+Ctrl+7
   Q_INVOKABLE void makeOpacityMask();
@@ -315,6 +338,8 @@ class Session : public QObject {
 
   leinwand::render::SkiaPathOps path_ops_;  // Before editor_, which points to it.
   std::unique_ptr<leinwand::editor::Editor> editor_;
+  QPrinter& Printer();
+  std::unique_ptr<QPrinter> printer_;  // Kept for the OS dialog's settings.
   std::unique_ptr<LayersModel> layers_;
   int object_count_ = 0;
   int view_tool_ = -1;  // 12 hand, 13 zoom; -1: an editor tool.

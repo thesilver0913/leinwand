@@ -78,6 +78,8 @@ const std::vector<Command>& Commands() {
       {"toolEyedropper", "tools", {"I"}},
       {"toolScissors", "tools", {"C"}},
       {"toolGradient", "tools", {"G"}},
+      {"fileExportPdf", "file", {}},
+      {"filePrint", "file", {"Ctrl+P"}},
       {"toolType", "tools", {"T"}},
       {"typeCreateOutlines", "type", {"Ctrl+Shift+O"}},
       {"typeRevertOutlines", "type", {}},

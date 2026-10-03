@@ -22,8 +22,13 @@ struct DocumentRenderer::Impl {
   void Draw(SkCanvas* canvas, const core::Document& document, const View& view, int width,
             int height, const Overlay* overlay = nullptr);
 
+  // The layers alone (no pasteboard, nothing cleared), for PDF pages.
+  void DrawArtwork(SkCanvas* canvas, const core::Document& document, const core::Rect& visible);
+
   RenderSettings settings;
   Stats stats;
+  // Text as glyphs (PDF) rather than as outline paths.
+  bool glyph_text = false;
 
  private:
   struct CacheEntry {
@@ -37,6 +42,7 @@ struct DocumentRenderer::Impl {
   void DrawLayer(SkCanvas* canvas, const core::Layer& layer, const core::Rect& visible);
   void DrawObject(SkCanvas* canvas, const core::ObjectPtr& object, const core::Rect& visible);
   void DrawShape(SkCanvas* canvas, const core::Object& object, const SkPath& path);
+  void DrawText(SkCanvas* canvas, const core::TextObject& text);
   void DrawMask(SkCanvas* canvas, const core::OpacityMask& mask, const SkRect& bounds,
                 const core::Rect& visible);
   void DrawOverlay(SkCanvas* canvas, const core::Document& document, const Overlay& overlay,

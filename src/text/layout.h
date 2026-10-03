@@ -58,6 +58,8 @@ LayoutPtr LayoutOf(const core::StoryPtr& story);
 std::vector<core::PathData> Outlines(const Layout& layout);
 // The same, one list of contours per glyph (blank glyphs left out).
 std::vector<std::vector<core::PathData>> GlyphOutlines(const Layout& layout);
+// One glyph of a run, in the text's coordinates.
+std::vector<core::PathData> RunGlyphOutline(const GlyphRun& run, std::size_t glyph);
 std::vector<core::PathData> OutlineOf(const core::TextObject& text);
 // The lines' boxes in the parent's coordinates (an empty story still has a
 // caret-sized box).

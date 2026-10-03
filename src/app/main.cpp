@@ -4,6 +4,7 @@
 #include <kddockwidgets/qtquick/Platform.h>
 #include <kddockwidgets/qtquick/ViewFactory.h>
 
+#include <QApplication>
 #include <QDir>
 #include <QEventLoop>
 #include <QFileOpenEvent>
@@ -166,7 +167,8 @@ int main(int argc, char* argv[]) {
     qputenv("QT_SCALE_FACTOR", QByteArray::number(scale / 100.0));
   }
 
-  QGuiApplication app(argc, argv);
+  // QApplication, for the OS's print dialog (Qt Print Support).
+  QApplication app(argc, argv);
   // Names the data folder (%LOCALAPPDATA%\Leinwand: autosave recovery).
   QCoreApplication::setApplicationName(QStringLiteral("Leinwand"));
   QCoreApplication::setApplicationVersion(QStringLiteral(LEINWAND_VERSION));

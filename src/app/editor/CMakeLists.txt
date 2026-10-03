@@ -5,6 +5,7 @@ add_library(editor STATIC
   editor.cpp
   editor_align.cpp
   editor_artboards.cpp
+  editor_corners.cpp
   editor_gradient.cpp
   editor_text.cpp
   editor_transparency.cpp
@@ -13,6 +14,7 @@ add_library(editor STATIC
   editor_snap.cpp
   editor_style.cpp
   number_input.cpp
+  preflight.cpp
 )
 target_include_directories(editor PUBLIC ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(editor PUBLIC core geometry)

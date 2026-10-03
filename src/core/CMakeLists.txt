@@ -6,6 +6,7 @@ add_library(core STATIC
   edit.cpp
   gradient.cpp
   layers.cpp
+  marks.cpp
   number.cpp
   history.cpp
   object.cpp

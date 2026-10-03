@@ -19,9 +19,15 @@ Preferences* g_instance = nullptr;
 const QVariantMap& Defaults() {
   static const QVariantMap defaults = {
       // General.
-      {"keyboardIncrement", 1.0},  // Arrow keys move this far (Shift: ten times).
-      {"showWelcome", true},       // The welcome screen at start.
-      {"rubberBand", true},        // The pen's preview of the next segment.
+      {"keyboardIncrement", 1.0},   // Arrow keys move this far (Shift: ten times).
+      {"showWelcome", true},        // The welcome screen at start.
+      {"rubberBand", true},         // The pen's preview of the next segment.
+      {"japaneseTrimMarks", true},  // Object > Create Trim Marks: Japanese or Western.
+      // Preflight (spec 7.5): the current settings and saved presets
+      // ({"name", "minStroke", "checks"}).
+      {"preflightMinStroke", 0.1},  // mm
+      {"preflightChecks", QVariantList{true, true, true, true, true, true, true}},
+      {"preflightPresets", QVariantList()},
       // Selection and anchor display.
       {"pickTolerance", 4.0},  // px
       {"anchorSize", 6.0},     // px

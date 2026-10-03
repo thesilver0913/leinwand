@@ -53,6 +53,7 @@ add_executable(editor_tests
   editor/gradient_test.cpp
   editor/transparency_test.cpp
   editor/text_test.cpp
+  editor/preflight_test.cpp
   test_fonts.cpp
 )
 # The pathfinder tests run on render's Skia PathOps engine.
@@ -74,6 +75,7 @@ add_executable(render_tests
   render/pathops_probe_test.cpp
   render/text_probe_test.cpp
   render/text_render_test.cpp
+  render/pdf_test.cpp
   test_fonts.cpp
 )
 # HarfBuzz and ICU for the text engine probe (M8).

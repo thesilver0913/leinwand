@@ -321,25 +321,30 @@ std::vector<core::PathData> Outlines(const Layout& layout) {
   return paths;
 }
 
+std::vector<core::PathData> RunGlyphOutline(const GlyphRun& run, std::size_t g) {
+  const double sx = run.size * run.horizontal_scale, sy = run.size * run.vertical_scale;
+  core::Matrix m = core::Matrix::Translate(run.positions[g].x, run.positions[g].y);
+  if (run.rotation != 0) {
+    // About the middle of the glyph's em box.
+    const Point centre{run.advances[g] / 2,
+                       -(run.face->ascender() - run.face->descender()) / 2 * sy};
+    m = m * core::Matrix::Translate(centre.x, centre.y) *
+        core::Matrix::Rotate(-run.rotation * std::numbers::pi / 180) *
+        core::Matrix::Translate(-centre.x, -centre.y);
+  }
+  m = m * core::Matrix::Scale(sx, sy);
+  std::vector<core::PathData> glyph;
+  for (const core::PathData& path : *GlyphOutline(*run.face, run.glyphs[g])) {
+    glyph.push_back(core::Transformed(path, m));
+  }
+  return glyph;
+}
+
 std::vector<std::vector<core::PathData>> GlyphOutlines(const Layout& layout) {
   std::vector<std::vector<core::PathData>> glyphs;
   for (const GlyphRun& run : layout.runs) {
-    const double sx = run.size * run.horizontal_scale, sy = run.size * run.vertical_scale;
     for (std::size_t g = 0; g < run.glyphs.size(); ++g) {
-      core::Matrix m = core::Matrix::Translate(run.positions[g].x, run.positions[g].y);
-      if (run.rotation != 0) {
-        // About the middle of the glyph's em box.
-        const Point centre{run.advances[g] / 2,
-                           -(run.face->ascender() - run.face->descender()) / 2 * sy};
-        m = m * core::Matrix::Translate(centre.x, centre.y) *
-            core::Matrix::Rotate(-run.rotation * std::numbers::pi / 180) *
-            core::Matrix::Translate(-centre.x, -centre.y);
-      }
-      m = m * core::Matrix::Scale(sx, sy);
-      std::vector<core::PathData> glyph;
-      for (const core::PathData& path : *GlyphOutline(*run.face, run.glyphs[g])) {
-        glyph.push_back(core::Transformed(path, m));
-      }
+      std::vector<core::PathData> glyph = RunGlyphOutline(run, g);
       if (!glyph.empty()) glyphs.push_back(std::move(glyph));
     }
   }

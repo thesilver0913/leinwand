@@ -22,6 +22,7 @@
 #include "core/gradient.h"
 #include "core/style.h"
 #include "editor/number_input.h"
+#include "editor/preflight.h"
 #include "io/lwd.h"
 #include "io/svg.h"
 #include "layers_model.h"
@@ -190,6 +191,7 @@ void Session::SetDocument(leinwand::core::Document document) {
   editor_->SetSmartGuides(guides);
   editor_->SetPathOpsEngine(&path_ops_);
   editor_->SetArtboardNamePrefix(tr("Artboard").toStdString());
+  editor_->SetTrimMarksName(tr("Trim Marks").toStdString());
   view_tool_ = -1;
   ApplyPreferences();
   saved_revision_ = autosaved_revision_ = editor_->history().revision();
@@ -348,6 +350,25 @@ bool Session::exportSvg(const QUrl& url) {
   if (!WriteBytes(path, std::vector<std::uint8_t>(svg.begin(), svg.end()))) {
     return Fail(tr("Could not write %1.").arg(QFileInfo(path).fileName()));
   }
+  return true;
+}
+
+bool Session::exportPdf(const QUrl& url, bool all_artboards, bool outline_text, int marks) {
+  QString path = LocalPath(url);
+  if (QFileInfo(path).suffix().isEmpty()) path += QStringLiteral(".pdf");
+  const auto& document = editor_->document();
+  if (document.artboards.empty()) return Fail(tr("The document has no artboard to export."));
+  leinwand::render::PdfOptions options;
+  if (!all_artboards) options.artboards = {editor_->active_artboard()};
+  options.outline_text = outline_text;
+  if (marks == 1) options.marks = leinwand::core::TrimMarkStyle::kJapanese;
+  if (marks == 2) options.marks = leinwand::core::TrimMarkStyle::kWestern;
+  options.title = display_name_.toStdString();
+  options.creator = std::string("Leinwand ") + LEINWAND_VERSION;
+  const auto pdf = leinwand::render::DocumentRenderer::ExportPdf(document, options);
+  if (pdf.empty()) return Fail(tr("Could not make the PDF."));
+  if (!WriteBytes(path, pdf))
+    return Fail(tr("Could not write %1.").arg(QFileInfo(path).fileName()));
   return true;
 }
 
@@ -886,6 +907,28 @@ QVariantMap Session::style() const {
     map["gradientStop"] = -1;
   }
   return map;
+}
+
+QVariantList Session::preflight(double min_stroke_mm, const QVariantList& checks) const {
+  leinwand::editor::PreflightSettings settings;
+  settings.min_stroke = std::max(min_stroke_mm, 0.0) * 72.0 / 25.4;
+  for (int i = 0; i < leinwand::editor::kPreflightCheckCount && i < checks.size(); ++i) {
+    settings.enabled[i] = checks[i].toBool();
+  }
+  QVariantList rows;
+  for (const auto& issue : leinwand::editor::Preflight(editor_->document(), settings)) {
+    QVariantList ids;
+    for (const auto& id : issue.ids) ids.append(QString::fromStdString(id));
+    rows.append(QVariantMap{{"check", static_cast<int>(issue.check)}, {"ids", ids}});
+  }
+  return rows;
+}
+
+void Session::createTrimMarks() {
+  const bool japanese = Preferences::instance()->Flag(QStringLiteral("japaneseTrimMarks"));
+  editor_->CreateTrimMarks(japanese ? leinwand::core::TrimMarkStyle::kJapanese
+                                    : leinwand::core::TrimMarkStyle::kWestern);
+  Changed();
 }
 
 QVariantMap Session::characterStyle() const {

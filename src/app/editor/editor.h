@@ -17,6 +17,7 @@
 #include "core/edit.h"
 #include "core/history.h"
 #include "core/id.h"
+#include "core/marks.h"
 #include "core/shape.h"
 #include "core/types.h"
 #include "geometry/pathfinder.h"
@@ -129,7 +130,7 @@ enum class Handle { kTopLeft, kTop, kTopRight, kRight, kBottomRight, kBottom, kB
 
 // What the pointer is over, for the cursor.
 struct Hover {
-  enum class Kind { kNothing, kObject, kHandle, kRotate } kind = Kind::kNothing;
+  enum class Kind { kNothing, kObject, kHandle, kRotate, kCorner } kind = Kind::kNothing;
   Handle handle = Handle::kTopLeft;  // For kHandle and kRotate (the nearest corner).
 };
 
@@ -150,6 +151,8 @@ struct Overlay {
   std::optional<std::pair<core::Point, core::Point>> text_caret;
   std::vector<std::array<core::Point, 4>> text_selection;
   std::vector<std::pair<core::Point, core::Point>> text_underlines;
+  // Live corner widgets of the selected rectangle or polygon.
+  std::vector<core::Point> corner_widgets;
 };
 
 // The Align panel (spec 7.2): what objects line up with.
@@ -290,6 +293,7 @@ class Editor {
     kArtboardResize,  // On a handle of the active one.
     kGradient,        // The gradient tool: start (or one end) to the pointer.
     kTextSelect,      // The type tool: selecting text in the edited text.
+    kCornerRadius,    // A live corner widget.
   };
   struct Drag {
     DragKind kind = DragKind::kNone;
@@ -445,6 +449,9 @@ class Editor {
   void SetArtboardBounds(int index, const core::Rect& bounds);
   // Lays the cover's artboards out again (spec 7.5); one undo step.
   void SetCover(const core::CoverSpec& spec, const core::CoverNames& names);
+  // Object > Create Trim Marks (editor_artboards.cpp, spec 7.5).
+  void CreateTrimMarks(core::TrimMarkStyle style);
+  void SetTrimMarksName(std::string name) { trim_marks_name_ = std::move(name); }
 
   // Object > Compound Path (Ctrl+8, Alt+Shift+Ctrl+8). Make joins the
   // selected paths and compound paths into one compound path with the
@@ -505,6 +512,20 @@ class Editor {
                     const std::function<core::ObjectPtr(const core::ObjectPtr&)>& edit);
   void EditMask(const std::function<void(core::OpacityMask&)>& edit);
 
+  // Live corners (editor_corners.cpp).
+  struct CornerRef {
+    core::Point at;      // The corner, in the shape's coordinates.
+    core::Point inward;  // Unit vector along the bisector, into the shape.
+    double factor = 1;   // The arc's centre lies factor × radius along it.
+    double radius = 0;
+  };
+  std::vector<CornerRef> Corners(core::Matrix* to_document) const;
+  std::vector<core::Point> CornerWidgets(double pick) const;  // Document coordinates.
+  std::optional<int> CornerWidgetAt(core::Point p, double pick) const;
+  void CornerDown(int index, Modifiers modifiers);
+  void CornerDrag();
+  mutable double widget_pick_ = 4.0;  // The last pick radius, for sizing widgets.
+
   struct TextEdit {
     std::string id;           // The text being edited; empty when none.
     core::ObjectPtr pending;  // New text not in the document yet.
@@ -554,6 +575,7 @@ class Editor {
   std::string NewArtboardName(const core::Document& document) const;
   int active_artboard_ = 0;
   std::string artboard_prefix_ = "Artboard";
+  std::string trim_marks_name_ = "Trim Marks";
   AlignTo align_to_ = AlignTo::kSelection;
   std::string key_object_;
   Drag drag_;

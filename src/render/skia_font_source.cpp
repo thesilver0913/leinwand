@@ -15,6 +15,7 @@
 #include "include/core/SkStream.h"
 #include "include/core/SkString.h"
 #include "include/core/SkTypeface.h"
+#include "render/skia_typeface.h"
 
 #if defined(_WIN32)
 #include "include/ports/SkTypeface_win.h"
@@ -120,6 +121,22 @@ class SystemFontSource : public text::FontSource {
 };
 
 }  // namespace
+
+sk_sp<SkTypeface> TypefaceOf(const text::Face& face) {
+  static std::mutex mutex;
+  static std::map<std::uint64_t, sk_sp<SkTypeface>> typefaces;
+  static const sk_sp<SkFontMgr> manager = PlatformFontMgr();
+  std::lock_guard lock(mutex);
+  const auto it = typefaces.find(face.id());
+  if (it != typefaces.end()) return it->second;
+  sk_sp<SkTypeface> typeface;
+  if (manager) {
+    typeface = manager->makeFromData(SkData::MakeWithCopy(face.bytes().data(), face.bytes().size()),
+                                     face.index());
+  }
+  typefaces[face.id()] = typeface;
+  return typeface;
+}
 
 std::shared_ptr<const text::FontSource> MakeSystemFontSource() {
   return std::make_shared<SystemFontSource>();

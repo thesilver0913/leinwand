@@ -28,7 +28,7 @@ Window {
     readonly property var names: ({
         fileNew: qsTr("New"), fileOpen: qsTr("Open"), fileSave: qsTr("Save"),
         fileSaveAs: qsTr("Save As"), fileExportSvg: qsTr("Export as SVG"),
-        fileExportPng: qsTr("Export as PNG"), fileClose: qsTr("Close"), fileQuit: qsTr("Exit"),
+        fileExportPng: qsTr("Export as PNG"), fileExportPdf: qsTr("Export as PDF"), filePrint: qsTr("Print"), fileClose: qsTr("Close"), fileQuit: qsTr("Exit"),
         editUndo: qsTr("Undo"), editRedo: qsTr("Redo"), editClear: qsTr("Clear"),
         editPreferences: qsTr("Preferences"), editShortcuts: qsTr("Keyboard Shortcuts"),
         objectBringToFront: qsTr("Bring to Front"), objectBringForward: qsTr("Bring Forward"),

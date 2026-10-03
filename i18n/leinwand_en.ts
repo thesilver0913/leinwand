@@ -2,6 +2,17 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="en">
 <context>
+    <name>PrintDialog</name>
+    <message numerus="yes">
+        <location filename="../../../src/app/qml/PrintDialog.qml" line="73"/>
+        <source>%n page(s)</source>
+        <translation>
+            <numerusform>%n page</numerusform>
+            <numerusform>%n pages</numerusform>
+        </translation>
+    </message>
+</context>
+<context>
     <name>SwatchesPanel</name>
     <message numerus="yes">
         <location filename="../../../src/app/qml/panels/SwatchesPanel.qml" line="58"/>

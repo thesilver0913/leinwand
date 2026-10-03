@@ -45,7 +45,10 @@ MenuBar {
             enabled: root.hasDocument
             Action { text: qsTr("Export as &SVG..."); shortcut: root.key("fileExportSvg"); onTriggered: root.window.exportSvg() }
             Action { text: qsTr("Export as &PNG..."); shortcut: root.key("fileExportPng"); onTriggered: root.window.pngOptions.open() }
+            Action { text: qsTr("Export as P&DF..."); shortcut: root.key("fileExportPdf"); onTriggered: root.window.pdfOptions.open() }
         }
+        Action { text: qsTr("Pre&flight"); enabled: root.hasDocument; onTriggered: root.window.showPanel(root.window.preflight) }
+        Action { text: qsTr("&Print..."); enabled: root.hasDocument; shortcut: root.key("filePrint"); onTriggered: root.window.printDialog.open() }
         MenuSeparator {}
         Action { text: qsTr("Co&ver Setup..."); enabled: root.hasDocument && Session.hasCover; onTriggered: root.window.coverDialog.open() }
         MenuSeparator {}
@@ -95,6 +98,7 @@ MenuBar {
             Action { text: qsTr("&Make"); shortcut: root.key("objectCompoundMake"); onTriggered: Session.makeCompoundPath() }
             Action { text: qsTr("&Release"); shortcut: root.key("objectCompoundRelease"); onTriggered: Session.releaseCompoundPath() }
         }
+        Action { text: qsTr("Create &Trim Marks"); onTriggered: Session.createTrimMarks() }
         Menu {
             title: qsTr("Clipping &Mask")
             Action { text: qsTr("&Make"); shortcut: root.key("objectClipMake"); onTriggered: Session.makeClippingMask() }
@@ -145,10 +149,7 @@ MenuBar {
             delegate: MenuItem {
                 required property var modelData
                 text: modelData.title
-                onTriggered: {
-                    modelData.open();
-                    modelData.setAsCurrentTab();
-                }
+                onTriggered: root.window.showPanel(modelData)
             }
             onObjectAdded: (index, object) => windowMenu.insertItem(index, object)
             onObjectRemoved: (index, object) => windowMenu.removeItem(object)

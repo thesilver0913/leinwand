@@ -321,6 +321,10 @@ Overlay Editor::overlay() const {
     }
     return overlay;
   }
+  if (tool == Tool::kSelection &&
+      (drag_.kind == DragKind::kNone || drag_.kind == DragKind::kCornerRadius)) {
+    overlay.corner_widgets = CornerWidgets(widget_pick_);
+  }
   // The box hides while the selection is being transformed, as in Illustrator.
   if (drag_.kind == DragKind::kNone || drag_.kind == DragKind::kPending ||
       drag_.kind == DragKind::kMarquee) {
@@ -353,6 +357,8 @@ std::optional<Handle> Editor::RotateZoneAt(Point p, double pick) const {
 
 Hover Editor::HoverAt(Point p, double pick) const {
   if (tool() != Tool::kSelection) return {};
+  widget_pick_ = pick;
+  if (CornerWidgetAt(p, pick)) return {Hover::Kind::kCorner};
   if (const auto h = HandleAt(p, pick)) return {Hover::Kind::kHandle, *h};
   if (const auto h = RotateZoneAt(p, pick)) return {Hover::Kind::kRotate, *h};
   if (geometry::HitTest(document(), p, pick)) return {Hover::Kind::kObject};
@@ -435,6 +441,11 @@ void Editor::PointerDown(Point p, Modifiers modifiers, double pick) {
     case Tool::kSelection:
       break;
   }
+  widget_pick_ = pick;
+  if (const auto corner = CornerWidgetAt(p, pick)) {
+    CornerDown(*corner, modifiers);
+    return;
+  }
   if (!selection().empty()) {
     if (const auto h = HandleAt(p, pick)) {
       drag_.kind = DragKind::kScale;
@@ -495,6 +506,9 @@ void Editor::PointerMove(Point p, Modifiers modifiers) {
       return;
     case DragKind::kTextSelect:
       TypeDrag();
+      return;
+    case DragKind::kCornerRadius:
+      CornerDrag();
       return;
     default:
       break;
@@ -607,6 +621,12 @@ void Editor::PointerUp(Point p, Modifiers modifiers) {
   }
   if (kind == DragKind::kTextSelect) {
     drag_ = {};
+    return;
+  }
+  if (kind == DragKind::kCornerRadius) {
+    std::optional<core::EditorState> result = std::move(drag_.preview);
+    drag_ = {};
+    if (result) Commit("corner radius", std::move(*result));
     return;
   }
   if (kind == DragKind::kGradient) {

@@ -215,6 +215,7 @@ leinwand::render::Overlay CanvasItem::overlay(double pixel_ratio) const {
   overlay.text_caret = o.text_caret;
   overlay.text_selection = std::move(o.text_selection);
   overlay.text_underlines = std::move(o.text_underlines);
+  overlay.corner_widgets = std::move(o.corner_widgets);
   return overlay;
 }
 
@@ -809,6 +810,9 @@ void CanvasItem::UpdateCursor(QPointF position) {
     case Kind::kRotate:
       // Qt has no rotate cursor; a custom one comes with the icon set (M7).
       setCursor(Qt::CrossCursor);
+      return;
+    case Kind::kCorner:
+      setCursor(Qt::PointingHandCursor);  // A live corner widget.
       return;
     case Kind::kObject:
     case Kind::kNothing:

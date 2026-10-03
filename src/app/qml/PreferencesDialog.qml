@@ -103,6 +103,10 @@ Window {
                         SpCheckBox { checked: Preferences.rubberBand; onClicked: Preferences.rubberBand = checked }
                     }
                     Row2 {
+                        label: qsTr("Use Japanese crop marks")
+                        SpCheckBox { checked: Preferences.japaneseTrimMarks; onClicked: Preferences.japaneseTrimMarks = checked }
+                    }
+                    Row2 {
                         label: qsTr("Show the welcome screen at startup")
                         SpCheckBox { checked: Preferences.showWelcome; onClicked: Preferences.showWelcome = checked }
                     }

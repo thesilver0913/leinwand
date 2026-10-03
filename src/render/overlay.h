@@ -40,6 +40,7 @@ struct Overlay {
   std::optional<std::pair<core::Point, core::Point>> text_caret;
   std::vector<std::array<core::Point, 4>> text_selection;
   std::vector<std::pair<core::Point, core::Point>> text_underlines;
+  std::vector<core::Point> corner_widgets;  // Live corners: small rings.
 };
 
 }  // namespace leinwand::render
