@@ -13,6 +13,7 @@
 #include "core/transform.h"
 #include "geometry/bezier.h"
 #include "io/svg.h"
+#include "text/layout.h"
 #include "io/svg_syntax.h"
 
 namespace leinwand::io {
@@ -49,6 +50,13 @@ struct Inherited {
   RgbColor color{0, 0, 0};        // For currentColor.
   bool visible = true;            // visibility
   bool paint_fill_first = false;  // paint-order: stroke drawn below the fill.
+  // Text.
+  std::string font_family = "sans-serif";
+  double font_size = 16.0;  // CSS "medium".
+  int font_weight = 400;
+  bool italic = false;
+  double letter_spacing = 0.0;
+  std::string text_anchor = "start";
 };
 
 using Properties = std::map<std::string, std::string>;
@@ -296,7 +304,13 @@ class Importer {
                                                 "mix-blend-mode",
                                                 "paint-order",
                                                 "clip-rule",
-                                                "isolation"};
+                                                "isolation",
+                                                "font-family",
+                                                "font-size",
+                                                "font-weight",
+                                                "font-style",
+                                                "letter-spacing",
+                                                "text-anchor"};
     Properties p;
     for (const char* name : kPresentation) {
       if (const pugi::xml_attribute a = node.attribute(name)) p[name] = a.value();
@@ -369,6 +383,29 @@ class Importer {
     }
     if (const std::string v = Value(p, "stroke"); !v.empty() && v != "inherit") {
       s.stroke = ParsePaint(v, s);
+    }
+    if (const std::string v = Value(p, "font-family"); !v.empty() && v != "inherit") {
+      s.font_family = v;
+    }
+    if (const std::string v = Value(p, "font-size"); !v.empty() && v != "inherit") {
+      if (const auto n = svg::ParseLength(v, s.font_size)) s.font_size = *n;
+    }
+    if (const std::string v = Value(p, "font-weight"); !v.empty() && v != "inherit") {
+      s.font_weight = v == "bold"     ? 700
+                      : v == "normal" ? 400
+                      : v == "bolder" ? std::min(900, s.font_weight + 300)
+                      : v == "lighter"
+                          ? std::max(100, s.font_weight - 300)
+                          : static_cast<int>(svg::ParseLength(v).value_or(s.font_weight));
+    }
+    if (const std::string v = Value(p, "font-style"); !v.empty() && v != "inherit") {
+      s.italic = v == "italic" || v == "oblique";
+    }
+    if (const std::string v = Value(p, "letter-spacing"); !v.empty() && v != "inherit") {
+      s.letter_spacing = v == "normal" ? 0.0 : svg::ParseLength(v).value_or(0.0);
+    }
+    if (const std::string v = Value(p, "text-anchor"); !v.empty() && v != "inherit") {
+      s.text_anchor = v;
     }
     number("fill-opacity", s.fill_opacity);
     number("stroke-opacity", s.stroke_opacity);
@@ -749,6 +786,12 @@ class Importer {
       return WithMask(WithClip(*object, node, p), node, p);
     }
 
+    if (!foreign && name == "text") {
+      if (auto text = Text(node, p, s, transform, ancestors)) {
+        return WithMask(WithClip(*text, node, p), node, p);
+      }
+    }
+
     // Everything else is kept as XML (spec 6.1): written back in place.
     PreservedObject preserved;
     preserved.common.id = id;
@@ -837,6 +880,237 @@ class Importer {
          o = o.next_sibling(), c = c.next_sibling()) {
       if (o.type() == pugi::node_element) InlineCss(c, o, ancestors);
     }
+  }
+
+  // <text> as point text (spec 6.1): its characters and <tspan>s become a
+  // story, a new line wherever the text moves down. Positions within a line
+  // are left to the layout. Text on a path stays as XML (phase 3).
+  std::optional<ObjectPtr> Text(pugi::xml_node node, const Properties& p, const Inherited& s,
+                                const Matrix& transform, std::vector<pugi::xml_node> ancestors) {
+    bool supported = true;
+    std::function<void(pugi::xml_node)> check = [&](pugi::xml_node n) {
+      for (pugi::xml_node c : n.children()) {
+        if (c.type() != pugi::node_element) continue;
+        if (LocalName(c.name()) != "tspan") supported = false;
+        check(c);
+      }
+    };
+    check(node);
+    if (!supported) return std::nullopt;
+
+    struct Chunk {
+      std::u32string text;
+      Inherited style;
+      std::optional<double> x, y;
+      double dy = 0;
+    };
+    std::vector<Chunk> chunks;
+    const bool preserve = std::string(node.attribute("xml:space").value()) == "preserve";
+    bool positioned_inside = false;
+    auto first_of = [](const char* list) -> std::optional<double> {
+      const auto values = svg::ParseNumberList(list);
+      if (values.empty()) return std::nullopt;
+      return values.front();
+    };
+    std::function<void(pugi::xml_node, const Inherited&, std::optional<double>,
+                       std::optional<double>, double, std::vector<pugi::xml_node>)>
+        walk = [&](pugi::xml_node n, const Inherited& style, std::optional<double> x,
+                   std::optional<double> y, double dy, std::vector<pugi::xml_node> anc) {
+          if (svg::ParseNumberList(n.attribute("x").value()).size() > 1 ||
+              n.attribute("rotate") || n.attribute("textLength")) {
+            positioned_inside = true;
+          }
+          anc.push_back(n);
+          for (pugi::xml_node c : n.children()) {
+            if (c.type() == pugi::node_pcdata || c.type() == pugi::node_cdata) {
+              chunks.push_back({core::FromUtf8(c.value()), style, x, y, dy});
+              x.reset();
+              y.reset();
+              dy = 0;
+            } else if (c.type() == pugi::node_element) {
+              const Properties cp = Specified(c, anc);
+              Inherited cs = style;
+              ApplyInherited(c, cp, cs);
+              std::optional<double> cx = first_of(c.attribute("x").value());
+              std::optional<double> cy = first_of(c.attribute("y").value());
+              const double cdy = first_of(c.attribute("dy").value()).value_or(0);
+              if (first_of(c.attribute("dx").value())) positioned_inside = true;
+              walk(c, cs, cx ? cx : x, cy ? cy : y, cdy + dy, anc);
+              x.reset();
+              y.reset();
+              dy = 0;
+            }
+          }
+        };
+    walk(node, s, first_of(node.attribute("x").value()), first_of(node.attribute("y").value()),
+         first_of(node.attribute("dy").value()).value_or(0), ancestors);
+
+    // White space as SVG treats it.
+    for (Chunk& chunk : chunks) {
+      std::u32string out;
+      for (char32_t c : chunk.text) {
+        if (c == U'\n' || c == U'\r') {
+          if (preserve) out.push_back(U' ');
+          continue;
+        }
+        if (c == U'\t') c = U' ';
+        if (!preserve && c == U' ' && !out.empty() && out.back() == U' ') continue;
+        out.push_back(c);
+      }
+      chunk.text = std::move(out);
+    }
+    if (!preserve) {
+      bool after_space = true;  // Leading space goes.
+      for (Chunk& chunk : chunks) {
+        if (after_space && !chunk.text.empty() && chunk.text.front() == U' ') {
+          chunk.text.erase(0, 1);
+        }
+        if (!chunk.text.empty()) after_space = chunk.text.back() == U' ';
+      }
+      for (auto it = chunks.rbegin(); it != chunks.rend(); ++it) {
+        if (it->text.empty()) continue;
+        if (it->text.back() == U' ') it->text.pop_back();
+        break;
+      }
+    }
+
+    // The story: a paragraph per line.
+    core::Story story;
+    story.id = FreshId("story");
+    story.characters.clear();
+    std::vector<double> leadings{0};  // Per paragraph; 0 = auto.
+    std::optional<double> origin_x, origin_y, line_y;
+    bool indented = false;
+    for (const Chunk& chunk : chunks) {
+      if (chunk.text.empty() && !chunk.y && chunk.dy == 0) continue;
+      double y = line_y.value_or(chunk.y.value_or(0));
+      if (chunk.y) y = *chunk.y;
+      y += chunk.dy;
+      if (!line_y) {
+        origin_x = chunk.x.value_or(0);
+        origin_y = y;
+        line_y = y;
+      } else if (std::abs(y - *line_y) > 1e-9) {
+        story.text.push_back(U'\n');
+        story.characters.push_back({1, story.characters.back().style});
+        leadings.push_back(y - *line_y);
+        line_y = y;
+        if (chunk.x && std::abs(*chunk.x - *origin_x) > 1e-6) indented = true;
+      } else if (chunk.x) {
+        positioned_inside = true;
+      }
+      core::CharacterStyle style;
+      style.font = FontFor(chunk.style);
+      style.size = chunk.style.font_size;
+      if (chunk.style.letter_spacing != 0 && style.size > 0) {
+        style.tracking = chunk.style.letter_spacing / style.size * 1000;
+      }
+      story.text += chunk.text;
+      story.characters.push_back({chunk.text.size(), style});
+    }
+    if (!line_y) return std::nullopt;  // No text at all.
+    if (story.characters.empty()) story.characters.push_back({0, {}});
+    story.paragraphs.assign(leadings.size(), core::ParagraphStyle{});
+    const core::TextAlign align = s.text_anchor == "middle" ? core::TextAlign::kCenter
+                                  : s.text_anchor == "end"  ? core::TextAlign::kRight
+                                                            : core::TextAlign::kLeft;
+    for (auto& paragraph : story.paragraphs) paragraph.align = align;
+    // Normalise the runs (joins equal neighbours, drops empty ones).
+    core::Story normal = core::Inserted(story, 0, U"", nullptr);
+    normal = core::WithCharacterStyle(normal, 0, normal.text.size(), [](core::CharacterStyle&) {});
+    // Line spacing other than auto becomes the lines' leading.
+    for (std::size_t para = 1; para < leadings.size(); ++para) {
+      const std::size_t from = core::ParagraphStart(normal, para);
+      const std::size_t to = std::max(core::ParagraphEnd(normal, para), from);
+      const double leading = leadings[para];
+      normal = core::WithCharacterStyle(normal, from == to ? from : from, to,
+                                        [&](core::CharacterStyle& c) {
+                                          if (std::abs(core::LeadingOf(c) - leading) > 1e-6) {
+                                            c.leading = leading;
+                                          }
+                                        });
+    }
+    const std::string id = Id(node, "text");
+    if (positioned_inside || indented) {
+      out_.report.Add("text positioned by character or line (laid out again)",
+                      ReportAction::kApproximated, id);
+    }
+    core::TextObject text;
+    text.common.id = id;
+    text.story = std::make_shared<const core::Story>(std::move(normal));
+    text.transform = transform * Matrix::Translate(*origin_x, *origin_y);
+    ApplyCommon(text.common, p, s, true);
+    return MakeObject(std::move(text));
+  }
+
+  // The font for a CSS font-family list, weight and style: the first family
+  // there is (generic names mean the default font), in the style closest to
+  // the weight.
+  core::FontRef FontFor(const Inherited& s) const {
+    std::vector<std::string> names;
+    std::vector<std::string> listed{""};
+    for (char c : s.font_family) {
+      if (c == ',') {
+        listed.emplace_back();
+      } else {
+        listed.back() += c;
+      }
+    }
+    for (std::string name : listed) {
+      std::erase_if(name, [](char c) { return c == '\'' || c == '"'; });
+      while (!name.empty() && name.front() == ' ') name.erase(0, 1);
+      while (!name.empty() && name.back() == ' ') name.pop_back();
+      if (!name.empty()) names.push_back(name);
+    }
+    const std::vector<text::FontFamily> families = text::Families();
+    for (const std::string& name : names) {
+      for (const text::FontFamily& family : families) {
+        if (family.name != name || family.styles.empty()) continue;
+        std::string best = family.styles.front();
+        int best_distance = 1000;
+        for (const std::string& style : family.styles) {
+          int distance = std::abs(WeightOfStyle(style) - s.font_weight);
+          if (IsItalicStyle(style) != s.italic) distance += 50;
+          if (distance < best_distance) {
+            best_distance = distance;
+            best = style;
+          }
+        }
+        return {family.name, best, {}};
+      }
+    }
+    core::FontRef font = core::DefaultFont();
+    if (s.font_weight >= 600) {
+      font.style = "Bold";
+      font.postscript_name.clear();
+    }
+    if (!names.empty() && names.front() != "sans-serif" && names.front() != "serif" &&
+        names.front() != "monospace") {
+      // A font that is not here: keep its name (spec 5.2, missing fonts).
+      font = {names.front(), s.font_weight >= 600 ? "Bold" : "Regular", {}};
+    }
+    return font;
+  }
+
+  static int WeightOfStyle(const std::string& style) {
+    std::string s;
+    for (char c : style) s += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    std::erase(s, ' ');
+    std::erase(s, '-');
+    static const std::pair<const char*, int> kWeights[] = {
+        {"extralight", 200}, {"ultralight", 200}, {"semibold", 600}, {"demibold", 600},
+        {"extrabold", 800},  {"ultrabold", 800},  {"thin", 100},     {"hairline", 100},
+        {"light", 300},      {"medium", 500},     {"bold", 700},     {"black", 900},
+        {"heavy", 900}};
+    for (const auto& [name, weight] : kWeights) {
+      if (s.find(name) != std::string::npos) return weight;
+    }
+    return 400;
+  }
+  static bool IsItalicStyle(const std::string& style) {
+    std::string s;
+    for (char c : style) s += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s.find("italic") != std::string::npos || s.find("oblique") != std::string::npos;
   }
 
   // The element a "url(#id)" reference points to, if it is a `kind`.

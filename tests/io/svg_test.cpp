@@ -14,11 +14,19 @@
 #include "render/document_renderer.h"
 #include "render/image_compare.h"
 #include "render/test_document.h"
+#include "text/font.h"
 
 using namespace leinwand;
 using Catch::Approx;
 
 namespace {
+
+// Text is laid out with the bundled fonts only, the same on every OS.
+const bool fonts_ready = [] {
+  leinwand::text::SetFontSources(
+      {std::make_shared<leinwand::text::FolderFontSource>(LEINWAND_FONTS_DIR)});
+  return true;
+}();
 
 std::string ReadTestFile(const std::string& name) {
   std::ifstream in(std::string(LEINWAND_TESTDATA_DIR) + "/" + name, std::ios::binary);
@@ -90,7 +98,9 @@ TEST_CASE("SVG import: size, layers, shapes, CSS and what it could not take") {
   // rect from its bounding box and scaled by the viewBox with it.
   bool sky = false;
   for (const auto& id : core::AllObjectIds(*result.document)) {
-    const auto* fill = core::FrontFill(core::CommonOf(*result.document->FindObject(id)).appearance);
+    const core::Object* object = result.document->FindObject(id);
+    if (!object) continue;  // A story id.
+    const auto* fill = core::FrontFill(core::CommonOf(*object).appearance);
     if (!fill || !fill->gradient) continue;
     sky = true;
     CHECK(fill->gradient->start.x == Approx(0));
@@ -99,7 +109,8 @@ TEST_CASE("SVG import: size, layers, shapes, CSS and what it could not take") {
   }
   CHECK(sky);
   CHECK_FALSE(HasRow(result.report, "fill gradient", io::ReportAction::kApproximated));
-  CHECK(HasRow(result.report, "<text>", io::ReportAction::kPreserved));
+  // <text> becomes point text (M14).
+  CHECK_FALSE(HasRow(result.report, "<text>", io::ReportAction::kPreserved));
   CHECK(HasRow(result.report, "<defs>", io::ReportAction::kPreserved));
 }
 
@@ -153,10 +164,10 @@ TEST_CASE("Preserved SVG elements are written back in place") {
   const auto result = io::ImportSvg(ReadTestFile("svg/features.svg"));
   REQUIRE(result.document);
   const std::string svg = io::ExportSvg(*result.document);
-  CHECK(svg.find(">Hello</text>") != std::string::npos);
+  CHECK(svg.find(">Hello</tspan></text>") != std::string::npos);
   CHECK(svg.find("linearGradient") != std::string::npos);
-  // The text's CSS class was turned into an inline style.
-  CHECK(svg.find("fill:#e34850") != std::string::npos);
+  // The text's CSS class gave it its paint.
+  CHECK(svg.find("fill=\"#e34850\"") != std::string::npos);
   CHECK(svg.find("inkscape:label=\"Art\"") != std::string::npos);
 }
 

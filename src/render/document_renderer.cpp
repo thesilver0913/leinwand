@@ -29,6 +29,7 @@
 #include "include/effects/SkLumaColorFilter.h"
 #include "include/encode/SkPngEncoder.h"
 #include "render/document_renderer_impl.h"
+#include "text/layout.h"
 
 namespace leinwand::render {
 
@@ -104,7 +105,12 @@ void AppendPath(SkPathBuilder& builder, const core::PathData& path) {
 
 SkPath ToSkPath(const core::Object& object) {
   SkPathBuilder builder;
-  for (const auto& subpath : core::OutlineOf(object)) AppendPath(builder, subpath);
+  // Text is drawn as its glyph outlines, so it paints like any path (fills,
+  // strokes, gradients) and looks the same as when outlined.
+  const auto* text = std::get_if<core::TextObject>(&object);
+  for (const auto& subpath : text ? text::OutlineOf(*text) : core::OutlineOf(object)) {
+    AppendPath(builder, subpath);
+  }
   builder.setFillType(core::FillRuleOf(object) == core::FillRule::kEvenOdd
                           ? SkPathFillType::kEvenOdd
                           : SkPathFillType::kWinding);
@@ -245,6 +251,12 @@ const DocumentRenderer::Impl::CacheEntry& DocumentRenderer::Impl::Entry(
         }
       }
       entry.bounds = geometry::Bounds(o).Outset(outset);
+      if (std::holds_alternative<core::TextObject>(o) && !entry.path.isEmpty()) {
+        // Glyphs may reach past the lines' boxes.
+        const SkRect ink = entry.path.getBounds();
+        entry.bounds = entry.bounds.Union(
+            Rect{ink.left(), ink.top(), ink.right(), ink.bottom()}.Outset(outset));
+      }
     }
   }
   entry.last_used = frame_;

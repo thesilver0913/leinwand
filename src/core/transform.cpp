@@ -140,6 +140,11 @@ ObjectPtr Transformed(const ObjectPtr& object, const Matrix& matrix) {
           return Transformed(Expanded(object), matrix);
         } else {
           copy.transform = matrix * o.transform;
+          // Text is drawn in its parent's coordinates, like paths, so its
+          // gradients live there too.
+          if constexpr (std::is_same_v<T, TextObject>) {
+            TransformGradients(copy.common.appearance, matrix);
+          }
         }
         TransformMask(copy.common, matrix);
         return MakeObject(std::move(copy));

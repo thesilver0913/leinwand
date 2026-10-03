@@ -14,6 +14,7 @@
 #include "core/appearance.h"
 #include "core/path.h"
 #include "core/shape.h"
+#include "core/text.h"
 #include "core/types.h"
 
 namespace leinwand::core {
@@ -59,6 +60,9 @@ struct GroupObject {
   // Isolate blending: the children's blend modes act within the group only.
   bool isolated = false;
   Matrix transform;
+  // Create Outlines keeps the text it came from (spec 7.5), in the group's
+  // coordinates, so that it can be turned back into text. Not drawn.
+  ObjectPtr outlined_text;
 };
 
 // A live shape (spec 4.1): parameters plus a transform that places the
@@ -67,6 +71,20 @@ struct GroupObject {
 struct ShapeObject {
   ObjectCommon common;
   ShapeParams shape;
+  Matrix transform;
+};
+
+// Text (spec 5). Point text starts at the transform's origin, on the first
+// line's baseline, and does not wrap; lines follow downwards. The transform
+// holds the position and any rotation, scaling or shear of the whole text.
+enum class TextKind { kPoint };
+enum class TextOrientation { kHorizontal };
+
+struct TextObject {
+  ObjectCommon common;
+  TextKind kind = TextKind::kPoint;
+  TextOrientation orientation = TextOrientation::kHorizontal;
+  StoryPtr story;
   Matrix transform;
 };
 
@@ -84,7 +102,8 @@ struct PreservedObject {
 };
 
 struct Object
-    : std::variant<PathObject, CompoundPathObject, GroupObject, ShapeObject, PreservedObject> {
+    : std::variant<PathObject, CompoundPathObject, GroupObject, ShapeObject, PreservedObject,
+                   TextObject> {
   using variant::variant;
   // std::visit on classes derived from std::variant needs C++23 (P2162).
   const variant& base() const { return *this; }

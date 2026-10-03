@@ -12,6 +12,7 @@ add_library(core STATIC
   shape.cpp
   style.cpp
   id.cpp
+  text.cpp
   transform.cpp
 )
 target_include_directories(core PUBLIC ${PROJECT_SOURCE_DIR}/src)

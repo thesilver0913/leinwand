@@ -85,5 +85,6 @@ target_link_libraries(io_tests PRIVATE
 target_compile_definitions(io_tests PRIVATE
   LEINWAND_TESTDATA_DIR="${PROJECT_SOURCE_DIR}/testdata"
   LEINWAND_TEST_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}/test-output"
+  LEINWAND_FONTS_DIR="${PROJECT_SOURCE_DIR}/third_party/fonts"
 )
 catch_discover_tests(io_tests)

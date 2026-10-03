@@ -8,8 +8,10 @@
 #include <sstream>
 #include <variant>
 
+#include "core/gradient.h"
 #include "core/style.h"
 #include "geometry/bezier.h"
+#include "text/layout.h"
 #include "io/svg.h"
 
 namespace leinwand::io {
@@ -434,6 +436,8 @@ class Exporter {
             }
           } else if constexpr (std::is_same_v<T, ShapeObject>) {
             WritePainted(out, o.common, ShapeGeometry(o), depth);
+          } else if constexpr (std::is_same_v<T, TextObject>) {
+            WriteText(out, o, depth);
           } else {
             const std::string fill_rule =
                 FillRuleOf(*object) == FillRule::kEvenOdd ? " fill-rule=\"evenodd\"" : "";
@@ -442,6 +446,109 @@ class Exporter {
           }
         },
         object->base());
+  }
+
+  // Text stays text (spec 6.1, the default): one <tspan> per run of glyphs
+  // in one font and style, placed where Leinwand lays it out. Other programs
+  // shape it again with their own copy of the font.
+  void WriteText(std::ostream& out, const TextObject& o, int depth) {
+    const std::string indent(depth * 2, ' ');
+    const text::LayoutPtr layout = text::LayoutOf(o.story);
+    if (layout->runs.empty() || !o.story) return;
+    // Paint, with gradients moved into the text's own coordinates.
+    const Fill* fill = nullptr;
+    const Stroke* stroke = nullptr;
+    int fills = 0, strokes = 0;
+    for (const auto& item : o.common.appearance) {
+      if (const auto* f = std::get_if<Fill>(&item)) {
+        if (!fill) fill = f;
+        ++fills;
+      } else if (const auto* s = std::get_if<Stroke>(&item)) {
+        if (!stroke) stroke = s;
+        ++strokes;
+      }
+    }
+    if (fills > 1 || strokes > 1) {
+      Issue("several fills or strokes on text (front ones written)", ReportAction::kApproximated,
+            o.common.id);
+    }
+    const auto inverse = o.transform.Inverted().value_or(Matrix{});
+    std::optional<Fill> local_fill;
+    std::optional<Stroke> local_stroke;
+    if (fill) {
+      local_fill = *fill;
+      if (local_fill->gradient) local_fill->gradient = core::Transformed(*fill->gradient, inverse);
+    }
+    if (stroke) {
+      local_stroke = *stroke;
+      if (local_stroke->gradient) {
+        local_stroke->gradient = core::Transformed(*stroke->gradient, inverse);
+      }
+    }
+    const bool fill_first = fill && stroke && std::get_if<Fill>(&o.common.appearance.front());
+    out << indent << "<text" << CommonAttributes(o.common) << Transform(o.transform)
+        << PaintAttributes(local_fill ? &*local_fill : nullptr,
+                           local_stroke ? &*local_stroke : nullptr, fill_first, o.common.id)
+        << " xml:space=\"preserve\">";
+    const core::Story& story = *o.story;
+    bool approximated = false;
+    for (std::size_t r = 0; r < layout->runs.size(); ++r) {
+      const text::GlyphRun& run = layout->runs[r];
+      if (run.clusters.empty()) continue;
+      const std::size_t start = *std::min_element(run.clusters.begin(), run.clusters.end());
+      const std::size_t line = text::LineOf(*layout, start);
+      std::size_t end = layout->lines[line].end;
+      if (r + 1 < layout->runs.size() && !layout->runs[r + 1].clusters.empty()) {
+        const std::size_t next =
+            *std::min_element(layout->runs[r + 1].clusters.begin(),
+                              layout->runs[r + 1].clusters.end());
+        if (text::LineOf(*layout, next) == line) end = std::min(end, next);
+      }
+      const core::CharacterStyle& style = core::StyleAt(story, start);
+      approximated = approximated || run.horizontal_scale != 1 || run.vertical_scale != 1 ||
+                     run.rotation != 0;
+      out << "<tspan x=\"" << N(run.positions.front().x) << "\" y=\""
+          << N(run.positions.front().y) << "\" font-family=\"'"
+          << Escape(run.face ? run.face->family() : style.font.family) << "'\" font-size=\""
+          << N(run.size) << "\"";
+      const std::string& face_style = run.face ? run.face->style() : style.font.style;
+      if (const int weight = WeightOf(face_style); weight != 400) {
+        out << " font-weight=\"" << weight << "\"";
+      }
+      if (IsItalic(face_style)) out << " font-style=\"italic\"";
+      if (style.tracking != 0) {
+        out << " letter-spacing=\"" << N(style.tracking / 1000 * style.size) << "\"";
+      }
+      out << ">" << Escape(core::ToUtf8(std::u32string_view(story.text).substr(start, end - start)))
+          << "</tspan>";
+    }
+    out << "</text>\n";
+    if (approximated) {
+      Issue("scaled or rotated characters (written plain)", ReportAction::kApproximated,
+            o.common.id);
+    }
+  }
+
+  // CSS font weights for the usual style names.
+  static int WeightOf(const std::string& style) {
+    std::string s;
+    for (char c : style) s += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    std::erase(s, ' ');
+    std::erase(s, '-');
+    static const std::pair<const char*, int> kWeights[] = {
+        {"extralight", 200}, {"ultralight", 200}, {"semibold", 600}, {"demibold", 600},
+        {"extrabold", 800},  {"ultrabold", 800},  {"thin", 100},     {"hairline", 100},
+        {"light", 300},      {"medium", 500},     {"bold", 700},     {"black", 900},
+        {"heavy", 900}};
+    for (const auto& [name, weight] : kWeights) {
+      if (s.find(name) != std::string::npos) return weight;
+    }
+    return 400;
+  }
+  static bool IsItalic(const std::string& style) {
+    std::string s;
+    for (char c : style) s += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s.find("italic") != std::string::npos || s.find("oblique") != std::string::npos;
   }
 
   // A rectangle with even round corners and a full ellipse as SVG shapes, a

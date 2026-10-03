@@ -125,6 +125,15 @@ ObjectPtr WithFreshIds(const ObjectPtr& object, IdGenerator& ids) {
         copy.common.id = ids.Next();
         if constexpr (std::is_same_v<T, GroupObject>) {
           for (auto& child : copy.children) child = WithFreshIds(child, ids);
+          if (copy.outlined_text) copy.outlined_text = WithFreshIds(copy.outlined_text, ids);
+        }
+        if constexpr (std::is_same_v<T, TextObject>) {
+          // A copy of the text has a story of its own.
+          if (copy.story) {
+            Story story = *copy.story;
+            story.id = ids.Next();
+            copy.story = std::make_shared<const Story>(std::move(story));
+          }
         }
         if (copy.common.mask && copy.common.mask->art) {
           OpacityMask mask = *copy.common.mask;
@@ -178,9 +187,16 @@ Document AddObject(const Document& document, ObjectPtr object, const std::string
 
 IdSet AllObjectIds(const Document& document) {
   IdSet ids;
-  // Opacity masks' art too, so that new ids never clash with it.
+  // Opacity masks' art, the text kept by outlines and stories too, so that
+  // new ids never clash with them.
   std::function<void(const Object&)> add = [&](const Object& object) {
     ids.insert(CommonOf(object).id);
+    if (const auto* text = std::get_if<TextObject>(&object); text && text->story) {
+      ids.insert(text->story->id);
+    }
+    if (const auto* group = std::get_if<GroupObject>(&object); group && group->outlined_text) {
+      add(*group->outlined_text);
+    }
     const auto& mask = CommonOf(object).mask;
     if (!mask || !mask->art) return;
     add(*mask->art);

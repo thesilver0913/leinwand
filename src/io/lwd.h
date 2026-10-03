@@ -21,8 +21,9 @@ namespace leinwand::io {
 
 // The format version written (spec 3.3: major.minor).
 inline constexpr int kFormatMajor = 1;
-inline constexpr int kFormatMinor = 3;  // 1.1: "coverTemplate"; 1.2: gradients;
-// 1.3: opacity masks ("mask") and isolated groups.
+inline constexpr int kFormatMinor = 4;  // 1.1: "coverTemplate"; 1.2: gradients;
+// 1.3: opacity masks ("mask") and isolated groups; 1.4: text ("stories",
+// "text" objects, "outlinedText").
 inline constexpr std::string_view kMimeType = "application/x-leinwand-document";
 
 enum class LoadError {

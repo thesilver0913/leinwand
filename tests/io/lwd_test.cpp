@@ -95,7 +95,7 @@ TEST_CASE("document.json follows the spec's shape: fixed key order, defaults omi
         R"({"p":[50,150],"in":[20,0],"out":[0,-30],"kind":"smooth"})");
   CHECK(object["appearance"][0].dump() ==
         R"({"type":"stroke","paint":{"space":"rgb","values":[0,0,0]},"width":2})");
-  CHECK(j["format"]["version"] == "1.3");
+  CHECK(j["format"]["version"] == "1.4");
 }
 
 TEST_CASE("Unknown fields, enum values and object types are kept and written back") {
