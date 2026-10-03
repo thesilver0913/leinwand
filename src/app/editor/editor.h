@@ -18,6 +18,7 @@
 #include "core/id.h"
 #include "core/shape.h"
 #include "core/types.h"
+#include "geometry/pathfinder.h"
 
 namespace leinwand::editor {
 
@@ -40,6 +41,8 @@ enum class Tool {
   kConvertAnchor,
   kDirectSelection,
   kEyedropper,
+  kScissors,  // Cuts a path where it is clicked (C).
+  kArtboard,  // Draws, moves and resizes artboards (Shift+O).
 };
 
 // What a pen click would do at a point (spec 4.2: the cursor shows it).
@@ -107,7 +110,12 @@ struct Overlay {
   std::vector<PathOverlay> paths;                           // Anchors and handles being edited.
   std::optional<core::PathData> rubber_band;                // The pen's next segment.
   std::vector<std::pair<core::Point, core::Point>> guides;  // Smart guides while dragging.
+  std::optional<core::Rect> key_object;                     // Drawn with a thick outline.
 };
+
+// The Align panel (spec 7.2): what objects line up with.
+enum class AlignTo { kSelection, kKeyObject, kArtboard };
+enum class AlignEdge { kLeft, kHorizontalCenter, kRight, kTop, kVerticalCenter, kBottom };
 
 class Editor {
  public:
@@ -238,6 +246,9 @@ class Editor {
     kMoveAnchors,
     kMoveHandle,
     kDragSegment,
+    kArtboardDraw,    // The artboard tool outside every artboard.
+    kArtboardMove,    // Inside one: moves it with the artwork on it.
+    kArtboardResize,  // On a handle of the active one.
   };
   struct Drag {
     DragKind kind = DragKind::kNone;
@@ -263,8 +274,10 @@ class Editor {
     core::Point space_from;                  // Space during a pen drag: last position.
     std::optional<core::PathData> original;  // The path before this drag.
     std::optional<core::Document> base;      // Document the drag edits from.
-    double pick = 0.0;  // Pick radius at the press, also the snapping distance.
-    core::Point grab;   // The point that snaps: a grabbed anchor, or the press.
+    double pick = 0.0;          // Pick radius at the press, also the snapping distance.
+    std::string key_candidate;  // A selected object pressed: the key if not dragged.
+    core::IdSet carried;        // kArtboardMove: the artwork that moves along.
+    core::Point grab;           // The point that snaps: a grabbed anchor, or the press.
   };
 
   // A path object being edited, in its own coordinates.
@@ -283,6 +296,9 @@ class Editor {
   // Paths whose anchors can be edited: the selection and the pen's path.
   std::vector<std::string> EditablePaths() const;
   std::optional<AnchorRef> AnchorAt(core::Point p, double pick) const;
+  void ScissorsDown(core::Point p, double pick);
+  // Cuts the path at an anchor: an open path in two, a closed one open.
+  void CutPath(PathRef ref, int index, core::Document base);
   void PenDown(core::Point p, Modifiers modifiers, double pick);
   void PenMove();
   void PenUp();
@@ -322,6 +338,58 @@ class Editor {
   void CutAtSelectedAnchor();
   void JoinSelectedEnds();  // Ctrl+J: two open ends, of one or two paths.
 
+  // The Pathfinder panel (spec 4.3, editor_pathfinder.cpp). The engine
+  // comes from the app (render's Skia PathOps); without one nothing runs.
+  void SetPathOpsEngine(const geometry::PathOpsEngine* engine) { path_ops_ = engine; }
+  enum class PathfinderOutcome {
+    kDone,
+    kNothingToDo,  // Fewer than two objects with an area are selected.
+    kFailed,       // The engine failed; the document is unchanged (spec 4.3).
+  };
+  PathfinderOutcome ApplyPathfinder(geometry::Pathfinder operation);
+
+  // The Align panel (editor_align.cpp). With direct selection and anchors
+  // selected, alignment moves the anchors. A lone object aligns to the
+  // artboard, as in Illustrator. Each command is one undo step.
+  AlignTo align_to() const { return align_to_; }
+  void SetAlignTo(AlignTo to) { align_to_ = to; }
+  // The key object: a selected object clicked again with the selection tool
+  // (clicking it once more clears it). Empty when none is set or it left
+  // the selection.
+  std::string key_object() const;
+  void AlignSelection(AlignEdge edge);
+  // Distribute Objects: the outermost stay; the others' edges (or centres)
+  // are spread evenly between them.
+  void DistributeSelection(AlignEdge edge);
+  // Distribute Spacing: equal gaps between the objects. With a key object
+  // and `spacing`, the key stays and the others sit that far apart; else
+  // the outermost stay.
+  void DistributeSpacing(bool horizontal, std::optional<double> spacing = std::nullopt);
+  // Object > Path > Average (Alt+Ctrl+J): the selected anchors move to
+  // their mean position, along one axis or both.
+  void AverageAnchors(bool horizontal, bool vertical);
+
+  // Artboards (editor_artboards.cpp, spec 7.2). The active artboard is a
+  // view state: alignment, export and "fit artboard" use it. Each edit is
+  // one undo step; the last artboard cannot be removed.
+  int active_artboard() const;
+  void SetActiveArtboard(int index);
+  void SetArtboardNamePrefix(std::string prefix) { artboard_prefix_ = std::move(prefix); }
+  void AddArtboard(const core::Rect& bounds);  // Becomes the active one.
+  void RemoveActiveArtboard();
+  void MoveArtboard(int from, int to);  // In the list (the panel's order).
+  void RenameArtboard(int index, const std::string& name);
+  void SetArtboardBounds(int index, const core::Rect& bounds);
+  // Lays the cover's artboards out again (spec 7.5); one undo step.
+  void SetCover(const core::CoverSpec& spec, const core::CoverNames& names);
+
+  // Object > Compound Path (Ctrl+8, Alt+Shift+Ctrl+8). Make joins the
+  // selected paths and compound paths into one compound path with the
+  // backmost one's appearance (as in Illustrator), placed where the
+  // frontmost was. Release splits selected compound paths into paths.
+  void MakeCompoundPath();
+  void ReleaseCompoundPath();
+
  private:
   void Commit(const std::string& action, core::EditorState state);
   void SetSelection(core::IdSet selection);
@@ -334,6 +402,15 @@ class Editor {
 
   core::History history_;
   core::IdGenerator ids_;
+  const geometry::PathOpsEngine* path_ops_ = nullptr;
+  std::optional<core::Rect> KeyObjectBounds() const;  // Document coordinates.
+  void ArtboardDown(core::Point p, double pick);
+  void ArtboardDrag();  // Updates drag_.preview.
+  std::string NewArtboardName(const core::Document& document) const;
+  int active_artboard_ = 0;
+  std::string artboard_prefix_ = "Artboard";
+  AlignTo align_to_ = AlignTo::kSelection;
+  std::string key_object_;
   Drag drag_;
   Tool tool_ = Tool::kSelection;
   int polygon_sides_ = 6;

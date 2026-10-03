@@ -1,19 +1,30 @@
 {
   "name": "leinwand",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "GPL-3.0-or-later",
   "builtin-baseline": "9e593bb18ea69cc5095e012465dcd675a822ed0d",
   "dependencies": [
     "catch2",
+    { "name": "freetype", "default-features": false },
+    { "name": "harfbuzz", "default-features": false, "features": ["freetype"] },
+    "icu",
     "miniz",
     "nlohmann-json",
     "pugixml",
     {
       "name": "skia",
       "default-features": false,
-      "features": ["jpeg", "pdf", "png", "vulkan"]
+      "features": [
+        "jpeg",
+        "pdf",
+        "png",
+        { "name": "fontconfig", "platform": "linux" },
+        { "name": "freetype", "platform": "linux" },
+        { "name": "metal", "platform": "osx" },
+        { "name": "vulkan", "platform": "!osx" }
+      ]
     },
-    "vulkan-headers",
-    "vulkan-memory-allocator"
+    { "name": "vulkan-headers", "platform": "!osx" },
+    { "name": "vulkan-memory-allocator", "platform": "!osx" }
   ]
 }

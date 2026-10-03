@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Leinwand icon on the Spectrum 20x20 grid: artboard tool (a page with crop marks). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
+  <g fill="none" stroke="var(--iconPrimary, #222)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="5.25" y="5.25" width="9.5" height="9.5"/>
+    <path d="M5.25 1.5 V3.25 M14.75 1.5 V3.25 M5.25 16.75 V18.5 M14.75 16.75 V18.5"/>
+    <path d="M1.5 5.25 H3.25 M1.5 14.75 H3.25 M16.75 5.25 H18.5 M16.75 14.75 H18.5"/>
+  </g>
+</svg>

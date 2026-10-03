@@ -18,12 +18,14 @@ Rectangle {
     // Tool ids follow Session.tool. Shortcuts are listed in the tooltips.
     readonly property var groups: [
         [{ tool: 0, icon: "Select", tip: qsTr("Selection Tool (V)") }],
+        [{ tool: 15, icon: "Artboard", tip: qsTr("Artboard Tool (Shift+O)") }],
         [{ tool: 10, icon: "DirectSelect", tip: qsTr("Direct Selection Tool (A)") }],
         [{ tool: 6, icon: "Pen", tip: qsTr("Pen Tool (P)") },
          { tool: 7, icon: "PenAdd", tip: qsTr("Add Anchor Point Tool (+)") },
          { tool: 8, icon: "PenDelete", tip: qsTr("Delete Anchor Point Tool (-)") },
          { tool: 9, icon: "AnchorPoint", tip: qsTr("Anchor Point Tool (Shift+C)") }],
         [{ tool: 5, icon: "Line", tip: qsTr("Line Segment Tool (%1)").arg("\\") }],
+        [{ tool: 14, icon: "Cut", tip: qsTr("Scissors Tool (C)") }],
         [{ tool: 1, icon: "RectangleHoriz", tip: qsTr("Rectangle Tool (M)") },
          { tool: 2, icon: "Circle", tip: qsTr("Ellipse Tool (L)") },
          { tool: 3, icon: "Polygon6", tip: qsTr("Polygon Tool") },

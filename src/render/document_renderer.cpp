@@ -421,6 +421,15 @@ void DocumentRenderer::Impl::DrawOverlay(SkCanvas* canvas, const core::Document&
     }
   }
 
+  if (overlay.key_object) {
+    // The Align panel's key object: a thick frame (spec 7.2).
+    SkPaint key;
+    key.setColor(kSelection);
+    key.setStyle(SkPaint::kStroke_Style);
+    key.setStrokeWidth(3 * px);
+    canvas->drawRect(ToSk(*overlay.key_object), key);
+  }
+
   const float anchor_half = static_cast<float>(overlay.anchor_size / 2 * overlay.pixel_ratio);
   for (const auto& edited : overlay.paths) DrawEditedPath(canvas, edited, px, anchor_half);
 

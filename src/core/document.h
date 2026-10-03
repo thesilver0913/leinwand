@@ -5,11 +5,13 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
 
 #include "core/color.h"
+#include "core/cover.h"
 #include "core/object.h"
 #include "core/types.h"
 
@@ -44,7 +46,7 @@ struct Artboard {
 enum class ColorMode { kRgb, kCmyk };
 
 struct DocumentSettings {
-  ColorMode color_mode = ColorMode::kRgb;  // Phases 1-3 create RGB documents only.
+  ColorMode color_mode = ColorMode::kRgb;  // Phases 1-2 create RGB documents only.
   std::string icc_profile = "sRGB IEC61966-2.1";
   std::string unknown_fields;
 };
@@ -56,6 +58,8 @@ struct Document {
   std::vector<Artboard> artboards;
   std::vector<Swatch> swatches;
   std::vector<LayerPtr> layers;  // Back to front.
+  // Set when the artboards were laid out as a book cover (spec 7.5).
+  std::optional<CoverSpec> cover;
   // Top-level entries of a newer version (e.g. "symbols"), as JSON object
   // text, written back unchanged.
   std::string unknown_fields;

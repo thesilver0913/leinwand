@@ -14,7 +14,8 @@ Rectangle {
     readonly property var toolNames: [
         qsTr("Selection"), qsTr("Rectangle"), qsTr("Ellipse"), qsTr("Polygon"), qsTr("Star"),
         qsTr("Line Segment"), qsTr("Pen"), qsTr("Add Anchor Point"), qsTr("Delete Anchor Point"),
-        qsTr("Anchor Point"), qsTr("Direct Selection"), qsTr("Eyedropper"), qsTr("Hand"), qsTr("Zoom")
+        qsTr("Anchor Point"), qsTr("Direct Selection"), qsTr("Eyedropper"), qsTr("Hand"), qsTr("Zoom"),
+        qsTr("Scissors"), qsTr("Artboard")
     ]
 
     Rectangle {

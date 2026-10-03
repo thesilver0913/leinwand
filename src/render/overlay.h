@@ -31,7 +31,8 @@ struct Overlay {
   std::vector<EditedPath> paths;  // Pen and direct selection.
   std::optional<core::PathData> rubber_band;                // The pen's next segment.
   std::vector<std::pair<core::Point, core::Point>> guides;  // Smart guides.
-  bool outline = false;  // Outline view (Ctrl+Y): paths only, no paint.
+  bool outline = false;                  // Outline view (Ctrl+Y): paths only, no paint.
+  std::optional<core::Rect> key_object;  // The Align panel's key object, framed thickly.
 };
 
 }  // namespace leinwand::render

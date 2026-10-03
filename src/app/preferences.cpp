@@ -66,6 +66,10 @@ QString Preferences::Folder() {
   // %APPDATA%\Leinwand (spec 7.3).
   const QString base = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
   const QString folder = qEnvironmentVariable("APPDATA", base) + QStringLiteral("/Leinwand");
+#elif defined(Q_OS_MACOS)
+  // ~/Library/Application Support/Leinwand.
+  const QString folder = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) +
+                         QStringLiteral("/Leinwand");
 #else
   const QString folder = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
                          QStringLiteral("/leinwand");

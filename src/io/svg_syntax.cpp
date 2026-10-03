@@ -3,10 +3,11 @@
 
 #include <algorithm>
 #include <cctype>
-#include <charconv>
 #include <cmath>
 #include <numbers>
 #include <utility>
+
+#include "core/number.h"
 
 namespace leinwand::io::svg {
 
@@ -74,8 +75,7 @@ class NumberScanner {
     double value = 0;
     std::string token(text_.substr(start, pos_ - start));
     if (!token.empty() && token[0] == '+') token.erase(0, 1);
-    const auto [end, error] = std::from_chars(token.data(), token.data() + token.size(), value);
-    if (error != std::errc{} || end != token.data() + token.size()) {
+    if (token.empty() || core::ParseDouble(token, &value) != token.size()) {
       pos_ = start;
       return std::nullopt;
     }
@@ -624,9 +624,7 @@ std::optional<core::RgbColor> ParseColor(std::string_view text, double* alpha) {
       const bool percent = parts[i].back() == '%';
       if (percent) parts[i].pop_back();
       double x = 0;
-      const auto [end, error] =
-          std::from_chars(parts[i].data(), parts[i].data() + parts[i].size(), x);
-      if (error != std::errc{}) return std::nullopt;
+      if (core::ParseDouble(parts[i], &x) == 0) return std::nullopt;
       if (i < 3) {
         v[i] = std::clamp(percent ? x / 100.0 : x / 255.0, 0.0, 1.0);
       } else {
