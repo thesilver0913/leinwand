@@ -3,6 +3,7 @@
 // strokes, ordered front to back. Effects arrive in phase 3.
 #pragma once
 
+#include <string>
 #include <variant>
 #include <vector>
 
@@ -39,6 +40,7 @@ struct Fill {
   Color paint = RgbColor{0, 0, 0};
   double opacity = 1.0;
   BlendMode blend_mode = BlendMode::kNormal;
+  std::string unknown_fields;  // See ObjectCommon::unknown_fields.
   friend bool operator==(const Fill&, const Fill&) = default;
 };
 
@@ -53,10 +55,18 @@ struct Stroke {
   double dash_offset = 0.0;
   double opacity = 1.0;
   BlendMode blend_mode = BlendMode::kNormal;
+  std::string unknown_fields;
   friend bool operator==(const Stroke&, const Stroke&) = default;
 };
 
-using AppearanceItem = std::variant<Fill, Stroke>;
+// An item of a type from a newer file version (e.g. an effect before phase
+// 3), kept as JSON text and written back in its place. Not drawn.
+struct UnknownAppearanceItem {
+  std::string json;
+  friend bool operator==(const UnknownAppearanceItem&, const UnknownAppearanceItem&) = default;
+};
+
+using AppearanceItem = std::variant<Fill, Stroke, UnknownAppearanceItem>;
 
 // Front to back: items[0] is drawn last.
 using Appearance = std::vector<AppearanceItem>;

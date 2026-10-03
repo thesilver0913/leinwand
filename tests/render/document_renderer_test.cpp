@@ -223,6 +223,38 @@ TEST_CASE("The overlay outlines the selection and draws the box, handles and mar
   CHECK(leinwand::testing::MatchesBaseline("render/overlay", pixels, kSize, kSize));
 }
 
+TEST_CASE("The overlay draws edited paths, the pen's rubber band and smart guides") {
+  const Document document = DocumentWith({Shape(Rectangle(20, 20, 80, 80), {kRed}, "sq")});
+  leinwand::render::Overlay overlay;
+  leinwand::core::PathData curve;
+  curve.anchors = {{{10, 60}, {}, {0, -30}},
+                   {{50, 40}, {-20, 0}, {20, 0}, leinwand::core::AnchorKind::kSmooth},
+                   {{90, 60}}};
+  overlay.paths = {{curve, {1}, {0, 1, 2}}};
+  leinwand::core::PathData band;
+  band.anchors = {{{90, 60}}, {{90, 90}}};
+  overlay.rubber_band = band;
+  overlay.guides = {{{0, 10.5}, {100, 10.5}}};  // Centred on a pixel row.
+  DocumentRenderer renderer;
+  const auto pixels = renderer.RenderRaster(document, kSize, kSize, View{}, &overlay);
+  CHECK(Near(PixelAt(pixels, 50, 40), 0x40, 0x69, 0xfd, 10));  // Selected anchor: solid.
+  CHECK(Near(PixelAt(pixels, 10, 60), 255, 255, 255, 10));     // Unselected: hollow.
+  CHECK(Near(PixelAt(pixels, 70, 40), 0x40, 0x69, 0xfd, 60));  // A handle's dot.
+  CHECK(Near(PixelAt(pixels, 50, 10), 255, 0, 255, 60));       // The guide.
+  CHECK(leinwand::testing::MatchesBaseline("render/edited_path", pixels, kSize, kSize));
+}
+
+TEST_CASE("Outline view draws hairlines without paint") {
+  const Document document = DocumentWith({Shape(Rectangle(20, 20, 80, 80), {kRed}, "sq")});
+  leinwand::render::Overlay overlay;
+  overlay.outline = true;
+  DocumentRenderer renderer;
+  const auto pixels = renderer.RenderRaster(document, kSize, kSize, View{}, &overlay);
+  CHECK(Near(PixelAt(pixels, 50, 50), 255, 255, 255, 10));  // No fill.
+  const Rgba edge = PixelAt(pixels, 50, 20);                // The outline, anti-aliased.
+  CHECK((edge.r < 200 && edge.r == edge.g && edge.g == edge.b));
+}
+
 TEST_CASE("The showcase document matches its baseline image") {
   // 800x600 pt at quarter scale. The hidden layer is a full-artboard red
   // rectangle; it must not show anywhere.
@@ -258,4 +290,21 @@ TEST_CASE("A mixed scene matches its baseline image") {
       {Shape(blob, {dashed, Fill{RgbColor{0.6, 0.85, 1}}}), MakeObject(std::move(rotated))});
   const auto pixels = Render(document);
   CHECK(leinwand::testing::MatchesBaseline("render/mixed_scene", pixels, kSize, kSize));
+}
+
+TEST_CASE("PNG export renders the area at the requested scale") {
+  const Document document = DocumentWith({Shape(Rectangle(20, 20, 80, 80), {kRed})});
+  const auto png = DocumentRenderer::ExportPng(
+      document, leinwand::core::Rect::FromXYWH(0, 0, 100, 50), 2.0, false);
+  REQUIRE(png.size() > 24);
+  CHECK(png[1] == 'P');
+  CHECK(png[2] == 'N');
+  // IHDR: width and height, big-endian, at bytes 16 and 20.
+  auto be32 = [&](size_t at) {
+    return (png[at] << 24) | (png[at + 1] << 16) | (png[at + 2] << 8) | png[at + 3];
+  };
+  CHECK(be32(16) == 200);
+  CHECK(be32(20) == 100);
+  CHECK(DocumentRenderer::ExportPng(document, leinwand::core::Rect::FromXYWH(0, 0, 0, 10), 1, false)
+            .empty());
 }

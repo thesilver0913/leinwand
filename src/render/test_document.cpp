@@ -5,6 +5,7 @@
 #include <numbers>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace leinwand::render {
@@ -211,6 +212,8 @@ core::Document MakeShowcaseDocument() {
       {"spot-teal", "Spot Teal", core::Swatch::Kind::kSpot, core::CmykColor{0.9, 0, 0.45, 0}},
       {"global-pink", "Global Pink", core::Swatch::Kind::kProcess, Rgb(0xff6fae)},
   };
+  // A basic palette, like the swatches a new Illustrator document starts with.
+  for (auto swatch : core::DefaultSwatches()) document.swatches.push_back(std::move(swatch));
   document.layers = {core::MakeLayer(std::move(artwork)), core::MakeLayer(std::move(hidden))};
   return document;
 }

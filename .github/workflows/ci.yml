@@ -66,4 +66,4 @@ jobs:
       - name: Install clang-format
         run: pipx install clang-format==23.1.2
       - name: clang-format
-        run: find src tests prototypes -name '*.cpp' -o -name '*.h' | xargs clang-format --dry-run --Werror
+        run: find src tests tools -name '*.cpp' -o -name '*.h' | xargs clang-format --dry-run --Werror

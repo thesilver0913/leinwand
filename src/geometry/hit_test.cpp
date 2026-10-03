@@ -67,11 +67,10 @@ void PaintExtent(const core::Object& object, double* stroke_reach, bool* filled)
   for (const auto& item : core::CommonOf(object).appearance) {
     if (std::holds_alternative<core::Fill>(item)) {
       *filled = true;
-    } else {
-      const auto& stroke = std::get<core::Stroke>(item);
+    } else if (const auto* stroke = std::get_if<core::Stroke>(&item)) {
       // Inside/outside strokes reach a full width to one side.
       const double reach =
-          stroke.align == core::StrokeAlign::kCenter ? stroke.width / 2 : stroke.width;
+          stroke->align == core::StrokeAlign::kCenter ? stroke->width / 2 : stroke->width;
       *stroke_reach = std::max(*stroke_reach, reach);
     }
   }

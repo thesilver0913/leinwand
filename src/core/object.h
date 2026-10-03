@@ -5,6 +5,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -29,6 +30,9 @@ struct ObjectCommon {
   double opacity = 1.0;
   BlendMode blend_mode = BlendMode::kNormal;
   Appearance appearance;
+  // Fields of a newer file version this one does not know, as JSON object
+  // text; written back unchanged (spec 3.3, "未知のフィールド").
+  std::string unknown_fields;
 };
 
 // Coordinates are stored with transforms already applied.
@@ -61,7 +65,21 @@ struct ShapeObject {
   Matrix transform;
 };
 
-struct Object : std::variant<PathObject, CompoundPathObject, GroupObject, ShapeObject> {
+// Content kept but not understood (spec 3.3, 6.1): an object of a type from
+// a newer .lwd, or an SVG element Leinwand does not support. It is written
+// back as it came (to the same format) and shown as a frame when its bounds
+// are known. It can be moved (the transform), restacked and deleted, but not
+// edited.
+struct PreservedObject {
+  ObjectCommon common;
+  std::string format;  // "lwd" (JSON text) or "svg" (XML text).
+  std::string data;
+  std::optional<Rect> bounds;  // Before `transform`.
+  Matrix transform;
+};
+
+struct Object
+    : std::variant<PathObject, CompoundPathObject, GroupObject, ShapeObject, PreservedObject> {
   using variant::variant;
   // std::visit on classes derived from std::variant needs C++23 (P2162).
   const variant& base() const { return *this; }
@@ -73,7 +91,8 @@ ObjectPtr MakeObject(T value) {
 }
 
 // The outline of a path-like object (path, compound path or shape) in its
-// parent's coordinates, as subpaths; empty for groups.
+// parent's coordinates, as subpaths; empty for groups. A preserved object
+// gives its frame (none without known bounds).
 std::vector<PathData> OutlineOf(const Object& object);
 FillRule FillRuleOf(const Object& object);
 // Whether every subpath is closed (inside/outside strokes need a region).

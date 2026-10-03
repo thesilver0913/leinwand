@@ -4,9 +4,14 @@
 // the canvas item translates Qt input into these calls.
 #pragma once
 
+#include <functional>
 #include <optional>
+#include <set>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "core/appearance.h"
 #include "core/document.h"
 #include "core/edit.h"
 #include "core/history.h"
@@ -19,9 +24,62 @@ namespace leinwand::editor {
 struct Modifiers {
   bool shift = false;
   bool alt = false;
+  bool space = false;  // Pen: move the anchor being placed.
 };
 
-enum class Tool { kSelection, kRectangle, kEllipse, kPolygon, kStar, kLine };
+enum class Tool {
+  kSelection,
+  kRectangle,
+  kEllipse,
+  kPolygon,
+  kStar,
+  kLine,
+  kPen,
+  kAddAnchor,
+  kDeleteAnchor,
+  kConvertAnchor,
+  kDirectSelection,
+  kEyedropper,
+};
+
+// What a pen click would do at a point (spec 4.2: the cursor shows it).
+enum class PenAction {
+  kNewPath,       // Start a new path.
+  kNewAnchor,     // Add the next anchor to the path being drawn.
+  kRemoveHandle,  // On the last anchor: drop its outgoing handle (drag: redraw it).
+  kClose,         // On the start point: close the path.
+  kJoin,          // On another open path's end: join it.
+  kContinue,      // On an open path's end: carry on drawing from it.
+  kAddAnchor,     // On a selected path's segment.
+  kDeleteAnchor,  // On a selected path's anchor.
+};
+
+// An anchor of a path object (subpath index for compound paths, else 0).
+struct AnchorRef {
+  std::string id;
+  int subpath = 0;
+  int index = 0;
+  friend auto operator<=>(const AnchorRef&, const AnchorRef&) = default;
+};
+
+// A path drawn with its anchors for editing, in document coordinates.
+struct PathOverlay {
+  core::PathData path;
+  std::set<int> selected;      // Filled anchors.
+  std::set<int> with_handles;  // Anchors whose handles are shown.
+};
+
+// What the toolbar's fill and stroke boxes and the Color and Stroke panels
+// show: for the selection, or the style for new objects.
+struct StyleState {
+  std::optional<core::Color> fill;  // nullopt: none.
+  std::optional<core::Color> stroke;
+  bool fill_mixed = false;  // The selected objects differ (shown as "?").
+  bool stroke_mixed = false;
+  std::optional<core::Stroke> stroke_style;  // Settings of the first front stroke.
+  double opacity = 1.0;
+  bool opacity_mixed = false;
+};
 
 // What the transform panel shows for the current selection.
 struct SelectionInfo {
@@ -46,6 +104,9 @@ struct Overlay {
   core::IdSet selection;                   // Objects to outline.
   std::optional<core::Rect> bounding_box;  // With handles.
   std::optional<core::Rect> marquee;
+  std::vector<PathOverlay> paths;                           // Anchors and handles being edited.
+  std::optional<core::PathData> rubber_band;                // The pen's next segment.
+  std::vector<std::pair<core::Point, core::Point>> guides;  // Smart guides while dragging.
 };
 
 class Editor {
@@ -69,12 +130,74 @@ class Editor {
   void CancelDrag();
   bool dragging() const { return drag_.kind != DragKind::kNone; }
 
-  Tool tool() const { return tool_; }
+  // The tool in effect: a temporary one while Ctrl or Alt is held, else the
+  // chosen one.
+  Tool tool() const { return temporary_tool_.value_or(tool_); }
+  Tool chosen_tool() const { return tool_; }
   void SetTool(Tool tool);
+  // Ctrl held: the last used selection tool. Alt held with the pen: the
+  // anchor point tool (spec 4.2). nullopt when the key is released.
+  void SetTemporaryTool(std::optional<Tool> tool);
+  Tool last_selection_tool() const { return last_selection_tool_; }
+
+  // Pen tool (spec 4.2).
+  PenAction PenActionAt(core::Point p, double pick) const;
+  void PointerHover(core::Point p);  // For the pen's rubber band.
+  // Enter, Esc, or Ctrl+click on nothing: leave the path open and stop.
+  void FinishPath();
+  bool drawing_path() const { return !pen_.path_id.empty(); }
+
+  // Anchor selection for direct selection and the overlay.
+  const std::set<AnchorRef>& anchor_selection() const { return anchors_; }
   // Arrow keys while drawing a polygon or star: more or fewer sides/points.
   void AdjustToolCount(int delta);
   int polygon_sides() const { return polygon_sides_; }
   int star_points() const { return star_points_; }
+
+  // Smart guides (Ctrl+U): drawing, placing and moving snap to other
+  // objects' anchors and centres, and align with them.
+  bool smart_guides() const { return smart_guides_; }
+  void SetSmartGuides(bool on) { smart_guides_ = on; }
+
+  // Fill and stroke (spec 7.2). They edit the selected objects (a group's
+  // contents) and become the style for new objects; with nothing selected
+  // they edit only that style.
+  StyleState Style() const;
+  void SetFill(const std::optional<core::Color>& paint);
+  void SetStroke(const std::optional<core::Color>& paint);
+  void SwapFillAndStroke();     // Shift+X
+  void DefaultFillAndStroke();  // D: white fill, 1 pt black stroke.
+  // Changes the front stroke's settings (width, cap, join, ...) where there
+  // is a stroke.
+  void EditStroke(const std::function<void(core::Stroke&)>& edit);
+  void SetOpacity(double opacity);
+  // Which of fill and stroke the Color panel edits (X toggles).
+  bool fill_active() const { return fill_active_; }
+  void SetFillActive(bool fill) { fill_active_ = fill; }
+  const core::Appearance& new_style() const { return new_style_; }
+  // Edits between these two make one undo step (slider drags).
+  void BeginGesture();
+  void EndGesture();
+
+  // Selects objects by id (Layers panel); hidden and locked ones are left out.
+  void Select(const core::IdSet& ids);
+  // The layer new artwork goes into (Layers panel); when it cannot take art,
+  // the frontmost layer that can.
+  void SetActiveLayer(const std::string& id) { active_layer_ = id; }
+  const std::string& active_layer() const { return active_layer_; }
+
+  // Swatches panel: AddSwatch gives the swatch a fresh id and returns it.
+  std::string AddSwatch(core::Swatch swatch);
+  void RemoveSwatch(const std::string& id);
+
+  // Layers panel (spec 7.2); `id` is a layer or object id.
+  void SetItemVisible(const std::string& id, bool visible);
+  void SetItemLocked(const std::string& id, bool locked);
+  void RenameItem(const std::string& id, const std::string& name);
+  void MoveItem(const std::string& id, const std::string& parent, int index);
+  // A new layer in front of the given one (or of all); returns its id.
+  std::string AddLayer(const std::string& above, const std::string& name);
+  void RemoveLayer(const std::string& id);
 
   std::optional<SelectionInfo> Info() const;
   // Transform panel edits on the selection.
@@ -95,7 +218,22 @@ class Editor {
   void Redo();
 
  private:
-  enum class DragKind { kNone, kPending, kMove, kScale, kRotate, kMarquee, kDraw };
+  enum class DragKind {
+    kNone,
+    kPending,
+    kMove,
+    kScale,
+    kRotate,
+    kMarquee,
+    kDraw,
+    kPen,
+    kConvert,
+    kDirectPending,
+    kDirectMarquee,
+    kMoveAnchors,
+    kMoveHandle,
+    kDragSegment,
+  };
   struct Drag {
     DragKind kind = DragKind::kNone;
     core::Point start;
@@ -107,8 +245,79 @@ class Editor {
     core::Point current;
     std::string new_id;  // The shape being drawn.
     Modifiers modifiers;
+    // Pen and anchor editing.
+    PenAction pen = PenAction::kNewPath;
+    std::string path_id;
+    int index = 0;           // Anchor (or segment for kDragSegment).
+    bool handle_out = true;  // kMoveHandle: which handle.
+    double t = 0.0;          // kDragSegment: where the segment was grabbed.
+    std::string join_id;     // kJoin: the other path.
+    bool join_at_end = false;
+    std::optional<core::Point> frozen_in;    // Alt during a pen drag: the in handle stays.
+    core::Point last_in;                     // The in handle as last previewed.
+    core::Point space_from;                  // Space during a pen drag: last position.
+    std::optional<core::PathData> original;  // The path before this drag.
+    std::optional<core::Document> base;      // Document the drag edits from.
+    double pick = 0.0;  // Pick radius at the press, also the snapping distance.
+    core::Point grab;   // The point that snaps: a grabbed anchor, or the press.
   };
 
+  // A path object being edited, in its own coordinates.
+  struct PathRef {
+    std::string id;
+    core::Matrix to_document;
+    core::PathData path;
+  };
+  std::optional<PathRef> GetPath(const core::Document& document, const std::string& id) const;
+  // The document with `ref.id` replaced by a plain path (a live shape is
+  // expanded, spec 4.1).
+  core::Document WithPath(const core::Document& document, const PathRef& ref) const;
+  // Open-path ends near `p`: (id, at_end) of the nearest, skipping `skip`.
+  std::optional<std::pair<std::string, bool>> OpenEndAt(core::Point p, double pick,
+                                                        const std::string& skip) const;
+  // Paths whose anchors can be edited: the selection and the pen's path.
+  std::vector<std::string> EditablePaths() const;
+  std::optional<AnchorRef> AnchorAt(core::Point p, double pick) const;
+  void PenDown(core::Point p, Modifiers modifiers, double pick);
+  void PenMove();
+  void PenUp();
+  void AnchorToolDown(core::Point p, double pick);
+  void EyedropperDown(core::Point p, double pick);
+  // Applies an appearance edit to the selection and the new-object style.
+  void ApplyStyle(const std::string& action, const std::function<void(core::Appearance&)>& edit);
+  // New objects take the basic style (front fill and stroke) of the first
+  // selected object, as in Illustrator.
+  void AdoptSelectionStyle();
+  // `document` with `object` added where new artwork goes.
+  core::Document WithNewObject(const core::Document& document, core::ObjectPtr object) const;
+  void DirectDown(core::Point p, Modifiers modifiers, double pick);
+  void DirectMove();
+  void DirectUp(core::Point p, Modifiers modifiers);
+  void PreviewPath(const PathRef& ref);         // drag_.preview = base with `ref` applied.
+  void MoveSelectedAnchors(core::Point delta);  // Arrow keys with direct selection.
+
+  // Smart guides (editor_snap.cpp).
+  struct SnapPoint {
+    core::Point point;
+    std::string id;  // Its top-level object.
+  };
+  using Guides = std::vector<std::pair<core::Point, core::Point>>;
+  const std::vector<SnapPoint>& SnapPoints() const;  // Cached per committed document.
+  core::Point Snap(core::Point p, double pick, const core::IdSet& exclude, Guides* guides) const;
+  core::Point SnapDrag(core::Point p);                 // The pointer during a drag.
+  core::Point SnapPlaced(core::Point p, double pick);  // A new point (pen click, shape start).
+
+ public:
+  // Direct selection: anchor commands (spec 4.2, control bar).
+  void ConvertSelectedAnchors(bool smooth);
+  void RemoveSelectedAnchors();  // Keeps the path connected across each removed anchor.
+  // Delete with direct selection: the anchors go with their segments and the
+  // path falls apart, as in Illustrator.
+  void DeleteSelectedAnchors();
+  void CutAtSelectedAnchor();
+  void JoinSelectedEnds();  // Ctrl+J: two open ends, of one or two paths.
+
+ private:
   void Commit(const std::string& action, core::EditorState state);
   void SetSelection(core::IdSet selection);
   void UpdatePreview(Modifiers modifiers);
@@ -125,6 +334,22 @@ class Editor {
   int polygon_sides_ = 6;
   int star_points_ = 5;
   core::Appearance new_style_;  // Fill and stroke for new shapes.
+  std::optional<Tool> temporary_tool_;
+  Tool last_selection_tool_ = Tool::kSelection;
+  struct Pen {
+    std::string path_id;   // The open path being drawn; empty when not drawing.
+    bool reverse = false;  // Continuing from the start: reverse before adding.
+  } pen_;
+  std::optional<core::Point> hover_;
+  std::set<AnchorRef> anchors_;  // Direct selection.
+  bool smart_guides_ = true;
+  bool fill_active_ = true;
+  std::string active_layer_;
+  bool gesture_ = false;         // Inside BeginGesture/EndGesture.
+  bool gesture_pushed_ = false;  // The gesture's step exists already.
+  Guides guides_;                // Shown while dragging.
+  mutable std::optional<core::Document> snap_source_;
+  mutable std::vector<SnapPoint> snap_points_;
 };
 
 // Where a handle sits on a box.

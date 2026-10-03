@@ -13,6 +13,16 @@ std::vector<PathData> OutlineOf(const Object& object) {
   if (const auto* shape = std::get_if<ShapeObject>(&object)) {
     return {Transformed(ShapePath(shape->shape), shape->transform)};
   }
+  if (const auto* preserved = std::get_if<PreservedObject>(&object)) {
+    // Its frame, so that it can be picked, moved and snapped to.
+    if (!preserved->bounds) return {};
+    const Rect& r = *preserved->bounds;
+    PathData frame;
+    frame.anchors = {
+        {{r.left, r.top}}, {{r.right, r.top}}, {{r.right, r.bottom}}, {{r.left, r.bottom}}};
+    frame.closed = true;
+    return {Transformed(frame, preserved->transform)};
+  }
   return {};
 }
 

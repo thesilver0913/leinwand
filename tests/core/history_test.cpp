@@ -71,3 +71,19 @@ TEST_CASE("The limit keeps only the newest undo steps") {
   CHECK_FALSE(history.CanUndo());
   CHECK(Artboards(history) == 3);
 }
+
+TEST_CASE("The revision follows edits, undo and redo, not selection") {
+  History history({Document{}, {}});
+  const auto start = history.revision();
+  history.Push("a", {Document{}, {}});
+  const auto after_a = history.revision();
+  CHECK(after_a != start);
+  history.SetSelection({"x"});
+  CHECK(history.revision() == after_a);
+  history.Undo();
+  CHECK(history.revision() == start);
+  history.Redo();
+  CHECK(history.revision() == after_a);
+  history.Amend("a", {Document{}, {}});
+  CHECK(history.revision() != after_a);
+}

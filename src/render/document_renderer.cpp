@@ -8,17 +8,21 @@
 #include <variant>
 #include <vector>
 
+#include "core/style.h"
 #include "geometry/bezier.h"
 #include "include/core/SkBlendMode.h"
 #include "include/core/SkBlurTypes.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkColor.h"
+#include "include/core/SkData.h"
 #include "include/core/SkImageInfo.h"
 #include "include/core/SkMaskFilter.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkPathBuilder.h"
+#include "include/core/SkStream.h"
 #include "include/core/SkSurface.h"
 #include "include/effects/SkDashPathEffect.h"
+#include "include/encode/SkPngEncoder.h"
 #include "render/document_renderer_impl.h"
 
 namespace leinwand::render {
@@ -124,42 +128,9 @@ double StrokeOutset(const core::Object& object, const core::Stroke& stroke) {
   return half * factor;
 }
 
-core::RgbColor ToRgb(const core::ProcessColor& color) {
-  if (const auto* rgb = std::get_if<core::RgbColor>(&color)) return *rgb;
-  if (const auto* gray = std::get_if<core::GrayColor>(&color)) {
-    return {gray->gray, gray->gray, gray->gray};
-  }
-  // Naive device CMYK until color management arrives (phase 4).
-  const auto& cmyk = std::get<core::CmykColor>(color);
-  return {(1 - cmyk.c) * (1 - cmyk.k), (1 - cmyk.m) * (1 - cmyk.k), (1 - cmyk.y) * (1 - cmyk.k)};
-}
-
-// Null when the color refers to a swatch the document does not have.
-std::optional<core::RgbColor> Resolve(const core::Color& color, const core::Document& document) {
-  return std::visit(
-      [&](const auto& c) -> std::optional<core::RgbColor> {
-        using T = std::decay_t<decltype(c)>;
-        if constexpr (std::is_same_v<T, core::SpotColor>) {
-          const core::Swatch* swatch = document.FindSwatch(c.swatch_id);
-          if (!swatch) return std::nullopt;
-          // A tint mixes the full-strength color with paper white.
-          const core::RgbColor full = ToRgb(swatch->color);
-          return core::RgbColor{1 - c.tint * (1 - full.r), 1 - c.tint * (1 - full.g),
-                                1 - c.tint * (1 - full.b)};
-        } else if constexpr (std::is_same_v<T, core::SwatchRef>) {
-          const core::Swatch* swatch = document.FindSwatch(c.swatch_id);
-          if (!swatch) return std::nullopt;
-          return ToRgb(swatch->color);
-        } else {
-          return ToRgb(core::ProcessColor{c});
-        }
-      },
-      color);
-}
-
 bool SetPaintColor(SkPaint& paint, const core::Color& color, double opacity,
                    const core::Document& document) {
-  const auto rgb = Resolve(color, document);
+  const auto rgb = core::ToRgb(color, document);
   if (!rgb) return false;
   paint.setColor4f({static_cast<float>(rgb->r), static_cast<float>(rgb->g),
                     static_cast<float>(rgb->b), static_cast<float>(opacity)});
@@ -224,10 +195,15 @@ void DocumentRenderer::Impl::Draw(SkCanvas* canvas, const core::Document& docume
   ++frame_;
   stats = {};
   document_ = &document;
+  outline_ = overlay && overlay->outline;
 
   const auto& bg = settings.pasteboard;
-  canvas->clear(SkColor4f{static_cast<float>(bg.r), static_cast<float>(bg.g),
-                          static_cast<float>(bg.b), 1.0f});
+  if (settings.artwork_only) {
+    canvas->clear(settings.transparent ? SK_ColorTRANSPARENT : SK_ColorWHITE);
+  } else {
+    canvas->clear(SkColor4f{static_cast<float>(bg.r), static_cast<float>(bg.g),
+                            static_cast<float>(bg.b), 1.0f});
+  }
   canvas->save();
   canvas->translate(static_cast<float>(view.pan_x), static_cast<float>(view.pan_y));
   canvas->scale(static_cast<float>(view.zoom), static_cast<float>(view.zoom));
@@ -249,6 +225,7 @@ void DocumentRenderer::Impl::Draw(SkCanvas* canvas, const core::Document& docume
   border.setStyle(SkPaint::kStroke_Style);
   border.setStrokeWidth(0);  // Hairline: one device pixel wide.
   for (const auto& board : document.artboards) {
+    if (settings.artwork_only) break;
     const SkRect rect = ToSk(board.bounds);
     canvas->drawRect(rect.makeOffset(0, 2 * px), shadow);
     canvas->drawRect(rect, paper);
@@ -289,7 +266,8 @@ void DocumentRenderer::Impl::DrawObject(SkCanvas* canvas, const core::ObjectPtr&
 
   // Object opacity and blending apply to the object as a whole, so it is
   // composited from its own layer.
-  const bool isolate = common.opacity < 1.0 || common.blend_mode != core::BlendMode::kNormal;
+  const bool isolate =
+      !outline_ && (common.opacity < 1.0 || common.blend_mode != core::BlendMode::kNormal);
   if (isolate) {
     SkPaint layer_paint;
     layer_paint.setAlphaf(static_cast<float>(common.opacity));
@@ -305,12 +283,30 @@ void DocumentRenderer::Impl::DrawObject(SkCanvas* canvas, const core::ObjectPtr&
     const auto inverse = group->transform.Inverted();
     const Rect local = inverse ? geometry::MapRect(visible, *inverse) : visible;
     auto end = group->children.end();
-    if (group->clipped && !group->children.empty()) {
+    if (group->clipped && !group->children.empty() && !outline_) {
       --end;  // The frontmost child is the clip path and is not painted.
       canvas->clipPath(Entry(group->children.back()).path, /*doAntiAlias=*/true);
     }
     for (auto it = group->children.begin(); it != end; ++it) DrawObject(canvas, *it, local);
     canvas->restore();
+  } else if (std::holds_alternative<core::PreservedObject>(*object)) {
+    // A placeholder: a frame with a cross, as for missing content.
+    SkPaint line;
+    line.setColor(SkColorSetARGB(160, 0x80, 0x80, 0x80));
+    line.setStyle(SkPaint::kStroke_Style);
+    line.setStrokeWidth(0);
+    line.setAntiAlias(true);
+    canvas->drawPath(entry.path, line);
+    const SkRect frame = entry.path.getBounds();
+    canvas->drawLine(frame.left(), frame.top(), frame.right(), frame.bottom(), line);
+    canvas->drawLine(frame.right(), frame.top(), frame.left(), frame.bottom(), line);
+  } else if (outline_) {
+    SkPaint line;
+    line.setColor(SK_ColorBLACK);
+    line.setStyle(SkPaint::kStroke_Style);
+    line.setStrokeWidth(0);  // Hairline.
+    line.setAntiAlias(true);
+    canvas->drawPath(entry.path, line);
   } else {
     DrawShape(canvas, *object, entry.path);
   }
@@ -331,7 +327,9 @@ void DocumentRenderer::Impl::DrawShape(SkCanvas* canvas, const core::Object& obj
       canvas->drawPath(path, paint);
       continue;
     }
-    const auto& stroke = std::get<core::Stroke>(*it);
+    const auto* stroke_item = std::get_if<core::Stroke>(&*it);
+    if (!stroke_item) continue;  // Unknown items (from a newer version) are not drawn.
+    const auto& stroke = *stroke_item;
     if (stroke.width <= 0.0) continue;
     if (!SetPaintColor(paint, stroke.paint, stroke.opacity, *document_)) continue;
     paint.setBlendMode(ToSk(stroke.blend_mode));
@@ -370,6 +368,17 @@ void DocumentRenderer::Impl::DrawShape(SkCanvas* canvas, const core::Object& obj
 namespace {
 // Spectrum 2 accent-background-color-default (dark), for selections.
 constexpr SkColor kSelection = SkColorSetRGB(0x40, 0x69, 0xfd);
+// Smart guides: Illustrator's default magenta.
+constexpr SkColor kGuide = SkColorSetRGB(0xff, 0x00, 0xff);
+
+SkPaint Hairline(SkColor color) {
+  SkPaint line;
+  line.setColor(color);
+  line.setStyle(SkPaint::kStroke_Style);
+  line.setStrokeWidth(0);  // One device pixel at any scale.
+  line.setAntiAlias(true);
+  return line;
+}
 }  // namespace
 
 void DocumentRenderer::Impl::DrawOverlay(SkCanvas* canvas, const core::Document& document,
@@ -401,6 +410,19 @@ void DocumentRenderer::Impl::DrawOverlay(SkCanvas* canvas, const core::Document&
       canvas->drawRect(r, fill);
       canvas->drawRect(r, line);
     }
+  }
+
+  const float anchor_half = 3.0f * static_cast<float>(overlay.pixel_ratio);
+  for (const auto& edited : overlay.paths) DrawEditedPath(canvas, edited, px, anchor_half);
+
+  if (overlay.rubber_band) {
+    SkPathBuilder band;
+    AppendPath(band, *overlay.rubber_band);
+    canvas->drawPath(band.detach(), Hairline(kSelection));
+  }
+
+  for (const auto& [from, to] : overlay.guides) {
+    canvas->drawLine(ToSk(from), ToSk(to), Hairline(kGuide));
   }
 
   if (overlay.marquee) {
@@ -450,6 +472,56 @@ void DocumentRenderer::Impl::DrawOutline(SkCanvas* canvas, const core::ObjectPtr
   canvas->restore();
 }
 
+void DocumentRenderer::Impl::DrawEditedPath(SkCanvas* canvas, const EditedPath& edited, float px,
+                                            float anchor_half) {
+  // `px` is one view pixel in document units; `anchor_half` is in device pixels.
+  const core::PathData& path = edited.path;
+  SkPathBuilder outline;
+  AppendPath(outline, path);
+  canvas->drawPath(outline.detach(), Hairline(kSelection));
+
+  // Handles: a line from the anchor to a dot. An open path's outer ends have
+  // no segment for their outer handle, so it is not shown.
+  const int n = static_cast<int>(path.anchors.size());
+  SkPaint dot;
+  dot.setColor(kSelection);
+  dot.setAntiAlias(true);
+  for (int i : edited.with_handles) {
+    if (i < 0 || i >= n) continue;
+    const core::Anchor& a = path.anchors[i];
+    const bool has_in = path.closed || i > 0;
+    const bool has_out = path.closed || i < n - 1;
+    const std::pair<bool, core::Point> handles[] = {{has_in, a.in_point()},
+                                                    {has_out, a.out_point()}};
+    for (const auto& [shown, handle] : handles) {
+      if (!shown || handle == a.position) continue;
+      canvas->drawLine(ToSk(a.position), ToSk(handle), Hairline(kSelection));
+      canvas->drawCircle(ToSk(handle), 2.5f * px, dot);
+    }
+  }
+
+  // Anchors as squares sized in device pixels: filled when selected,
+  // hollow otherwise.
+  std::vector<SkPoint> points;
+  for (const auto& a : path.anchors) points.push_back(ToSk(a.position));
+  canvas->getTotalMatrix().mapPoints(points);
+  canvas->save();
+  canvas->resetMatrix();
+  SkPaint fill;
+  SkPaint border = Hairline(kSelection);
+  border.setStrokeWidth(1);
+  border.setAntiAlias(false);
+  for (int i = 0; i < n; ++i) {
+    const SkPoint p = points[i];
+    const SkRect r = SkRect::MakeLTRB(p.x() - anchor_half, p.y() - anchor_half, p.x() + anchor_half,
+                                      p.y() + anchor_half);
+    fill.setColor(edited.selected.contains(i) ? kSelection : SK_ColorWHITE);
+    canvas->drawRect(r, fill);
+    canvas->drawRect(r, border);
+  }
+  canvas->restore();
+}
+
 void DocumentRenderer::Impl::PruneCache() {
   // Drop entries not used for a while; their objects were edited away or
   // scrolled off long ago.
@@ -478,5 +550,34 @@ std::vector<std::uint8_t> DocumentRenderer::RenderRaster(const core::Document& d
 }
 
 DocumentRenderer::Stats DocumentRenderer::last_stats() const { return impl_->stats; }
+
+std::vector<std::uint8_t> DocumentRenderer::ExportPng(const core::Document& document,
+                                                      const core::Rect& area, double scale,
+                                                      bool transparent) {
+  const int width = static_cast<int>(std::ceil(area.width() * scale));
+  const int height = static_cast<int>(std::ceil(area.height() * scale));
+  // Skia's raster limit, and a sanity bound on memory (about 1 GB).
+  if (width <= 0 || height <= 0 || width > 32767 || height > 32767 ||
+      static_cast<double>(width) * height > 2.5e8) {
+    return {};
+  }
+  RenderSettings settings;
+  settings.artwork_only = true;
+  settings.transparent = transparent;
+  DocumentRenderer renderer(settings);
+  const SkImageInfo info =
+      SkImageInfo::Make(width, height, kRGBA_8888_SkColorType, kPremul_SkAlphaType);
+  sk_sp<SkSurface> surface = SkSurfaces::Raster(info);
+  if (!surface) return {};
+  const View view{-area.left * scale, -area.top * scale, scale};
+  renderer.impl_->Draw(surface->getCanvas(), document, view, width, height, nullptr);
+  SkPixmap pixmap;
+  if (!surface->peekPixels(&pixmap)) return {};
+  SkDynamicMemoryWStream stream;
+  if (!SkPngEncoder::Encode(&stream, pixmap, {})) return {};
+  const sk_sp<SkData> data = stream.detachAsData();
+  const auto* bytes = static_cast<const std::uint8_t*>(data->data());
+  return {bytes, bytes + data->size()};
+}
 
 }  // namespace leinwand::render

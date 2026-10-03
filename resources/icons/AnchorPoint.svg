@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Leinwand icon on the Spectrum 20x20 grid: anchor point (convert) tool. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
+  <path d="M3 16.5 L10 4.5 L17 16.5" fill="none" stroke="var(--iconPrimary, #222)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <rect x="8" y="2.5" width="4" height="4" fill="var(--iconPrimary, #222)"/>
+</svg>

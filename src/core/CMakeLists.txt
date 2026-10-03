@@ -3,9 +3,11 @@
 add_library(core STATIC
   document.cpp
   edit.cpp
+  layers.cpp
   history.cpp
   object.cpp
   shape.cpp
+  style.cpp
   id.cpp
   transform.cpp
 )

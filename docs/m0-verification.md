@@ -104,7 +104,7 @@ Skia の再ビルド(フィーチャー変更時)はこの環境で約9分。
 2. **ドロップ表示とラバーバンドの QML がライブラリ内に固定されている。** パッチで `ViewFactory` に `classicIndicatorsOverlayFilename()` と `rubberBandFilename()` を足し、差し替えられるようにした。
 3. **ドロップ表示が、ドラッグ中のパネルに隠れる。** 1. の対処でドロップ表示が下のウィンドウの中に描かれるようになったため。ドラッグ中はフローティングウィンドウ全体の不透明度を 0.6 にして対処した。ウィンドウ単位の不透明度は OS が合成するので、Vulkan でも効く。ただし今はドラッグ中のものだけでなく、すべてのフローティングウィンドウが半透明になる。
 
-パッチは `prototypes/dock/patches/kddw-indicators.patch`(4ファイル、39行)。FetchContent の取得時に当てる。KDDW 本体への提案(プルリクエスト)の候補。
+パッチは `prototypes/dock/patches/kddw-indicators.patch`(4ファイル、39行。M5 で `cmake/patches/` へ移した)。FetchContent の取得時に当てる。KDDW 本体への提案(プルリクエスト)の候補。
 
 ![ドラッグ中: ドロップ表示とドロップ先の強調がメインウィンドウの中に出て、ドラッグ中のパネルは半透明になる](images/m0-dock-drag.png)
 
