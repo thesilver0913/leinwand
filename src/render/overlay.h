@@ -33,6 +33,8 @@ struct Overlay {
   std::vector<std::pair<core::Point, core::Point>> guides;  // Smart guides.
   bool outline = false;                  // Outline view (Ctrl+Y): paths only, no paint.
   std::optional<core::Rect> key_object;  // The Align panel's key object, framed thickly.
+  // The gradient annotator: from the start (a circle) to the end (a square).
+  std::optional<std::pair<core::Point, core::Point>> gradient_line;
 };
 
 }  // namespace leinwand::render

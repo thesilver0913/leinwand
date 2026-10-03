@@ -8,6 +8,7 @@
 #include <nlohmann/json.hpp>
 #include <variant>
 
+#include "core/style.h"
 #include "render/test_document.h"
 
 using namespace leinwand;
@@ -93,7 +94,7 @@ TEST_CASE("document.json follows the spec's shape: fixed key order, defaults omi
         R"({"p":[50,150],"in":[20,0],"out":[0,-30],"kind":"smooth"})");
   CHECK(object["appearance"][0].dump() ==
         R"({"type":"stroke","paint":{"space":"rgb","values":[0,0,0]},"width":2})");
-  CHECK(j["format"]["version"] == "1.1");
+  CHECK(j["format"]["version"] == "1.2");
 }
 
 TEST_CASE("Unknown fields, enum values and object types are kept and written back") {
@@ -211,4 +212,35 @@ TEST_CASE("A book cover keeps its template settings") {
   spec.spine = 12.0;
   const auto given = io::ReadDocumentJson(io::WriteDocumentJson(core::WithCover({}, spec), "test"));
   CHECK(given.document->cover->spine == 12.0);
+}
+
+TEST_CASE("Gradients survive a JSON round trip") {
+  core::PathObject path;
+  path.common.id = "g";
+  path.path.anchors = {{{0, 0}}, {{10, 0}}, {{10, 10}}};
+  core::Fill fill{core::RgbColor{1, 0, 0}};
+  fill.gradient = core::Gradient{
+      core::GradientType::kRadial,
+      {{0.0, core::RgbColor{1, 0, 0}, 1.0, 0.3}, {1.0, core::CmykColor{0, 0, 0, 1}, 0.5, 0.5}},
+      {5, 5},
+      {10, 5},
+      0.5,
+      core::Point{4, 4}};
+  core::Stroke stroke{core::RgbColor{0, 0, 0}};
+  stroke.gradient = core::Gradient{
+      core::GradientType::kLinear,
+      {{0.0, core::RgbColor{0, 0, 1}, 1.0, 0.5}, {1.0, core::RgbColor{0, 1, 0}, 1.0, 0.5}},
+      {0, 0},
+      {10, 10}};
+  path.common.appearance = {stroke, fill};
+  core::Layer layer;
+  layer.id = "l";
+  layer.children = {core::MakeObject(path)};
+  core::Document document;
+  document.layers = {core::MakeLayer(std::move(layer))};
+  const auto loaded = io::ReadDocumentJson(io::WriteDocumentJson(document, "test"));
+  REQUIRE(loaded.document);
+  const auto& a = core::CommonOf(*loaded.document->FindObject("g")).appearance;
+  CHECK(core::FrontFill(a)->gradient == fill.gradient);
+  CHECK(core::FrontStroke(a)->gradient == stroke.gradient);
 }

@@ -85,7 +85,19 @@ TEST_CASE("SVG import: size, layers, shapes, CSS and what it could not take") {
 
   // #star gets gold from the id rule and is clipped by the circle.
   CHECK(HasRow(result.report, "clip-path", io::ReportAction::kConverted));
-  CHECK(HasRow(result.report, "fill gradient", io::ReportAction::kApproximated));
+  // The sky's gradient stays a gradient (phase 2), laid across the whole
+  // rect from its bounding box and scaled by the viewBox with it.
+  bool sky = false;
+  for (const auto& id : core::AllObjectIds(*result.document)) {
+    const auto* fill = core::FrontFill(core::CommonOf(*result.document->FindObject(id)).appearance);
+    if (!fill || !fill->gradient) continue;
+    sky = true;
+    CHECK(fill->gradient->start.x == Approx(0));
+    CHECK(fill->gradient->end.x == Approx(200));
+    CHECK(fill->gradient->stops.size() == 2);
+  }
+  CHECK(sky);
+  CHECK_FALSE(HasRow(result.report, "fill gradient", io::ReportAction::kApproximated));
   CHECK(HasRow(result.report, "<text>", io::ReportAction::kPreserved));
   CHECK(HasRow(result.report, "<defs>", io::ReportAction::kPreserved));
 }
@@ -164,4 +176,45 @@ TEST_CASE("SVG: a physical size keeps its size in points") {
   const auto& rect = std::get<core::ShapeObject>(
       *std::get<core::ObjectPtr>(result.document->layers[0]->children[0]));
   CHECK(std::get<core::RectangleShape>(rect.shape).width == Approx(28.3465).epsilon(1e-4));
+}
+
+TEST_CASE("SVG gradients: user space, transforms, inherited stops, radial") {
+  const auto result = io::ImportSvg(R"svg(<svg xmlns="http://www.w3.org/2000/svg"
+      xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="100">
+    <defs>
+      <linearGradient id="base">
+        <stop offset="0" stop-color="red"/>
+        <stop offset="50%" stop-color="lime" stop-opacity="0.5"/>
+        <stop offset="1" stop-color="blue"/>
+      </linearGradient>
+      <linearGradient id="user" xlink:href="#base" gradientUnits="userSpaceOnUse"
+          x1="10" y1="0" x2="110" y2="0" gradientTransform="translate(5 0)"/>
+      <radialGradient id="ring" xlink:href="#base" cx="0.5" cy="0.5" r="0.5" fx="0.25"/>
+    </defs>
+    <rect id="a" width="200" height="50" fill="url(#user)"/>
+    <rect id="b" y="50" width="200" height="50" fill="url(#ring)"/>
+  </svg>)svg");
+  REQUIRE(result.document);
+  const auto gradient = [&](const char* id) {
+    return core::FrontFill(core::CommonOf(*result.document->FindObject(id)).appearance)->gradient;
+  };
+  const auto a = gradient("a");
+  REQUIRE(a);
+  CHECK(a->type == core::GradientType::kLinear);
+  CHECK(a->start.x == Approx(15));
+  CHECK(a->end.x == Approx(115));
+  REQUIRE(a->stops.size() == 3);  // Inherited through href.
+  CHECK(a->stops[1].offset == Approx(0.5));
+  CHECK(a->stops[1].opacity == Approx(0.5));
+  // Radial in the 200 x 50 box: centre (100, 75), radius 100 across, 25
+  // down (aspect 0.25), the highlight a quarter of the way in.
+  const auto b = gradient("b");
+  REQUIRE(b);
+  CHECK(b->type == core::GradientType::kRadial);
+  CHECK(b->start.x == Approx(100));
+  CHECK(b->start.y == Approx(75));
+  CHECK(b->end.x == Approx(200));
+  CHECK(b->aspect == Approx(0.25));
+  REQUIRE(b->focal);
+  CHECK(b->focal->x == Approx(50));
 }

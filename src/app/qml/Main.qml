@@ -100,6 +100,9 @@ ApplicationWindow {
         }
         if (Qt.application.arguments.indexOf("--select-all") >= 0)
             Session.selectAll();
+        // --tool=N: start with tool N (for checking how a tool looks).
+        if (argValue("tool") !== "")
+            Session.tool = parseInt(argValue("tool"));
     }
 
     menuBar: AppMenuBar { window: window }
@@ -176,6 +179,12 @@ ApplicationWindow {
                 SpPanel { SwatchesPanel { anchors.fill: parent } }
             }
             KDDW.DockWidget {
+                id: gradientPanel
+                uniqueName: "gradient"
+                title: qsTr("Gradient")
+                SpPanel { GradientPanel { anchors.fill: parent } }
+            }
+            KDDW.DockWidget {
                 id: stroke
                 uniqueName: "stroke"
                 title: qsTr("Stroke")
@@ -189,7 +198,8 @@ ApplicationWindow {
             }
 
             // Illustrator's default workspace, roughly: properties, layers and
-            // artboards; transform, align and pathfinder; color, swatches and stroke.
+            // artboards; transform, align and pathfinder; color and swatches;
+            // stroke and gradient.
             Component.onCompleted: {
                 addDockWidget(properties, KDDW.KDDockWidgets.Location_OnRight, null,
                               Qt.size(Spectrum.standardPanelWidth + 20, 0));
@@ -202,15 +212,19 @@ ApplicationWindow {
                 transform.addDockWidgetAsTab(pathfinderPanel);
                 addDockWidget(colorPanel, KDDW.KDDockWidgets.Location_OnBottom, transform);
                 colorPanel.addDockWidgetAsTab(swatches);
-                colorPanel.addDockWidgetAsTab(stroke);
                 colorPanel.addDockWidgetAsTab(importReport);
+                // Stroke and Gradient together, as in Illustrator.
+                addDockWidget(stroke, KDDW.KDDockWidgets.Location_OnBottom, colorPanel);
+                stroke.addDockWidgetAsTab(gradientPanel);
                 properties.setAsCurrentTab();
                 transform.setAsCurrentTab();
                 colorPanel.setAsCurrentTab();
+                stroke.setAsCurrentTab();
                 const panels = { properties: properties, layers: layers, transform: transform,
                                  align: alignPanel, pathfinder: pathfinderPanel,
                                  artboards: artboardsPanel,
-                                 color: colorPanel, swatches: swatches, stroke: stroke };
+                                 color: colorPanel, swatches: swatches, gradient: gradientPanel,
+                                 stroke: stroke };
                 for (const name of window.argValue("tabs").split(","))
                     if (panels[name])
                         panels[name].setAsCurrentTab();
@@ -224,6 +238,13 @@ ApplicationWindow {
         onActivated: {
             alignPanel.open();
             alignPanel.setAsCurrentTab();
+        }
+    }
+    Shortcut {
+        sequences: Shortcuts.windowGradient
+        onActivated: {
+            gradientPanel.open();
+            gradientPanel.setAsCurrentTab();
         }
     }
     Shortcut {
@@ -249,6 +270,7 @@ ApplicationWindow {
     Shortcut { sequences: Shortcuts.toolEyedropper; enabled: Session.hasDocument; onActivated: Session.tool = 11 }
     Shortcut { sequences: Shortcuts.toolScissors; enabled: Session.hasDocument; onActivated: Session.tool = 14 }
     Shortcut { sequences: Shortcuts.toolArtboard; enabled: Session.hasDocument; onActivated: Session.tool = 15 }
+    Shortcut { sequences: Shortcuts.toolGradient; enabled: Session.hasDocument; onActivated: Session.tool = 16 }
     Shortcut { sequences: Shortcuts.toolHand; enabled: Session.hasDocument; onActivated: Session.tool = 12 }
     Shortcut { sequences: Shortcuts.toolZoom; enabled: Session.hasDocument; onActivated: Session.tool = 13 }
 
@@ -264,7 +286,7 @@ ApplicationWindow {
 
     readonly property var panels: [properties, layers, artboardsPanel, transform, alignPanel, pathfinderPanel,
                                    colorPanel,
-                                   swatches, stroke, importReport]
+                                   swatches, gradientPanel, stroke, importReport]
     property alias openDialog: openDialog
     property alias saveAsDialog: saveAsDialog
     property alias pngOptions: pngOptions

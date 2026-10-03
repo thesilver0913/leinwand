@@ -4,6 +4,7 @@ add_library(core STATIC
   cover.cpp
   document.cpp
   edit.cpp
+  gradient.cpp
   layers.cpp
   number.cpp
   history.cpp

@@ -201,6 +201,8 @@ UIはQt Quickで組む。パネルやツールバーはQML、ドキュメント�
 
 `appearance` は、前面から背面の順に並べた項目の配列。項目は `fill`、`stroke`、`effect` の3種類で、それぞれが不透明度と描画モードを持てる。
 
+`fill` と `stroke` は `gradient` を持てる(形式 1.2 で追加)。`{"type": "linear" | "radial", "start": [x, y], "end": [x, y], "aspect": 縦横比, "focal": [x, y], "stops": [{"offset", "color", "opacity", "midpoint"}]}`。座標はオブジェクトの座標系。円形では `start` が中心、`end` までの距離が半径で、`aspect` は軸と直交する方向の半径の比。`paint` には先頭の分岐点の色を入れておく(グラデーションを扱えない読み手のため)。
+
 **例: 赤い塗りと黒い線を持つ三角形**
 
 ```json

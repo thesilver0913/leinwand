@@ -227,6 +227,19 @@ class Session : public QObject {
   // Dash and gap lengths, alternating; empty for a solid line.
   Q_INVOKABLE void setDashes(const QVariantList& dashes);
   Q_INVOKABLE void setOpacity(double opacity);  // 0..1
+  // Gradient panel (spec 7.2). style()["gradient"] holds the active side's
+  // gradient: "type" (0 linear, 1 radial), "angle", "aspect" and "stops"
+  // ({"offset", "color", "opacity", "midpoint"}); style()["gradientStop"]
+  // is the selected stop, whose color the color controls then set.
+  Q_INVOKABLE void applyGradient(int type);
+  Q_INVOKABLE void setGradientAngle(double degrees);
+  Q_INVOKABLE void setGradientAspect(double aspect);
+  Q_INVOKABLE void selectGradientStop(int index);
+  Q_INVOKABLE int addGradientStop(double offset);
+  Q_INVOKABLE void removeGradientStop(int index);
+  Q_INVOKABLE int moveGradientStop(int index, double offset);
+  Q_INVOKABLE void setGradientStopOpacity(int index, double opacity);  // 0..1
+  Q_INVOKABLE void setGradientStopMidpoint(int index, double midpoint);
   // Edits between these make one undo step (slider drags, spec 7.2).
   Q_INVOKABLE void beginGesture();
   Q_INVOKABLE void endGesture();

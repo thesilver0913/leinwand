@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <numbers>
 #include <sstream>
 #include <variant>
 
@@ -181,18 +182,72 @@ class Exporter {
     return nullptr;
   }
 
+  // A gradient written to <defs> in user space (the element's coordinates,
+  // as the model keeps them); returns its url(). Midpoints off the middle
+  // become an extra stop where the neighbours mix, as the renderer draws
+  // them.
+  std::string GradientUrl(const Gradient& g, const std::string& id) {
+    const std::string gid = id + "-gradient-" + std::to_string(++gradients_);
+    const bool radial = g.type == GradientType::kRadial;
+    const char* element = radial ? "radialGradient" : "linearGradient";
+    auto attr = [this](const char* name, double value) {
+      return std::string(" ") + name + "=\"" + N(value) + "\"";
+    };
+    defs_ << "    <" << element << " id=\"" << Escape(gid) << "\" gradientUnits=\"userSpaceOnUse\"";
+    if (!radial) {
+      defs_ << attr("x1", g.start.x) << attr("y1", g.start.y) << attr("x2", g.end.x)
+            << attr("y2", g.end.y);
+    } else {
+      const double r = std::hypot(g.end.x - g.start.x, g.end.y - g.start.y);
+      defs_ << attr("cx", g.start.x) << attr("cy", g.start.y) << attr("r", r);
+      if (g.focal) defs_ << attr("fx", g.focal->x) << attr("fy", g.focal->y);
+      if (g.aspect != 1.0) {
+        // The ellipse: squashed across its axis, about the centre.
+        const double degrees =
+            std::atan2(g.end.y - g.start.y, g.end.x - g.start.x) * 180 / std::numbers::pi;
+        defs_ << " gradientTransform=\"translate(" << N(g.start.x) << " " << N(g.start.y)
+              << ") rotate(" << N(degrees) << ") scale(1 " << N(g.aspect) << ") rotate("
+              << N(-degrees) << ") translate(" << N(-g.start.x) << " " << N(-g.start.y) << ")\"";
+      }
+    }
+    defs_ << ">\n";
+    auto stop = [&](double offset, const Color& color, double opacity) {
+      defs_ << "      <stop" << attr("offset", std::clamp(offset, 0.0, 1.0)) << " stop-color=\""
+            << ColorText(color, id) << "\"";
+      if (opacity != 1.0) defs_ << attr("stop-opacity", opacity);
+      defs_ << "/>\n";
+    };
+    for (size_t i = 0; i < g.stops.size(); ++i) {
+      const GradientStop& s = g.stops[i];
+      if (i > 0 && std::abs(g.stops[i - 1].midpoint - 0.5) > 1e-6) {
+        const GradientStop& p = g.stops[i - 1];
+        const RgbColor a = ToRgb(p.color, document_).value_or(RgbColor{});
+        const RgbColor b = ToRgb(s.color, document_).value_or(RgbColor{});
+        stop(p.offset + (s.offset - p.offset) * p.midpoint,
+             RgbColor{(a.r + b.r) / 2, (a.g + b.g) / 2, (a.b + b.b) / 2},
+             (p.opacity + s.opacity) / 2);
+      }
+      stop(s.offset, s.color, s.opacity);
+    }
+    defs_ << "    </" << element << ">\n";
+    return "url(#" + Escape(gid) + ")";
+  }
+
   // Attributes for one fill and/or one stroke.
   std::string PaintAttributes(const Fill* fill, const Stroke* stroke, bool fill_first,
                               const std::string& id) {
     std::string a;
     if (fill) {
-      a += " fill=\"" + ColorText(fill->paint, id) + "\"";
+      a += " fill=\"" +
+           (fill->gradient ? GradientUrl(*fill->gradient, id) : ColorText(fill->paint, id)) + "\"";
       if (fill->opacity != 1.0) a += " fill-opacity=\"" + N(fill->opacity) + "\"";
     } else {
       a += " fill=\"none\"";
     }
     if (stroke) {
-      a += " stroke=\"" + ColorText(stroke->paint, id) + "\"";
+      a += " stroke=\"" +
+           (stroke->gradient ? GradientUrl(*stroke->gradient, id) : ColorText(stroke->paint, id)) +
+           "\"";
       a += " stroke-width=\"" + N(stroke->width) + "\"";
       if (stroke->cap == StrokeCap::kRound) a += " stroke-linecap=\"round\"";
       if (stroke->cap == StrokeCap::kSquare) a += " stroke-linecap=\"square\"";
@@ -376,6 +431,7 @@ class Exporter {
   SvgExportOptions options_;
   ImportReport* issues_;
   std::ostringstream defs_;
+  int gradients_ = 0;
 };
 
 }  // namespace

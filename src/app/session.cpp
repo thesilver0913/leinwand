@@ -18,6 +18,7 @@
 #include <limits>
 #include <variant>
 
+#include "core/gradient.h"
 #include "core/style.h"
 #include "editor/number_input.h"
 #include "io/lwd.h"
@@ -36,7 +37,8 @@ using leinwand::editor::Tool;
 constexpr int kHand = 12;
 constexpr int kZoom = 13;
 // Editor tools after the eyedropper come after the view tools in QML's
-// numbering: QML's 14 is the editor's kScissors, 15 its kArtboard.
+// numbering: QML's 14 is the editor's kScissors, 15 its kArtboard, 16 its
+// kGradient.
 constexpr int kAfterView = 2;
 
 Session* g_instance = nullptr;
@@ -458,7 +460,7 @@ void Session::setTool(int tool) {
     view_tool_ = tool;
   } else {
     if (tool > kZoom) tool -= kAfterView;
-    if (tool < 0 || tool > static_cast<int>(Tool::kArtboard)) return;
+    if (tool < 0 || tool > static_cast<int>(Tool::kGradient)) return;
     if (view_tool_ < 0 && tool == static_cast<int>(editor_->chosen_tool()) &&
         tool == this->tool()) {
       return;
@@ -821,7 +823,77 @@ QVariantMap Session::style() const {
   map["dashes"] = dashes;
   map["opacity"] = state.opacity;
   map["opacityMixed"] = state.opacity_mixed;
+  if (state.gradient) {
+    const leinwand::core::Gradient& g = *state.gradient;
+    QVariantMap gradient;
+    gradient["type"] = static_cast<int>(g.type);
+    gradient["angle"] = leinwand::core::GradientAngle(g);
+    gradient["aspect"] = g.aspect;
+    QVariantList stops;
+    for (const auto& stop : g.stops) {
+      QVariantMap s;
+      s["offset"] = stop.offset;
+      s["color"] = ToQColor(stop.color, document);
+      s["opacity"] = stop.opacity;
+      s["midpoint"] = stop.midpoint;
+      stops.append(s);
+    }
+    gradient["stops"] = stops;
+    map["gradient"] = gradient;
+    const int selected = editor_->gradient_stop();
+    map["gradientStop"] = selected < static_cast<int>(g.stops.size()) ? selected : -1;
+  } else {
+    map["gradientStop"] = -1;
+  }
   return map;
+}
+
+void Session::applyGradient(int type) {
+  editor_->ApplyGradient(type == 1 ? leinwand::core::GradientType::kRadial
+                                   : leinwand::core::GradientType::kLinear);
+  Changed();
+}
+
+void Session::setGradientAngle(double degrees) {
+  editor_->SetGradientAngle(degrees);
+  Changed();
+}
+
+void Session::setGradientAspect(double aspect) {
+  editor_->SetGradientAspect(aspect);
+  Changed();
+}
+
+void Session::selectGradientStop(int index) {
+  editor_->SelectGradientStop(index);
+  Changed();
+}
+
+int Session::addGradientStop(double offset) {
+  const int added = editor_->AddGradientStop(offset);
+  Changed();
+  return added;
+}
+
+void Session::removeGradientStop(int index) {
+  editor_->RemoveGradientStop(index);
+  Changed();
+}
+
+int Session::moveGradientStop(int index, double offset) {
+  const int moved = editor_->MoveGradientStop(index, offset);
+  Changed();
+  return moved;
+}
+
+void Session::setGradientStopOpacity(int index, double opacity) {
+  editor_->SetGradientStopOpacity(index, opacity);
+  Changed();
+}
+
+void Session::setGradientStopMidpoint(int index, double midpoint) {
+  editor_->SetGradientStopMidpoint(index, midpoint);
+  Changed();
 }
 
 void Session::setFillColor(const QColor& color) {

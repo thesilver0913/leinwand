@@ -74,6 +74,8 @@ const std::vector<Command>& Commands() {
       {"toolStar", "tools", {}},
       {"toolEyedropper", "tools", {"I"}},
       {"toolScissors", "tools", {"C"}},
+      {"toolGradient", "tools", {"G"}},
+      {"windowGradient", "window", {"Ctrl+F9"}},
       {"toolHand", "tools", {"H"}},
       {"toolZoom", "tools", {"Z"}},
       {"paintToggle", "paint", {"X"}},

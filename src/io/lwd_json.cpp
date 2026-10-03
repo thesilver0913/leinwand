@@ -245,6 +245,61 @@ ProcessColor ProcessColorOf(const Json& j) {
   throw Corrupt("a swatch must hold a process color");
 }
 
+// --- Gradients ---------------------------------------------------------------
+
+// {"type": "linear"|"radial", "start": [x, y], "end": [x, y], "stops": [...]},
+// with "aspect" and "focal" for radial gradients when not the defaults.
+Json GradientJson(const Gradient& g) {
+  Json j;
+  j["type"] = g.type == GradientType::kRadial ? "radial" : "linear";
+  j["start"] = Pair(g.start.x, g.start.y);
+  j["end"] = Pair(g.end.x, g.end.y);
+  if (g.type == GradientType::kRadial) {
+    if (g.aspect != 1.0) j["aspect"] = Num(g.aspect);
+    if (g.focal) j["focal"] = Pair(g.focal->x, g.focal->y);
+  }
+  Json stops = Json::array();
+  for (const GradientStop& s : g.stops) {
+    Json stop;
+    stop["offset"] = Num(s.offset);
+    stop["color"] = ColorJson(s.color);
+    if (s.opacity != 1.0) stop["opacity"] = Num(s.opacity);
+    if (s.midpoint != 0.5) stop["midpoint"] = Num(s.midpoint);
+    stops.push_back(std::move(stop));
+  }
+  j["stops"] = std::move(stops);
+  AppendUnknown(j, g.unknown_fields);
+  return j;
+}
+
+Gradient GradientOf(const Json& j) {
+  Reader r(j);
+  Gradient g;
+  g.type = r.String("type", "linear") == "radial" ? GradientType::kRadial : GradientType::kLinear;
+  const Json* start = r.Take("start");
+  const Json* end = r.Take("end");
+  if (!start || !end) throw Corrupt("a gradient needs \"start\" and \"end\"");
+  g.start = PointOf(*start);
+  g.end = PointOf(*end);
+  g.aspect = r.Number("aspect", 1.0);
+  if (const Json* focal = r.Take("focal")) g.focal = PointOf(*focal);
+  const Json* stops = r.Take("stops");
+  if (!stops || !stops->is_array()) throw Corrupt("a gradient needs \"stops\"");
+  for (const auto& s : *stops) {
+    Reader sr(s);
+    GradientStop stop;
+    stop.offset = sr.Number("offset", 0.0);
+    const Json* color = sr.Take("color");
+    if (!color) throw Corrupt("a gradient stop needs \"color\"");
+    stop.color = ColorOf(*color);
+    stop.opacity = sr.Number("opacity", 1.0);
+    stop.midpoint = sr.Number("midpoint", 0.5);
+    g.stops.push_back(std::move(stop));
+  }
+  g.unknown_fields = r.Unknown();
+  return g;
+}
+
 // --- Appearance --------------------------------------------------------------
 
 Json AppearanceJson(const Appearance& appearance) {
@@ -254,6 +309,7 @@ Json AppearanceJson(const Appearance& appearance) {
       Json j;
       j["type"] = "fill";
       j["paint"] = ColorJson(fill->paint);
+      if (fill->gradient) j["gradient"] = GradientJson(*fill->gradient);
       if (fill->opacity != 1.0) j["opacity"] = Num(fill->opacity);
       if (fill->blend_mode != BlendMode::kNormal) j["blendMode"] = kBlendModes.Of(fill->blend_mode);
       AppendUnknown(j, fill->unknown_fields);
@@ -262,6 +318,7 @@ Json AppearanceJson(const Appearance& appearance) {
       Json j;
       j["type"] = "stroke";
       j["paint"] = ColorJson(stroke->paint);
+      if (stroke->gradient) j["gradient"] = GradientJson(*stroke->gradient);
       j["width"] = Num(stroke->width);
       if (stroke->cap != StrokeCap::kButt) j["cap"] = kCaps.Of(stroke->cap);
       if (stroke->join != StrokeJoin::kMiter) j["join"] = kJoins.Of(stroke->join);
@@ -298,6 +355,7 @@ Appearance AppearanceOf(const Json& j, ImportReport& report, const std::string& 
       const Json* paint = r.Take("paint");
       if (!paint) throw Corrupt("a fill needs \"paint\"");
       fill.paint = ColorOf(*paint);
+      if (const Json* gradient = r.Take("gradient")) fill.gradient = GradientOf(*gradient);
       fill.opacity = r.Number("opacity", 1.0);
       fill.blend_mode = r.Enum("blendMode", kBlendModes, BlendMode::kNormal);
       fill.unknown_fields = r.Unknown();
@@ -309,6 +367,7 @@ Appearance AppearanceOf(const Json& j, ImportReport& report, const std::string& 
       const Json* paint = r.Take("paint");
       if (!paint) throw Corrupt("a stroke needs \"paint\"");
       stroke.paint = ColorOf(*paint);
+      if (const Json* gradient = r.Take("gradient")) stroke.gradient = GradientOf(*gradient);
       stroke.width = r.Number("width", 1.0);
       stroke.cap = r.Enum("cap", kCaps, StrokeCap::kButt);
       stroke.join = r.Enum("join", kJoins, StrokeJoin::kMiter);

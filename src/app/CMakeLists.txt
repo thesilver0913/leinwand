@@ -73,6 +73,7 @@ qt_add_qml_module(leinwand
     qml/controls/SpSwatch.qml
     qml/controls/SpTextField.qml
     qml/panels/ColorPanel.qml
+    qml/panels/GradientPanel.qml
     qml/panels/ImportReportPanel.qml
     qml/panels/AlignPanel.qml
     qml/panels/ArtboardsPanel.qml

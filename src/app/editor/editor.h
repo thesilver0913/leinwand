@@ -43,6 +43,7 @@ enum class Tool {
   kEyedropper,
   kScissors,  // Cuts a path where it is clicked (C).
   kArtboard,  // Draws, moves and resizes artboards (Shift+O).
+  kGradient,  // Drags out the gradient of the selection (G).
 };
 
 // What a pen click would do at a point (spec 4.2: the cursor shows it).
@@ -80,6 +81,9 @@ struct StyleState {
   bool fill_mixed = false;  // The selected objects differ (shown as "?").
   bool stroke_mixed = false;
   std::optional<core::Stroke> stroke_style;  // Settings of the first front stroke.
+  // The gradient of the active side (fill or stroke) of the first selected
+  // object, or of the style for new objects.
+  std::optional<core::Gradient> gradient;
   double opacity = 1.0;
   bool opacity_mixed = false;
 };
@@ -111,6 +115,9 @@ struct Overlay {
   std::optional<core::PathData> rubber_band;                // The pen's next segment.
   std::vector<std::pair<core::Point, core::Point>> guides;  // Smart guides while dragging.
   std::optional<core::Rect> key_object;                     // Drawn with a thick outline.
+  // The gradient tool's annotator: the gradient's start and end in document
+  // coordinates.
+  std::optional<std::pair<core::Point, core::Point>> gradient_line;
 };
 
 // The Align panel (spec 7.2): what objects line up with.
@@ -249,6 +256,7 @@ class Editor {
     kArtboardDraw,    // The artboard tool outside every artboard.
     kArtboardMove,    // Inside one: moves it with the artwork on it.
     kArtboardResize,  // On a handle of the active one.
+    kGradient,        // The gradient tool: start (or one end) to the pointer.
   };
   struct Drag {
     DragKind kind = DragKind::kNone;
@@ -369,6 +377,28 @@ class Editor {
   // their mean position, along one axis or both.
   void AverageAnchors(bool horizontal, bool vertical);
 
+  // Gradients (editor_gradient.cpp, spec 7.2). They act on the active side
+  // (fill or stroke) of the selection, and on the style for new objects.
+  // Applying a gradient to an object without one lays a white-to-black
+  // gradient across it; with one, it changes its type. While a stop is
+  // selected, SetFill / SetStroke color that stop instead.
+  void ApplyGradient(core::GradientType type);
+  void SetGradientAngle(double degrees);
+  void SetGradientAspect(double aspect);  // Radial only.
+  // The selected stop; it is deselected when the selection changes.
+  int gradient_stop() const {
+    return gradient_stop_selection_ == selection() ? gradient_stop_ : -1;
+  }
+  void SelectGradientStop(int index) {
+    gradient_stop_ = index;
+    gradient_stop_selection_ = selection();
+  }
+  int AddGradientStop(double offset);  // Returns the new stop, now selected.
+  void RemoveGradientStop(int index);
+  int MoveGradientStop(int index, double offset);  // Returns its index after sorting.
+  void SetGradientStopOpacity(int index, double opacity);
+  void SetGradientStopMidpoint(int index, double midpoint);
+
   // Artboards (editor_artboards.cpp, spec 7.2). The active artboard is a
   // view state: alignment, export and "fit artboard" use it. Each edit is
   // one undo step; the last artboard cannot be removed.
@@ -405,6 +435,14 @@ class Editor {
   const geometry::PathOpsEngine* path_ops_ = nullptr;
   std::optional<core::Rect> KeyObjectBounds() const;  // Document coordinates.
   void ArtboardDown(core::Point p, double pick);
+  void GradientDown(core::Point p, double pick);
+  void GradientDrag();
+  // Edits the active side's gradient of the selection and of the new-object
+  // style, where there is one.
+  void EditGradient(const std::string& action, const std::function<void(core::Gradient&)>& edit);
+  std::optional<std::pair<core::Point, core::Point>> GradientLine() const;
+  int gradient_stop_ = -1;
+  core::IdSet gradient_stop_selection_;
   void ArtboardDrag();  // Updates drag_.preview.
   std::string NewArtboardName(const core::Document& document) const;
   int active_artboard_ = 0;

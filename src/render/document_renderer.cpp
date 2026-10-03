@@ -17,11 +17,14 @@
 #include "include/core/SkData.h"
 #include "include/core/SkImageInfo.h"
 #include "include/core/SkMaskFilter.h"
+#include "include/core/SkMatrix.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkPathBuilder.h"
+#include "include/core/SkScalar.h"
 #include "include/core/SkStream.h"
 #include "include/core/SkSurface.h"
 #include "include/effects/SkDashPathEffect.h"
+#include "include/effects/SkGradient.h"
 #include "include/encode/SkPngEncoder.h"
 #include "render/document_renderer_impl.h"
 
@@ -134,6 +137,62 @@ bool SetPaintColor(SkPaint& paint, const core::Color& color, double opacity,
   if (!rgb) return false;
   paint.setColor4f({static_cast<float>(rgb->r), static_cast<float>(rgb->g),
                     static_cast<float>(rgb->b), static_cast<float>(opacity)});
+  return true;
+}
+
+// A gradient as a shader (spec 7, "グラデーション"). Each stop's midpoint
+// becomes an extra stop where the neighbours mix half and half, so a moved
+// midpoint bends the ramp as in Illustrator. False when a stop's color
+// cannot be shown or there are fewer than two stops.
+bool SetPaintGradient(SkPaint& paint, const core::Gradient& gradient, double opacity,
+                      const core::Document& document) {
+  if (gradient.stops.size() < 2) return false;
+  std::vector<SkColor4f> colors;
+  std::vector<float> positions;
+  for (size_t i = 0; i < gradient.stops.size(); ++i) {
+    const core::GradientStop& stop = gradient.stops[i];
+    const auto rgb = core::ToRgb(stop.color, document);
+    if (!rgb) return false;
+    const SkColor4f color{float(rgb->r), float(rgb->g), float(rgb->b), float(stop.opacity)};
+    if (i > 0) {
+      const core::GradientStop& prev = gradient.stops[i - 1];
+      if (std::abs(prev.midpoint - 0.5) > 1e-6) {
+        const SkColor4f a = colors.back();
+        positions.push_back(
+            float(prev.offset + (stop.offset - prev.offset) * std::clamp(prev.midpoint, 0.0, 1.0)));
+        colors.push_back({(a.fR + color.fR) / 2, (a.fG + color.fG) / 2, (a.fB + color.fB) / 2,
+                          (a.fA + color.fA) / 2});
+      }
+    }
+    colors.push_back(color);
+    positions.push_back(float(std::clamp(stop.offset, 0.0, 1.0)));
+  }
+  const SkGradient ramp(SkGradient::Colors(colors, positions, SkTileMode::kClamp),
+                        SkGradient::Interpolation{});
+  const SkPoint start = ToSk(gradient.start), end = ToSk(gradient.end);
+  sk_sp<SkShader> shader;
+  if (gradient.type == core::GradientType::kLinear) {
+    const SkPoint points[2] = {start, end};
+    shader = SkShaders::LinearGradient(points, ramp);
+  } else {
+    const float radius = SkPoint::Distance(start, end);
+    if (radius <= 0) return false;
+    // The ellipse: squashed across its axis by the aspect.
+    const float degrees = SkRadiansToDegrees(std::atan2(end.y() - start.y(), end.x() - start.x()));
+    SkMatrix local;
+    local.setRotate(-degrees, start.x(), start.y());
+    local.postScale(1, float(gradient.aspect), start.x(), start.y());
+    local.postRotate(degrees, start.x(), start.y());
+    if (gradient.focal && ToSk(*gradient.focal) != start) {
+      shader =
+          SkShaders::TwoPointConicalGradient(ToSk(*gradient.focal), 0, start, radius, ramp, &local);
+    } else {
+      shader = SkShaders::RadialGradient(start, radius, ramp, &local);
+    }
+  }
+  if (!shader) return false;
+  paint.setShader(std::move(shader));
+  paint.setAlphaf(float(opacity));
   return true;
 }
 
@@ -331,7 +390,10 @@ void DocumentRenderer::Impl::DrawShape(SkCanvas* canvas, const core::Object& obj
     SkPaint paint;
     paint.setAntiAlias(true);
     if (const auto* fill = std::get_if<core::Fill>(&*it)) {
-      if (!SetPaintColor(paint, fill->paint, fill->opacity, *document_)) continue;
+      if (fill->gradient ? !SetPaintGradient(paint, *fill->gradient, fill->opacity, *document_)
+                         : !SetPaintColor(paint, fill->paint, fill->opacity, *document_)) {
+        continue;
+      }
       paint.setBlendMode(ToSk(fill->blend_mode));
       canvas->drawPath(path, paint);
       continue;
@@ -340,7 +402,10 @@ void DocumentRenderer::Impl::DrawShape(SkCanvas* canvas, const core::Object& obj
     if (!stroke_item) continue;  // Unknown items (from a newer version) are not drawn.
     const auto& stroke = *stroke_item;
     if (stroke.width <= 0.0) continue;
-    if (!SetPaintColor(paint, stroke.paint, stroke.opacity, *document_)) continue;
+    if (stroke.gradient ? !SetPaintGradient(paint, *stroke.gradient, stroke.opacity, *document_)
+                        : !SetPaintColor(paint, stroke.paint, stroke.opacity, *document_)) {
+      continue;
+    }
     paint.setBlendMode(ToSk(stroke.blend_mode));
     paint.setStyle(SkPaint::kStroke_Style);
     paint.setStrokeCap(ToSk(stroke.cap));
@@ -428,6 +493,34 @@ void DocumentRenderer::Impl::DrawOverlay(SkCanvas* canvas, const core::Document&
     key.setStyle(SkPaint::kStroke_Style);
     key.setStrokeWidth(3 * px);
     canvas->drawRect(ToSk(*overlay.key_object), key);
+  }
+
+  if (overlay.gradient_line) {
+    // The gradient annotator (spec 7.2): a dark line under a light one so it
+    // shows on any color, a round start and a square end.
+    const SkPoint a = ToSk(overlay.gradient_line->first);
+    const SkPoint b = ToSk(overlay.gradient_line->second);
+    SkPaint under;
+    under.setAntiAlias(true);
+    under.setColor(SkColorSetARGB(0x99, 0, 0, 0));
+    under.setStyle(SkPaint::kStroke_Style);
+    under.setStrokeWidth(3 * px);
+    canvas->drawLine(a, b, under);
+    SkPaint line = under;
+    line.setColor(SK_ColorWHITE);
+    line.setStrokeWidth(px);
+    canvas->drawLine(a, b, line);
+    SkPaint fill;
+    fill.setAntiAlias(true);
+    fill.setColor(SK_ColorWHITE);
+    SkPaint edge = line;
+    edge.setColor(kSelection);
+    const float r = 4.5f * px;
+    canvas->drawCircle(a, r, fill);
+    canvas->drawCircle(a, r, edge);
+    const SkRect end = SkRect::MakeLTRB(b.x() - r, b.y() - r, b.x() + r, b.y() + r);
+    canvas->drawRect(end, fill);
+    canvas->drawRect(end, edge);
   }
 
   const float anchor_half = static_cast<float>(overlay.anchor_size / 2 * overlay.pixel_ratio);

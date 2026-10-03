@@ -34,7 +34,7 @@ Window {
         objectSendBackward: qsTr("Send Backward"), objectSendToBack: qsTr("Send to Back"),
         objectGroup: qsTr("Group"), objectUngroup: qsTr("Ungroup"), objectJoin: qsTr("Join"),
         objectCompoundMake: qsTr("Make Compound Path"), objectCompoundRelease: qsTr("Release Compound Path"),
-        windowPathfinder: qsTr("Pathfinder"), windowArtboards: qsTr("Artboards"),
+        windowPathfinder: qsTr("Pathfinder"), windowGradient: qsTr("Gradient"), toolGradient: qsTr("Gradient Tool"), windowArtboards: qsTr("Artboards"),
         viewFitAll: qsTr("Fit All in Window"), toolArtboard: qsTr("Artboard Tool"), windowAlign: qsTr("Align"), objectAverage: qsTr("Average"),
         selectAll: qsTr("All"), selectDeselect: qsTr("Deselect"),
         viewOutline: qsTr("Outline"), viewZoomIn: qsTr("Zoom In"), viewZoomOut: qsTr("Zoom Out"),

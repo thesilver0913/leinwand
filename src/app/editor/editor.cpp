@@ -258,6 +258,11 @@ Overlay Editor::overlay() const {
   if (dragging()) overlay.guides = guides_;
   overlay.key_object = KeyObjectBounds();
   const Tool tool = this->tool();
+  if (tool == Tool::kGradient) {
+    // The gradient tool shows the gradient annotator instead of the box.
+    overlay.gradient_line = GradientLine();
+    return overlay;
+  }
   const bool path_tool = tool == Tool::kPen || tool == Tool::kDirectSelection ||
                          tool == Tool::kAddAnchor || tool == Tool::kDeleteAnchor ||
                          tool == Tool::kConvertAnchor;
@@ -403,6 +408,9 @@ void Editor::PointerDown(Point p, Modifiers modifiers, double pick) {
     case Tool::kArtboard:
       ArtboardDown(p, pick);
       return;
+    case Tool::kGradient:
+      GradientDown(p, pick);
+      return;
     case Tool::kRectangle:
     case Tool::kEllipse:
     case Tool::kPolygon:
@@ -469,6 +477,9 @@ void Editor::PointerMove(Point p, Modifiers modifiers) {
     case DragKind::kArtboardMove:
     case DragKind::kArtboardResize:
       ArtboardDrag();
+      return;
+    case DragKind::kGradient:
+      GradientDrag();
       return;
     default:
       break;
@@ -577,6 +588,14 @@ void Editor::PointerUp(Point p, Modifiers modifiers) {
     selection.insert(touched.begin(), touched.end());
     drag_ = {};
     SetSelection(std::move(selection));
+    return;
+  }
+  if (kind == DragKind::kGradient) {
+    drag_.modifiers = modifiers;
+    GradientDrag();
+    std::optional<core::EditorState> result = std::move(drag_.preview);
+    drag_ = {};
+    if (result) Commit("gradient", std::move(*result));
     return;
   }
   if (kind == DragKind::kArtboardDraw || kind == DragKind::kArtboardMove ||

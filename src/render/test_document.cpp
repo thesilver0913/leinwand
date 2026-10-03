@@ -130,10 +130,10 @@ core::Document MakeShowcaseDocument() {
   dashed.dashes = {0.01, 14};  // Dots.
   strokes.push_back(b.Path(Circle(510, 105, 45), {dashed}));
   // Two fills: a translucent multiply fill over a solid one.
-  strokes.push_back(
-      b.Path(Star(660, 105, 55, 25, 5),
-             {MakeStroke(Rgb(0x6b3a00), 2), Fill{Rgb(0xff8a00), 0.6, core::BlendMode::kMultiply},
-              Fill{Rgb(0xffe066)}}));
+  strokes.push_back(b.Path(
+      Star(660, 105, 55, 25, 5),
+      {MakeStroke(Rgb(0x6b3a00), 2),
+       Fill{Rgb(0xff8a00), std::nullopt, 0.6, core::BlendMode::kMultiply}, Fill{Rgb(0xffe066)}}));
 
   // Row 2: compound path, group opacity, blend modes, clipping.
   std::vector<core::LayerChild> composition;
@@ -178,6 +178,24 @@ core::Document MakeShowcaseDocument() {
     colors.push_back(b.Path(Rectangle(180 + i * 70, 420, 60, 90),
                             {Fill{core::SpotColor{"spot-teal", tints[i]}}}));
   }
+  // Gradients: linear with three stops and a moved midpoint; radial,
+  // squashed, with an off-centre highlight.
+  Fill linear{Rgb(0x2d6cdf)};
+  linear.gradient = core::Gradient{core::GradientType::kLinear,
+                                   {{0.0, Rgb(0x2d6cdf), 1.0, 0.25},
+                                    {0.6, Rgb(0xffffff), 1.0, 0.5},
+                                    {1.0, Rgb(0xff8a00), 0.5, 0.5}},
+                                   {470, 440},
+                                   {560, 440}};
+  colors.push_back(b.Path(Rectangle(470, 420, 90, 40), {linear}));
+  Fill radial{Rgb(0xffffff)};
+  radial.gradient = core::Gradient{core::GradientType::kRadial,
+                                   {{0.0, Rgb(0xffffff), 1.0, 0.5}, {1.0, Rgb(0x7a3cff), 1.0, 0.5}},
+                                   {515, 490},
+                                   {560, 490},
+                                   0.6,
+                                   core::Point{500, 480}};
+  colors.push_back(b.Path(Rectangle(470, 470, 90, 40), {radial}));
 
   // A sublayer with a rotated group.
   core::Layer rotated;

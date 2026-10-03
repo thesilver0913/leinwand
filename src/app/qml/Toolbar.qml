@@ -30,6 +30,7 @@ Rectangle {
          { tool: 2, icon: "Circle", tip: qsTr("Ellipse Tool (L)") },
          { tool: 3, icon: "Polygon6", tip: qsTr("Polygon Tool") },
          { tool: 4, icon: "Star", tip: qsTr("Star Tool") }],
+        [{ tool: 16, icon: "Gradient", tip: qsTr("Gradient Tool (G)") }],
         [{ tool: 11, icon: "Eyedropper", tip: qsTr("Eyedropper Tool (I)") }],
         [{ tool: 12, icon: "Hand", tip: qsTr("Hand Tool (H)") }],
         [{ tool: 13, icon: "ZoomIn", tip: qsTr("Zoom Tool (Z)") }]

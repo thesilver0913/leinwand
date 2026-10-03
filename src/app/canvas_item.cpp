@@ -206,6 +206,7 @@ leinwand::render::Overlay CanvasItem::overlay(double pixel_ratio) const {
   overlay.guides = std::move(o.guides);
   overlay.outline = outline_view_;
   overlay.key_object = o.key_object;
+  overlay.gradient_line = o.gradient_line;
   return overlay;
 }
 
@@ -602,6 +603,9 @@ void CanvasItem::UpdateCursor(QPointF position) {
       return;
     case Tool::kScissors:
       setCursor(IconCursor(QStringLiteral("Cut"), {10, 10}));
+      return;
+    case Tool::kGradient:
+      setCursor(Qt::CrossCursor);
       return;
     default:
       setCursor(Qt::CrossCursor);

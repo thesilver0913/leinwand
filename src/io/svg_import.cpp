@@ -393,54 +393,140 @@ class Importer {
     }
   }
 
-  // A gradient's first stop, following href to inherited stops.
-  std::optional<std::pair<RgbColor, double>> FirstStop(pugi::xml_node gradient,
-                                                       int depth = 0) const {
-    if (!gradient || depth > 8) return std::nullopt;
-    for (pugi::xml_node stop : gradient.children()) {
-      if (LocalName(stop.name()) != "stop") continue;
-      const auto p = Specified(stop, {});
-      double alpha = 1;
-      const auto color =
-          svg::ParseColor(Value(p, "stop-color").empty()
-                              ? std::string(stop.attribute("stop-color").as_string("black"))
-                              : Value(p, "stop-color"),
-                          &alpha);
-      const double opacity = stop.attribute("stop-opacity").as_double(1.0);
-      return std::pair{color.value_or(RgbColor{0, 0, 0}), alpha * opacity};
-    }
+  // A fill or stroke as resolved: a color, or a gradient (with its first
+  // stop's color shown in the panels).
+  struct Resolved {
+    Color color;
+    double alpha = 1.0;
+    std::optional<Gradient> gradient;
+  };
+
+  // The gradient a gradient inherits from (href), if any.
+  pugi::xml_node Parent(pugi::xml_node gradient) const {
     std::string href =
         gradient.attribute("xlink:href").as_string(gradient.attribute("href").as_string());
     if (!href.empty() && href[0] == '#') href.erase(0, 1);
     const auto it = by_id_.find(href);
-    return it == by_id_.end() ? std::nullopt : FirstStop(it->second, depth + 1);
+    return it == by_id_.end() ? pugi::xml_node() : it->second;
   }
 
-  // The fill or stroke for an object, or none. Gradients and patterns are
-  // approximated by a solid color until phase 2 (reported).
-  std::optional<std::pair<Color, double>> Resolve(const Paint& paint, const std::string& id,
-                                                  const char* what) {
+  // The first value of an attribute along the href chain.
+  std::string InheritedAttribute(pugi::xml_node gradient, const char* name) const {
+    for (int depth = 0; gradient && depth < 8; ++depth, gradient = Parent(gradient)) {
+      if (const auto attr = gradient.attribute(name)) return attr.value();
+    }
+    return {};
+  }
+
+  // The stops of the first gradient along the href chain that has any.
+  std::vector<pugi::xml_node> Stops(pugi::xml_node gradient) const {
+    for (int depth = 0; gradient && depth < 8; ++depth, gradient = Parent(gradient)) {
+      std::vector<pugi::xml_node> stops;
+      for (pugi::xml_node stop : gradient.children()) {
+        if (LocalName(stop.name()) == "stop") stops.push_back(stop);
+      }
+      if (!stops.empty()) return stops;
+    }
+    return {};
+  }
+
+  // A gradient paint server, in the element's user space. `bbox` is the
+  // element's geometric bounds there, for the default objectBoundingBox
+  // units. nullopt without stops; one stop paints its color.
+  std::optional<Resolved> GradientPaint(pugi::xml_node node, const Rect& bbox,
+                                        const std::string& id, const char* what) {
+    const bool radial = LocalName(node.name()) == "radialGradient";
+    Gradient g;
+    g.type = radial ? GradientType::kRadial : GradientType::kLinear;
+    // Offsets are numbers or percentages and never go back.
+    double last = 0;
+    for (pugi::xml_node stop : Stops(node)) {
+      const auto p = Specified(stop, {});
+      double offset = svg::ParseLength(stop.attribute("offset").as_string("0"), 1.0).value_or(0);
+      offset = std::clamp(std::max(offset, last), 0.0, 1.0);
+      last = offset;
+      auto property = [&](const char* name, const char* fallback) {
+        const std::string v = Value(p, name);
+        return v.empty() ? std::string(stop.attribute(name).as_string(fallback)) : v;
+      };
+      double alpha = 1;
+      const auto color = svg::ParseColor(property("stop-color", "black"), &alpha);
+      const double opacity = svg::ParseLength(property("stop-opacity", "1")).value_or(1.0);
+      GradientStop s;
+      s.offset = offset;
+      s.color = color.value_or(RgbColor{0, 0, 0});
+      s.opacity = std::clamp(alpha * opacity, 0.0, 1.0);
+      g.stops.push_back(s);
+    }
+    if (g.stops.empty()) return std::nullopt;
+    Resolved result{g.stops.front().color, g.stops.front().opacity, std::nullopt};
+    if (g.stops.size() == 1) return result;
+
+    // Gradient space to user space: the bounding box (by default), after the
+    // gradientTransform.
+    const bool user = InheritedAttribute(node, "gradientUnits") == "userSpaceOnUse";
+    if (!user && (!bbox.IsValid() || bbox.width() <= 0 || bbox.height() <= 0)) {
+      return result;  // No box to lay the gradient out in.
+    }
+    Matrix to_user =
+        user ? Matrix{}
+             : Matrix::Translate(bbox.left, bbox.top) * Matrix::Scale(bbox.width(), bbox.height());
+    if (const std::string t = InheritedAttribute(node, "gradientTransform"); !t.empty()) {
+      if (const auto m = svg::ParseTransform(t)) to_user = to_user * *m;
+    }
+    // A coordinate: a number, or a percentage taken as a fraction.
+    auto coord = [&](const char* name, double fallback) {
+      const std::string v = InheritedAttribute(node, name);
+      return v.empty() ? fallback : svg::ParseLength(v, 1.0).value_or(fallback);
+    };
+    if (!radial) {
+      g.start = to_user.Map({coord("x1", 0), coord("y1", 0)});
+      g.end = to_user.Map({coord("x2", 1), coord("y2", 0)});
+    } else {
+      const double cx = coord("cx", 0.5), cy = coord("cy", 0.5), r = coord("r", 0.5);
+      g.start = to_user.Map({cx, cy});
+      g.end = to_user.Map({cx + r, cy});
+      const Point along = to_user.MapVector({r, 0});
+      const Point across = to_user.MapVector({0, r});
+      const double along_length = std::hypot(along.x, along.y);
+      if (along_length > 0) g.aspect = std::hypot(across.x, across.y) / along_length;
+      const double fx = coord("fx", cx), fy = coord("fy", cy);
+      if (fx != cx || fy != cy) g.focal = to_user.Map({fx, fy});
+      // Axes no longer at right angles (a skew) cannot be kept exactly.
+      if (std::abs(along.x * across.x + along.y * across.y) > 1e-9 * along_length * along_length) {
+        out_.report.Add(std::string(what) + " skewed radial gradient (approximated)",
+                        ReportAction::kApproximated, id);
+      }
+    }
+    if (const std::string spread = InheritedAttribute(node, "spreadMethod");
+        !spread.empty() && spread != "pad") {
+      out_.report.Add(std::string(what) + " gradient spreadMethod \"" + spread + "\" (padded)",
+                      ReportAction::kApproximated, id);
+    }
+    result.gradient = std::move(g);
+    return result;
+  }
+
+  // The fill or stroke for an object, or none. Patterns are approximated by
+  // their fallback color (reported).
+  std::optional<Resolved> Resolve(const Paint& paint, const std::string& id, const char* what,
+                                  const Rect& bbox) {
     switch (paint.kind) {
       case Paint::Kind::kNone:
         return std::nullopt;
       case Paint::Kind::kColor:
       case Paint::Kind::kCurrentColor:
-        return std::pair<Color, double>{paint.color, paint.alpha};
+        return Resolved{paint.color, paint.alpha, std::nullopt};
       case Paint::Kind::kUrl: {
         const auto it = by_id_.find(paint.url);
         const std::string kind = it == by_id_.end() ? "" : LocalName(it->second.name());
         if (kind == "linearGradient" || kind == "radialGradient") {
-          out_.report.Add(std::string(what) + " gradient (solid color of its first stop)",
-                          ReportAction::kApproximated, id);
-          if (const auto stop = FirstStop(it->second)) {
-            return std::pair<Color, double>{stop->first, stop->second};
-          }
-          return std::nullopt;
+          return GradientPaint(it->second, bbox, id, what);
         }
         out_.report.Add(std::string(what) + " " + (kind.empty() ? "missing paint server" : kind) +
                             " (fallback color)",
                         ReportAction::kApproximated, id);
-        if (paint.fallback) return std::pair<Color, double>{*paint.fallback, 1.0};
+        if (paint.fallback) return Resolved{*paint.fallback, 1.0, std::nullopt};
         return std::nullopt;
       }
     }
@@ -448,7 +534,8 @@ class Importer {
   }
 
   // Appearance and common fields from the computed style.
-  void ApplyCommon(ObjectCommon& common, const Properties& p, const Inherited& s, bool painted) {
+  void ApplyCommon(ObjectCommon& common, const Properties& p, const Inherited& s, bool painted,
+                   const Rect& bbox = {}) {
     if (Value(p, "display") == "none" || !s.visible) common.visible = false;
     if (const std::string v = Value(p, "opacity"); !v.empty()) {
       common.opacity = std::clamp(svg::ParseLength(v).value_or(1.0), 0.0, 1.0);
@@ -473,8 +560,9 @@ class Importer {
     }
     if (!painted) return;
     Appearance appearance;
-    if (const auto stroke = Resolve(s.stroke, common.id, "stroke"); stroke && s.stroke_width > 0) {
-      Stroke item{stroke->first};
+    if (const auto stroke = Resolve(s.stroke, common.id, "stroke", bbox);
+        stroke && s.stroke_width > 0) {
+      Stroke item{stroke->color, stroke->gradient};
       item.width = s.stroke_width;
       item.cap = s.cap;
       item.join = s.join;
@@ -484,12 +572,14 @@ class Importer {
         item.dashes = s.dashes;
       }
       item.dash_offset = s.dash_offset;
-      item.opacity = std::clamp(s.stroke_opacity * stroke->second, 0.0, 1.0);
+      // A gradient carries its opacity in its stops.
+      item.opacity =
+          std::clamp(s.stroke_opacity * (stroke->gradient ? 1.0 : stroke->alpha), 0.0, 1.0);
       appearance.push_back(item);
     }
-    if (const auto fill = Resolve(s.fill, common.id, "fill")) {
-      Fill item{fill->first};
-      item.opacity = std::clamp(s.fill_opacity * fill->second, 0.0, 1.0);
+    if (const auto fill = Resolve(s.fill, common.id, "fill", bbox)) {
+      Fill item{fill->color, fill->gradient};
+      item.opacity = std::clamp(s.fill_opacity * (fill->gradient ? 1.0 : fill->alpha), 0.0, 1.0);
       // Front to back: the stroke is in front unless paint-order says so.
       if (s.paint_fill_first) {
         appearance.insert(appearance.begin(), item);
@@ -627,25 +717,27 @@ class Importer {
 
     if (shape) {
       shape->common.id = id;
-      ApplyCommon(shape->common, p, s, true);
+      ApplyCommon(shape->common, p, s, true, geometry::Bounds(*MakeObject(*shape)));
       object = Bake(MakeObject(*shape), transform);
       return WithClip(*object, node, p);
     }
     if (outline) {
       std::erase_if(*outline, [](const PathData& d) { return d.anchors.empty(); });
       if (outline->empty()) return std::nullopt;
+      Rect bbox;
+      for (const PathData& d : *outline) bbox = bbox.Union(geometry::Bounds(d));
       if (outline->size() == 1 && s.fill_rule == FillRule::kNonZero) {
         PathObject path;
         path.common.id = id;
         path.path = outline->front();
-        ApplyCommon(path.common, p, s, true);
+        ApplyCommon(path.common, p, s, true, bbox);
         object = MakeObject(std::move(path));
       } else {
         CompoundPathObject compound;
         compound.common.id = id;
         compound.subpaths = *outline;
         compound.fill_rule = s.fill_rule;
-        ApplyCommon(compound.common, p, s, true);
+        ApplyCommon(compound.common, p, s, true, bbox);
         object = MakeObject(std::move(compound));
       }
       object = Bake(*object, transform);
