@@ -5,6 +5,8 @@
   "builtin-baseline": "9e593bb18ea69cc5095e012465dcd675a822ed0d",
   "dependencies": [
     "catch2",
+    { "name": "harfbuzz", "default-features": false },
+    "icu",
     "miniz",
     "nlohmann-json",
     "pugixml",
@@ -15,6 +17,8 @@
         "jpeg",
         "pdf",
         "png",
+        { "name": "fontconfig", "platform": "linux" },
+        { "name": "freetype", "platform": "linux" },
         { "name": "metal", "platform": "osx" },
         { "name": "vulkan", "platform": "!osx" }
       ]

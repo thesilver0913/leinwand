@@ -58,6 +58,14 @@ jobs:
         run: cmake --build --preset ${{ matrix.preset }} -- -k 0
       - name: Test
         run: ctest --preset ${{ matrix.preset }}
+      # The M8 checks (docs/m8-verification.md), on runs started by hand.
+      - name: Probes
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          tests=build/${{ matrix.preset }}/tests
+          $tests/render_tests "[pathops-probe]" | grep -E "identities|PIXELS|AREA|FAILED|problems"
+          $tests/render_tests "[text-probe]" --success | grep -vE "^(  |-|\.|=|$)" | head -60
 
       # A disk image to try the macOS build with (not a release).
       - name: Package (macOS)

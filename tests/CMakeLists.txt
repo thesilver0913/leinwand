@@ -43,11 +43,19 @@ add_executable(render_tests
   render/document_renderer_test.cpp
   render/image_compare.cpp
   render/view_test.cpp
+  render/pathops_probe_test.cpp
+  render/text_probe_test.cpp
 )
-target_link_libraries(render_tests PRIVATE render unofficial::skia::skia Catch2::Catch2WithMain)
+# HarfBuzz and ICU for the text engine probe (M8).
+find_package(harfbuzz CONFIG REQUIRED)
+find_package(ICU REQUIRED COMPONENTS uc data)
+target_link_libraries(render_tests PRIVATE
+  render unofficial::skia::skia harfbuzz::harfbuzz ICU::uc ICU::data Catch2::Catch2WithMain
+)
 target_compile_definitions(render_tests PRIVATE
   LEINWAND_TESTDATA_DIR="${PROJECT_SOURCE_DIR}/testdata"
   LEINWAND_TEST_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}/test-output"
+  LEINWAND_FONTS_DIR="${PROJECT_SOURCE_DIR}/third_party/fonts"
 )
 catch_discover_tests(render_tests)
 
