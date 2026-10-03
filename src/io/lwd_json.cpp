@@ -125,9 +125,8 @@ constexpr Names<CornerKind, 3> kCornerKinds{{{{CornerKind::kRound, "round"},
                                               {CornerKind::kChamfer, "chamfer"}}}};
 constexpr Names<FillRule, 2> kFillRules{
     {{{FillRule::kNonZero, "nonZero"}, {FillRule::kEvenOdd, "evenOdd"}}}};
-constexpr Names<TextAlign, 3> kTextAligns{{{{TextAlign::kLeft, "left"},
-                                            {TextAlign::kCenter, "center"},
-                                            {TextAlign::kRight, "right"}}}};
+constexpr Names<TextAlign, 3> kTextAligns{
+    {{{TextAlign::kLeft, "left"}, {TextAlign::kCenter, "center"}, {TextAlign::kRight, "right"}}}};
 constexpr Names<KerningMode, 2> kKerningModes{
     {{{KerningMode::kMetrics, "metrics"}, {KerningMode::kNone, "none"}}}};
 
@@ -876,7 +875,8 @@ ObjectPtr ObjectOf(const Json& j, ImportReport& report) {
     r.Take("orientation");
     r.Take("bounds");  // Written for older versions; recomputed here.
     const std::string story = r.String("story");
-    const auto found = read_stories ? read_stories->find(story) : std::map<std::string, StoryPtr>::const_iterator{};
+    const auto found = read_stories ? read_stories->find(story)
+                                    : std::map<std::string, StoryPtr>::const_iterator{};
     if (!read_stories || found == read_stories->end()) {
       throw Corrupt("text \"" + common.id + "\" refers to a missing story");
     }

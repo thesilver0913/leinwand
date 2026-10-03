@@ -27,7 +27,7 @@ Adobe Illustrator 相当を最終目標とする、デスクトップ向けベ�
 
 ## アーキテクチャの約束
 
-- 層の依存は一方向: `app` → `ui` / `render` / `io` → `geometry` → `core`。
+- 層の依存は一方向: `app` → `ui` / `render` / `io` → `geometry` → `text` → `core`。`text`(テキストエンジン。HarfBuzz と ICU)は M14 で追加した。
 - `core`(ドキュメントモデル、コマンド、取り消し履歴)は Qt にも Skia にも依存させない。
 - Skia の型は `render` の外に出さない。パス演算は `geometry` のインターフェース越しに呼ぶ(最初の実装は Skia PathOps)。
 - OS 固有の処理(設定フォルダ、IME など)は `platform` の裏に置く。フォント列挙は例外で、OS ごとの違いを吸収する Skia のフォント管理を使う。窓口(インターフェース)は Skia に依存しない文字の層に置き、実装は `render` に置く(パス演算と同じ形。2026-10-03 決定)。
@@ -52,7 +52,7 @@ Adobe Illustrator 相当を最終目標とする、デスクトップ向けベ�
 2. 1万個のパスを表示して、ズームとパンが滑らかに動くか → 60Hz で成立。
 3. KDDockWidgets の見た目を Spectrum に合わせられるか → パッチを当てて採用。
 
-M3〜M7 はアプリでの手動確認待ち。macOS 対応(Metal 描画、アプリバンドル、dmg)は済み。いまはフェーズ2(`docs/phase2-plan.md`)。M8〜M11 は実装済みで、v0.2.0-alpha.1 として Windows と macOS のプレリリースを出した。M12(グラデーション)と M13(クリップと透明)も実装済み(アプリでの手動確認待ち)。次は M14(文字)。実装で合意したことは `docs/implementation-notes.md` にまとめる。
+M3〜M7 はアプリでの手動確認待ち。macOS 対応(Metal 描画、アプリバンドル、dmg)は済み。いまはフェーズ2(`docs/phase2-plan.md`)。M8〜M11 は実装済みで、v0.2.0-alpha.1 として Windows と macOS のプレリリースを出した。M12(グラデーション)、M13(クリップと透明)、M14(文字)も実装済み(アプリでの手動確認待ち)。次は M15(出力とリリース)。実装で合意したことは `docs/implementation-notes.md` にまとめる。
 
 ## 未検証の前提(鵜呑みにしないこと)
 

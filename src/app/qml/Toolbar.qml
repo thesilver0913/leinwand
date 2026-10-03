@@ -24,6 +24,7 @@ Rectangle {
          { tool: 7, icon: "PenAdd", tip: qsTr("Add Anchor Point Tool (+)") },
          { tool: 8, icon: "PenDelete", tip: qsTr("Delete Anchor Point Tool (-)") },
          { tool: 9, icon: "AnchorPoint", tip: qsTr("Anchor Point Tool (Shift+C)") }],
+        [{ tool: 17, icon: "Type", tip: qsTr("Type Tool (T)") }],
         [{ tool: 5, icon: "Line", tip: qsTr("Line Segment Tool (%1)").arg("\\") }],
         [{ tool: 14, icon: "Cut", tip: qsTr("Scissors Tool (C)") }],
         [{ tool: 1, icon: "RectangleHoriz", tip: qsTr("Rectangle Tool (M)") },

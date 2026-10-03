@@ -20,12 +20,16 @@
 #include <QSurfaceFormat>
 #include <QTimer>
 #include <QTranslator>
+#include <filesystem>
+#include <memory>
 
 #include "icon_provider.h"
 #include "preferences.h"
+#include "render/skia_font_source.h"
 #include "session.h"
 #include "shortcuts.h"
 #include "spectrum_theme.h"
+#include "text/font.h"
 
 namespace {
 
@@ -115,9 +119,13 @@ class Translations {
 };
 
 // The bundled UI fonts (spec 7: Source Sans 3, Source Han Sans), in fonts/
-// beside the program.
+// beside the program. The text engine uses them too, then the OS fonts
+// (spec 5.2).
 void LoadFonts() {
   const QDir dir(ResourceDir() + QStringLiteral("/fonts"));
+  leinwand::text::SetFontSources({std::make_shared<leinwand::text::FolderFontSource>(
+                                      std::filesystem::path(dir.absolutePath().toStdWString())),
+                                  leinwand::render::MakeSystemFontSource()});
   for (const QString& file : dir.entryList({QStringLiteral("*.otf")}, QDir::Files)) {
     QFontDatabase::addApplicationFont(dir.absoluteFilePath(file));
   }

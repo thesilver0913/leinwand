@@ -29,7 +29,12 @@ Rectangle {
                 : root.count === 0 ? qsTr("No Selection")
                 : root.count === 1 ? (({ rectangle: qsTr("Rectangle"), ellipse: qsTr("Ellipse"),
                                          polygon: qsTr("Polygon"), star: qsTr("Star"), line: qsTr("Line")
-                                       })[root.info.shape ?? ""] ?? qsTr("Path"))
+                                       })[root.info.shape ?? ""]
+                                     ?? ({ text: qsTr("Type"), group: qsTr("Group"),
+                                           clipGroup: qsTr("Clip Group"),
+                                           compoundPath: qsTr("Compound Path")
+                                         })[root.info.kind ?? ""]
+                                     ?? qsTr("Path"))
                 : qsTr("Mixed Objects")
             subdued: false
             Layout.preferredWidth: 130

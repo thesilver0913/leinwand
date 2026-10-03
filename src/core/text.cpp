@@ -100,9 +100,8 @@ std::vector<CharacterStyle> StylesIn(const Story& story, std::size_t from, std::
 
 std::size_t ParagraphOf(const Story& story, std::size_t index) {
   const std::size_t end = std::min(index, story.text.size());
-  return static_cast<std::size_t>(
-      std::count(story.text.begin(), story.text.begin() + static_cast<std::ptrdiff_t>(end),
-                 kParagraphBreak));
+  return static_cast<std::size_t>(std::count(
+      story.text.begin(), story.text.begin() + static_cast<std::ptrdiff_t>(end), kParagraphBreak));
 }
 
 std::size_t ParagraphStart(const Story& story, std::size_t paragraph) {
@@ -144,9 +143,9 @@ Story Erased(const Story& story, std::size_t from, std::size_t to) {
   if (from >= to) return story;
   Story result = story;
   const std::size_t first = ParagraphOf(story, from);
-  const auto breaks = std::count(story.text.begin() + static_cast<std::ptrdiff_t>(from),
-                                 story.text.begin() + static_cast<std::ptrdiff_t>(to),
-                                 kParagraphBreak);
+  const auto breaks =
+      std::count(story.text.begin() + static_cast<std::ptrdiff_t>(from),
+                 story.text.begin() + static_cast<std::ptrdiff_t>(to), kParagraphBreak);
   result.text.erase(from, to - from);
   const std::size_t begin = SplitAt(result.characters, from);
   const std::size_t end = SplitAt(result.characters, to);

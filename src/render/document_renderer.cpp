@@ -536,6 +536,35 @@ void DocumentRenderer::Impl::DrawOverlay(SkCanvas* canvas, const core::Document&
     canvas->drawRect(ToSk(*overlay.key_object), key);
   }
 
+  // Text editing: the selected text, the IME composition's underline and
+  // the caret.
+  if (!overlay.text_selection.empty()) {
+    SkPaint fill;
+    fill.setColor(SkColorSetA(kSelection, 0x60));
+    fill.setAntiAlias(true);
+    for (const auto& q : overlay.text_selection) {
+      SkPathBuilder quad;
+      quad.moveTo(ToSk(q[0])).lineTo(ToSk(q[1])).lineTo(ToSk(q[2])).lineTo(ToSk(q[3])).close();
+      canvas->drawPath(quad.detach(), fill);
+    }
+  }
+  for (const auto& [a, b] : overlay.text_underlines) {
+    SkPaint underline;
+    underline.setColor(SK_ColorBLACK);
+    underline.setStyle(SkPaint::kStroke_Style);
+    underline.setStrokeWidth(1.5f * px);
+    underline.setAntiAlias(true);
+    canvas->drawLine(ToSk(a), ToSk(b), underline);
+  }
+  if (overlay.text_caret) {
+    SkPaint caret;
+    caret.setColor(SK_ColorBLACK);
+    caret.setStyle(SkPaint::kStroke_Style);
+    caret.setStrokeWidth(1.0f * px);
+    caret.setAntiAlias(true);
+    canvas->drawLine(ToSk(overlay.text_caret->first), ToSk(overlay.text_caret->second), caret);
+  }
+
   if (overlay.gradient_line) {
     // The gradient annotator (spec 7.2): a dark line under a light one so it
     // shows on any color, a round start and a square end.
@@ -594,6 +623,33 @@ void DocumentRenderer::Impl::DrawOutline(SkCanvas* canvas, const core::ObjectPtr
     canvas->save();
     canvas->concat(ToSk(group->transform));
     for (const auto& child : group->children) DrawOutline(canvas, child, anchor_half);
+    canvas->restore();
+    return;
+  }
+  if (const auto* text = std::get_if<core::TextObject>(object.get())) {
+    // Selected text shows its baselines and its anchor, as in Illustrator.
+    const text::LayoutPtr layout = text::LayoutOf(text->story);
+    const SkMatrix ctm = canvas->getTotalMatrix();
+    canvas->save();
+    canvas->resetMatrix();
+    SkPaint line;
+    line.setColor(kSelection);
+    line.setStyle(SkPaint::kStroke_Style);
+    line.setStrokeWidth(anchor_half / 2);
+    line.setAntiAlias(true);
+    const SkMatrix m = SkMatrix::Concat(ctm, ToSk(text->transform));
+    for (const text::Line& l : layout->lines) {
+      SkPoint ends[2] = {{float(l.left), float(l.baseline)}, {float(l.right), float(l.baseline)}};
+      m.mapPoints(ends);
+      canvas->drawLine(ends[0], ends[1], line);
+    }
+    SkPoint origin[1] = {{0, 0}};
+    m.mapPoints(origin);
+    SkPaint anchor;
+    anchor.setColor(kSelection);
+    canvas->drawRect(SkRect::MakeLTRB(origin[0].x() - anchor_half, origin[0].y() - anchor_half,
+                                      origin[0].x() + anchor_half, origin[0].y() + anchor_half),
+                     anchor);
     canvas->restore();
     return;
   }

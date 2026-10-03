@@ -191,6 +191,18 @@ ApplicationWindow {
                 SpPanel { TransparencyPanel { anchors.fill: parent } }
             }
             KDDW.DockWidget {
+                id: characterPanel
+                uniqueName: "character"
+                title: qsTr("Character")
+                SpPanel { CharacterPanel { anchors.fill: parent } }
+            }
+            KDDW.DockWidget {
+                id: paragraphPanel
+                uniqueName: "paragraph"
+                title: qsTr("Paragraph")
+                SpPanel { ParagraphPanel { anchors.fill: parent } }
+            }
+            KDDW.DockWidget {
                 id: stroke
                 uniqueName: "stroke"
                 title: qsTr("Stroke")
@@ -204,11 +216,12 @@ ApplicationWindow {
             }
 
             // Illustrator's default workspace, roughly: properties, layers and
-            // artboards; transform, align and pathfinder; color and swatches;
-            // stroke, gradient and transparency.
+            // artboards (and the import report when there is one); transform, align and
+            // pathfinder; color, swatches, character and paragraph; stroke,
+            // gradient and transparency.
             Component.onCompleted: {
                 addDockWidget(properties, KDDW.KDDockWidgets.Location_OnRight, null,
-                              Qt.size(Spectrum.standardPanelWidth + 20, 0));
+                              Qt.size(Spectrum.standardPanelWidth + 50, 0));
                 properties.addDockWidgetAsTab(layers);
                 properties.addDockWidgetAsTab(artboardsPanel);
                 // Transform, Align and Pathfinder in a group of their own, as
@@ -218,7 +231,8 @@ ApplicationWindow {
                 transform.addDockWidgetAsTab(pathfinderPanel);
                 addDockWidget(colorPanel, KDDW.KDDockWidgets.Location_OnBottom, transform);
                 colorPanel.addDockWidgetAsTab(swatches);
-                colorPanel.addDockWidgetAsTab(importReport);
+                colorPanel.addDockWidgetAsTab(characterPanel);
+                colorPanel.addDockWidgetAsTab(paragraphPanel);
                 // Stroke and Gradient together, as in Illustrator.
                 addDockWidget(stroke, KDDW.KDDockWidgets.Location_OnBottom, colorPanel);
                 stroke.addDockWidgetAsTab(gradientPanel);
@@ -231,6 +245,7 @@ ApplicationWindow {
                                  align: alignPanel, pathfinder: pathfinderPanel,
                                  artboards: artboardsPanel,
                                  color: colorPanel, swatches: swatches, gradient: gradientPanel, transparency: transparencyPanel,
+                                 character: characterPanel, paragraph: paragraphPanel,
                                  stroke: stroke };
                 for (const name of window.argValue("tabs").split(","))
                     if (panels[name])
@@ -245,6 +260,20 @@ ApplicationWindow {
         onActivated: {
             alignPanel.open();
             alignPanel.setAsCurrentTab();
+        }
+    }
+    Shortcut {
+        sequences: Shortcuts.windowCharacter
+        onActivated: {
+            characterPanel.open();
+            characterPanel.setAsCurrentTab();
+        }
+    }
+    Shortcut {
+        sequences: Shortcuts.windowParagraph
+        onActivated: {
+            paragraphPanel.open();
+            paragraphPanel.setAsCurrentTab();
         }
     }
     Shortcut {
@@ -285,6 +314,7 @@ ApplicationWindow {
     Shortcut { sequences: Shortcuts.toolScissors; enabled: Session.hasDocument; onActivated: Session.tool = 14 }
     Shortcut { sequences: Shortcuts.toolArtboard; enabled: Session.hasDocument; onActivated: Session.tool = 15 }
     Shortcut { sequences: Shortcuts.toolGradient; enabled: Session.hasDocument; onActivated: Session.tool = 16 }
+    Shortcut { sequences: Shortcuts.toolType; enabled: Session.hasDocument; onActivated: Session.tool = 17 }
     Shortcut { sequences: Shortcuts.toolHand; enabled: Session.hasDocument; onActivated: Session.tool = 12 }
     Shortcut { sequences: Shortcuts.toolZoom; enabled: Session.hasDocument; onActivated: Session.tool = 13 }
 
@@ -300,7 +330,8 @@ ApplicationWindow {
 
     readonly property var panels: [properties, layers, artboardsPanel, transform, alignPanel, pathfinderPanel,
                                    colorPanel,
-                                   swatches, gradientPanel, transparencyPanel, stroke, importReport]
+                                   swatches, characterPanel, paragraphPanel, gradientPanel, transparencyPanel,
+                                   stroke, importReport]
     property alias openDialog: openDialog
     property alias saveAsDialog: saveAsDialog
     property alias pngOptions: pngOptions
@@ -425,7 +456,10 @@ ApplicationWindow {
         function onErrorChanged() { errorDialog.open(); }
         function onImportReportChanged() {
             if (Session.importReport.length > 0) {
-                importReport.open();
+                // Docked beside the properties when it first has something
+                // to show (it is not in the default layout).
+                if (!importReport.isOpen)
+                    properties.addDockWidgetAsTab(importReport);
                 importReport.setAsCurrentTab();
             }
         }

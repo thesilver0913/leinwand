@@ -102,6 +102,12 @@ MenuBar {
         }
     }
     Menu {
+        title: qsTr("&Type")
+        enabled: root.hasDocument
+        Action { text: qsTr("Create &Outlines"); shortcut: root.key("typeCreateOutlines"); onTriggered: Session.createOutlines() }
+        Action { text: qsTr("&Revert Outlines to Text"); shortcut: root.key("typeRevertOutlines"); onTriggered: Session.revertOutlines() }
+    }
+    Menu {
         title: qsTr("&Select")
         enabled: root.hasDocument
         Action { text: qsTr("&All"); shortcut: root.key("selectAll"); onTriggered: Session.selectAll() }

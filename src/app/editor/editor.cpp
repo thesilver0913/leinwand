@@ -95,6 +95,7 @@ Editor::Editor(core::Document document) : history_({std::move(document), {}}) {
 
 void Editor::SetTool(Tool tool) {
   FinishPath();
+  if (tool != Tool::kType) EndTextEdit();
   drag_ = {};
   tool_ = tool;
   temporary_tool_.reset();
@@ -235,11 +236,13 @@ void Editor::SetShape(const core::ShapeParams& params) {
 }
 
 const core::Document& Editor::document() const {
-  return drag_.preview ? drag_.preview->document : history_.current().document;
+  if (drag_.preview) return drag_.preview->document;
+  return text_preview_ ? text_preview_->document : history_.current().document;
 }
 
 const core::IdSet& Editor::selection() const {
-  return drag_.preview ? drag_.preview->selection : history_.current().selection;
+  if (drag_.preview) return drag_.preview->selection;
+  return text_preview_ ? text_preview_->selection : history_.current().selection;
 }
 
 std::optional<Rect> Editor::SelectionBounds() const {
@@ -258,6 +261,11 @@ Overlay Editor::overlay() const {
   if (dragging()) overlay.guides = guides_;
   overlay.key_object = KeyObjectBounds();
   const Tool tool = this->tool();
+  if (tool == Tool::kType) {
+    // The text being edited shows its caret and selection, not a box.
+    TextOverlay(overlay);
+    return overlay;
+  }
   if (tool == Tool::kGradient) {
     // The gradient tool shows the gradient annotator instead of the box.
     overlay.gradient_line = GradientLine();
@@ -382,7 +390,11 @@ void Editor::PointerDown(Point p, Modifiers modifiers, double pick) {
   const Tool tool = this->tool();
   // Switching to a selection tool, even with Ctrl held, ends the pen path.
   if (tool == Tool::kSelection || tool == Tool::kDirectSelection) FinishPath();
+  if (tool != Tool::kType) EndTextEdit();
   switch (tool) {
+    case Tool::kType:
+      TypeDown(p, modifiers, pick);
+      return;
     case Tool::kPen:
       PenDown(p, modifiers, pick);
       return;
@@ -480,6 +492,9 @@ void Editor::PointerMove(Point p, Modifiers modifiers) {
       return;
     case DragKind::kGradient:
       GradientDrag();
+      return;
+    case DragKind::kTextSelect:
+      TypeDrag();
       return;
     default:
       break;
@@ -590,6 +605,10 @@ void Editor::PointerUp(Point p, Modifiers modifiers) {
     SetSelection(std::move(selection));
     return;
   }
+  if (kind == DragKind::kTextSelect) {
+    drag_ = {};
+    return;
+  }
   if (kind == DragKind::kGradient) {
     drag_.modifiers = modifiers;
     GradientDrag();
@@ -647,11 +666,24 @@ void Editor::PointerUp(Point p, Modifiers modifiers) {
 
 void Editor::CancelDrag() { drag_ = {}; }
 
-void Editor::SelectAll() { SetSelection(TopLevelSelectable(document())); }
+void Editor::SelectAll() {
+  if (text_editing()) {
+    SelectAllText();
+    return;
+  }
+  SetSelection(TopLevelSelectable(document()));
+}
 
-void Editor::Deselect() { SetSelection({}); }
+void Editor::Deselect() {
+  EndTextEdit();
+  SetSelection({});
+}
 
 void Editor::Delete() {
+  if (text_editing()) {
+    DeleteForward();
+    return;
+  }
   if (tool() == Tool::kArtboard) {
     RemoveActiveArtboard();
     return;
@@ -665,6 +697,7 @@ void Editor::Delete() {
 }
 
 void Editor::Group() {
+  EndTextEdit();
   if (selection().empty()) return;
   const std::string id = ids_.Next();
   Commit("group", {core::GroupObjects(document(), selection(), id), {id}});
@@ -702,7 +735,13 @@ void Editor::Nudge(double dx, double dy) {
 
 void Editor::Undo() {
   drag_ = {};
+  // Undoing a composition or untyped new text just drops it.
+  if (text_.pending) {
+    EndTextEdit();
+    return;
+  }
   history_.Undo();
+  ValidateTextEdit();
   anchors_.clear();
   // Undoing pen clicks keeps drawing, until the path itself is gone.
   if (drawing_path() && !GetPath(document(), pen_.path_id)) FinishPath();
@@ -711,6 +750,7 @@ void Editor::Undo() {
 void Editor::Redo() {
   drag_ = {};
   history_.Redo();
+  ValidateTextEdit();
   anchors_.clear();
 }
 

@@ -20,7 +20,8 @@ Window {
     property string message
 
     readonly property var groups: ({
-        file: qsTr("File"), edit: qsTr("Edit"), object: qsTr("Object"), select: qsTr("Select"),
+        file: qsTr("File"), edit: qsTr("Edit"), object: qsTr("Object"), type: qsTr("Type"),
+        select: qsTr("Select"),
         view: qsTr("View"), window: qsTr("Window"), tools: qsTr("Tools"),
         paint: qsTr("Fill and Stroke")
     })
@@ -34,7 +35,7 @@ Window {
         objectSendBackward: qsTr("Send Backward"), objectSendToBack: qsTr("Send to Back"),
         objectGroup: qsTr("Group"), objectUngroup: qsTr("Ungroup"), objectJoin: qsTr("Join"),
         objectCompoundMake: qsTr("Make Compound Path"), objectCompoundRelease: qsTr("Release Compound Path"),
-        windowPathfinder: qsTr("Pathfinder"), windowGradient: qsTr("Gradient"), windowTransparency: qsTr("Transparency"), objectClipMake: qsTr("Make Clipping Mask"), objectClipRelease: qsTr("Release Clipping Mask"), toolGradient: qsTr("Gradient Tool"), windowArtboards: qsTr("Artboards"),
+        windowPathfinder: qsTr("Pathfinder"), windowGradient: qsTr("Gradient"), windowTransparency: qsTr("Transparency"), windowCharacter: qsTr("Character"), windowParagraph: qsTr("Paragraph"), toolType: qsTr("Type Tool"), typeCreateOutlines: qsTr("Create Outlines"), typeRevertOutlines: qsTr("Revert Outlines to Text"), objectClipMake: qsTr("Make Clipping Mask"), objectClipRelease: qsTr("Release Clipping Mask"), toolGradient: qsTr("Gradient Tool"), windowArtboards: qsTr("Artboards"),
         viewFitAll: qsTr("Fit All in Window"), toolArtboard: qsTr("Artboard Tool"), windowAlign: qsTr("Align"), objectAverage: qsTr("Average"),
         selectAll: qsTr("All"), selectDeselect: qsTr("Deselect"),
         viewOutline: qsTr("Outline"), viewZoomIn: qsTr("Zoom In"), viewZoomOut: qsTr("Zoom Out"),

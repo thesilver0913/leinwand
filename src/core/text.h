@@ -31,15 +31,15 @@ enum class KerningMode { kMetrics, kNone };
 // Character attributes (spec 5, "文字属性"), stage 1.
 struct CharacterStyle {
   FontRef font = DefaultFont();
-  double size = 12.0;              // Points.
-  std::optional<double> leading;   // Points; none means auto (kAutoLeading × size).
-  double tracking = 0.0;           // 1/1000 em after each character.
-  double baseline_shift = 0.0;     // Points, upwards.
-  double horizontal_scale = 1.0;   // Glyph width.
-  double vertical_scale = 1.0;     // Glyph height.
-  double rotation = 0.0;           // Degrees, counter-clockwise, each character.
+  double size = 12.0;             // Points.
+  std::optional<double> leading;  // Points; none means auto (kAutoLeading × size).
+  double tracking = 0.0;          // 1/1000 em after each character.
+  double baseline_shift = 0.0;    // Points, upwards.
+  double horizontal_scale = 1.0;  // Glyph width.
+  double vertical_scale = 1.0;    // Glyph height.
+  double rotation = 0.0;          // Degrees, counter-clockwise, each character.
   KerningMode kerning = KerningMode::kMetrics;
-  std::string unknown_fields;      // From a newer version, kept (spec 3.3).
+  std::string unknown_fields;  // From a newer version, kept (spec 3.3).
   friend bool operator==(const CharacterStyle&, const CharacterStyle&) = default;
 };
 

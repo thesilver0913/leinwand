@@ -11,8 +11,8 @@
 #include "core/gradient.h"
 #include "core/style.h"
 #include "geometry/bezier.h"
-#include "text/layout.h"
 #include "io/svg.h"
+#include "text/layout.h"
 
 namespace leinwand::io {
 
@@ -499,18 +499,16 @@ class Exporter {
       const std::size_t line = text::LineOf(*layout, start);
       std::size_t end = layout->lines[line].end;
       if (r + 1 < layout->runs.size() && !layout->runs[r + 1].clusters.empty()) {
-        const std::size_t next =
-            *std::min_element(layout->runs[r + 1].clusters.begin(),
-                              layout->runs[r + 1].clusters.end());
+        const std::size_t next = *std::min_element(layout->runs[r + 1].clusters.begin(),
+                                                   layout->runs[r + 1].clusters.end());
         if (text::LineOf(*layout, next) == line) end = std::min(end, next);
       }
       const core::CharacterStyle& style = core::StyleAt(story, start);
-      approximated = approximated || run.horizontal_scale != 1 || run.vertical_scale != 1 ||
-                     run.rotation != 0;
-      out << "<tspan x=\"" << N(run.positions.front().x) << "\" y=\""
-          << N(run.positions.front().y) << "\" font-family=\"'"
-          << Escape(run.face ? run.face->family() : style.font.family) << "'\" font-size=\""
-          << N(run.size) << "\"";
+      approximated =
+          approximated || run.horizontal_scale != 1 || run.vertical_scale != 1 || run.rotation != 0;
+      out << "<tspan x=\"" << N(run.positions.front().x) << "\" y=\"" << N(run.positions.front().y)
+          << "\" font-family=\"'" << Escape(run.face ? run.face->family() : style.font.family)
+          << "'\" font-size=\"" << N(run.size) << "\"";
       const std::string& face_style = run.face ? run.face->style() : style.font.style;
       if (const int weight = WeightOf(face_style); weight != 400) {
         out << " font-weight=\"" << weight << "\"";

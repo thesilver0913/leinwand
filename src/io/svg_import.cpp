@@ -13,8 +13,8 @@
 #include "core/transform.h"
 #include "geometry/bezier.h"
 #include "io/svg.h"
-#include "text/layout.h"
 #include "io/svg_syntax.h"
+#include "text/layout.h"
 
 namespace leinwand::io {
 
@@ -787,7 +787,7 @@ class Importer {
     }
 
     if (!foreign && name == "text") {
-      if (auto text = Text(node, p, s, transform, ancestors)) {
+      if (auto text = Text(node, p, s, transform, ancestors, id)) {
         return WithMask(WithClip(*text, node, p), node, p);
       }
     }
@@ -886,7 +886,8 @@ class Importer {
   // story, a new line wherever the text moves down. Positions within a line
   // are left to the layout. Text on a path stays as XML (phase 3).
   std::optional<ObjectPtr> Text(pugi::xml_node node, const Properties& p, const Inherited& s,
-                                const Matrix& transform, std::vector<pugi::xml_node> ancestors) {
+                                const Matrix& transform, std::vector<pugi::xml_node> ancestors,
+                                const std::string& id) {
     bool supported = true;
     std::function<void(pugi::xml_node)> check = [&](pugi::xml_node n) {
       for (pugi::xml_node c : n.children()) {
@@ -916,8 +917,8 @@ class Importer {
                        std::optional<double>, double, std::vector<pugi::xml_node>)>
         walk = [&](pugi::xml_node n, const Inherited& style, std::optional<double> x,
                    std::optional<double> y, double dy, std::vector<pugi::xml_node> anc) {
-          if (svg::ParseNumberList(n.attribute("x").value()).size() > 1 ||
-              n.attribute("rotate") || n.attribute("textLength")) {
+          if (svg::ParseNumberList(n.attribute("x").value()).size() > 1 || n.attribute("rotate") ||
+              n.attribute("textLength")) {
             positioned_inside = true;
           }
           anc.push_back(n);
@@ -1030,7 +1031,6 @@ class Importer {
                                           }
                                         });
     }
-    const std::string id = Id(node, "text");
     if (positioned_inside || indented) {
       out_.report.Add("text positioned by character or line (laid out again)",
                       ReportAction::kApproximated, id);

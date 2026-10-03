@@ -276,3 +276,55 @@ TEST_CASE("Opacity masks and isolated groups survive a JSON round trip") {
              "children": [{"id": "p", "type": "path", "mask": {"clip": false}}]}]})")
              .document);
 }
+
+TEST_CASE("Text survives a JSON round trip: stories, styles and kept outlines") {
+  core::CharacterStyle bold;
+  bold.font = {"Source Sans 3", "Bold", "SourceSans3-Bold"};
+  bold.size = 20;
+  bold.leading = 30;
+  bold.tracking = 50;
+  bold.kerning = core::KerningMode::kNone;
+  core::Story story = core::MakeStory("story1", U"日本語 and\nEnglish");
+  story = core::WithCharacterStyle(story, 4, 7, [&](core::CharacterStyle& s) { s = bold; });
+  story = core::WithParagraphStyle(story, 8, 8, [](core::ParagraphStyle& p) {
+    p.align = core::TextAlign::kRight;
+    p.space_before = 6;
+  });
+  core::TextObject text;
+  text.common.id = "t";
+  text.story = std::make_shared<const core::Story>(story);
+  text.transform = core::Matrix::Translate(10, 20);
+  core::GroupObject outlines;
+  outlines.common.id = "g";
+  core::TextObject kept = text;
+  kept.common.id = "kept";
+  core::Story kept_story = story;
+  kept_story.id = "story2";
+  kept.story = std::make_shared<const core::Story>(kept_story);
+  outlines.outlined_text = core::MakeObject(kept);
+  core::Layer layer;
+  layer.id = "l";
+  layer.children = {core::MakeObject(text), core::MakeObject(outlines)};
+  core::Document document;
+  document.layers = {core::MakeLayer(std::move(layer))};
+
+  const std::string json = io::WriteDocumentJson(document, "test");
+  const auto j = nlohmann::json::parse(json);
+  REQUIRE(j["stories"].size() == 2);  // Written once each, at the top level.
+  CHECK(j["stories"][0]["text"] == "日本語 and\nEnglish");
+  CHECK(j["layers"][0]["children"][0]["story"] == "story1");
+  CHECK(j["layers"][0]["children"][0].contains("bounds"));  // For older versions.
+  const auto loaded = io::ReadDocumentJson(json);
+  REQUIRE(loaded.document);
+  const auto& t = std::get<core::TextObject>(*loaded.document->FindObject("t"));
+  CHECK(*t.story == story);
+  CHECK(t.transform == text.transform);
+  const auto& g = std::get<core::GroupObject>(*loaded.document->FindObject("g"));
+  REQUIRE(g.outlined_text);
+  CHECK(std::get<core::TextObject>(*g.outlined_text).story->id == "story2");
+  CHECK(RoundTrip(document) == json);
+  // A text whose story is missing is a broken file.
+  auto broken = j;
+  broken.erase("stories");
+  CHECK(io::ReadDocumentJson(broken.dump()).error == LoadError::kCorrupt);
+}

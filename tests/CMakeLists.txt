@@ -14,6 +14,7 @@ add_executable(core_tests
   core/number_test.cpp
   core/cover_test.cpp
   core/gradient_test.cpp
+  core/text_test.cpp
 )
 target_link_libraries(core_tests PRIVATE core Catch2::Catch2WithMain)
 catch_discover_tests(core_tests)
@@ -26,6 +27,17 @@ add_executable(geometry_tests
 )
 target_link_libraries(geometry_tests PRIVATE geometry Catch2::Catch2WithMain)
 catch_discover_tests(geometry_tests)
+
+# The text engine, on the bundled fonts.
+add_executable(text_tests
+  text/layout_test.cpp
+  test_fonts.cpp
+)
+target_link_libraries(text_tests PRIVATE text Catch2::Catch2WithMain)
+target_compile_definitions(text_tests PRIVATE
+  LEINWAND_FONTS_DIR="${PROJECT_SOURCE_DIR}/third_party/fonts"
+)
+catch_discover_tests(text_tests)
 
 add_executable(editor_tests
   editor/editor_test.cpp
@@ -40,9 +52,14 @@ add_executable(editor_tests
   editor/artboards_test.cpp
   editor/gradient_test.cpp
   editor/transparency_test.cpp
+  editor/text_test.cpp
+  test_fonts.cpp
 )
 # The pathfinder tests run on render's Skia PathOps engine.
 target_link_libraries(editor_tests PRIVATE editor render Catch2::Catch2WithMain)
+target_compile_definitions(editor_tests PRIVATE
+  LEINWAND_FONTS_DIR="${PROJECT_SOURCE_DIR}/third_party/fonts"
+)
 catch_discover_tests(editor_tests)
 
 # Rendering runs on Skia's CPU backend so it works on CI machines without a GPU.
@@ -56,6 +73,8 @@ add_executable(render_tests
   render/path_ops_corpus_test.cpp
   render/pathops_probe_test.cpp
   render/text_probe_test.cpp
+  render/text_render_test.cpp
+  test_fonts.cpp
 )
 # HarfBuzz and ICU for the text engine probe (M8).
 find_package(harfbuzz CONFIG REQUIRED)
@@ -77,6 +96,7 @@ add_executable(io_tests
   io/svg_syntax_test.cpp
   io/svg_test.cpp
   render/image_compare.cpp
+  test_fonts.cpp
 )
 target_include_directories(io_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(io_tests PRIVATE

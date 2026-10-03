@@ -4,6 +4,7 @@
 // the canvas item translates Qt input into these calls.
 #pragma once
 
+#include <array>
 #include <functional>
 #include <optional>
 #include <set>
@@ -44,6 +45,20 @@ enum class Tool {
   kScissors,  // Cuts a path where it is clicked (C).
   kArtboard,  // Draws, moves and resizes artboards (Shift+O).
   kGradient,  // Drags out the gradient of the selection (G).
+  kType,      // Point text: click to type, click text to edit it (T).
+};
+
+// Caret movement while editing text.
+enum class TextMove { kLeft, kRight, kUp, kDown, kLineStart, kLineEnd, kStart, kEnd };
+
+// What the Character and Paragraph panels show: the styles in the text
+// selection while editing, else in the selected text objects, else the
+// style for new text.
+struct TextStyleState {
+  bool editing = false;
+  bool selected_text = false;
+  std::vector<core::CharacterStyle> characters;  // At least one.
+  std::vector<core::ParagraphStyle> paragraphs;  // At least one.
 };
 
 // What a pen click would do at a point (spec 4.2: the cursor shows it).
@@ -130,6 +145,11 @@ struct Overlay {
   // The gradient tool's annotator: the gradient's start and end in document
   // coordinates.
   std::optional<std::pair<core::Point, core::Point>> gradient_line;
+  // Text being edited: the caret (top to bottom), the selected text as
+  // quadrilaterals and the IME composition's underline.
+  std::optional<std::pair<core::Point, core::Point>> text_caret;
+  std::vector<std::array<core::Point, 4>> text_selection;
+  std::vector<std::pair<core::Point, core::Point>> text_underlines;
 };
 
 // The Align panel (spec 7.2): what objects line up with.
@@ -269,6 +289,7 @@ class Editor {
     kArtboardMove,    // Inside one: moves it with the artwork on it.
     kArtboardResize,  // On a handle of the active one.
     kGradient,        // The gradient tool: start (or one end) to the pointer.
+    kTextSelect,      // The type tool: selecting text in the edited text.
   };
   struct Drag {
     DragKind kind = DragKind::kNone;
@@ -447,6 +468,35 @@ class Editor {
   void SetMaskClip(bool clip);
   void SetMaskInvert(bool invert);
 
+  // Text (editor_text.cpp, spec 5 and 7.2). While text is edited, keys and
+  // the IME go to it; ending the edit selects the text object (an emptied
+  // one is removed). New text exists only once something is typed into it.
+  bool text_editing() const { return !text_.id.empty(); }
+  const std::string& edited_text_id() const { return text_.id; }
+  void EndTextEdit();
+  void InsertText(std::u32string_view text);
+  void DeleteBackward();
+  void DeleteForward();
+  void MoveCaret(TextMove move, bool extend);
+  void SelectAllText();
+  void SelectWordAt(core::Point p);
+  std::u32string SelectedText() const;
+  // The IME's composition, shown at the caret until it is committed.
+  void SetPreedit(std::u32string preedit, std::size_t cursor);
+  // The caret in document coordinates (for the IME's candidate window).
+  std::optional<core::Rect> CaretRect() const;
+  // A double click: selects a word in edited text, or starts editing text
+  // with a selection tool (switching to the type tool).
+  void DoubleClick(core::Point p, double pick);
+  TextStyleState TextStyle() const;
+  void EditCharacterStyle(const std::function<void(core::CharacterStyle&)>& edit);
+  void EditParagraphStyle(const std::function<void(core::ParagraphStyle&)>& edit);
+  // Type > Create Outlines (Shift+Ctrl+O): selected text becomes groups of
+  // compound paths that keep the text (spec 7.5); Revert Outlines turns
+  // such groups back into the text.
+  void CreateOutlines();
+  void RevertOutlines();
+
  private:
   void Commit(const std::string& action, core::EditorState state);
   // Replaces each selected object (not those inside selected groups) by
@@ -454,6 +504,31 @@ class Editor {
   void EditSelected(const std::string& action,
                     const std::function<core::ObjectPtr(const core::ObjectPtr&)>& edit);
   void EditMask(const std::function<void(core::OpacityMask&)>& edit);
+
+  struct TextEdit {
+    std::string id;           // The text being edited; empty when none.
+    core::ObjectPtr pending;  // New text not in the document yet.
+    std::size_t caret = 0, anchor = 0;
+    std::u32string preedit;
+    std::size_t preedit_cursor = 0;
+    std::optional<core::CharacterStyle> pending_style;  // Set with no selection.
+    bool typing = false;                                // The last edit was typing (merges steps).
+    std::optional<double> goal_x;                       // Up and down keep the column.
+  };
+  const core::TextObject* EditedText(core::Matrix* to_document = nullptr) const;
+  std::pair<std::size_t, std::size_t> TextRange() const;
+  core::CharacterStyle TypingStyle() const;
+  void BeginTextEdit(const std::string& id, std::size_t caret);
+  void ValidateTextEdit();  // After undo and redo.
+  void UpdateTextPreview();
+  void CommitStory(core::Story story, std::size_t caret, const std::string& action, bool typing);
+  void TextOverlay(Overlay& overlay) const;
+  void TypeDown(core::Point p, Modifiers modifiers, double pick);
+  void TypeDrag();
+  TextEdit text_;
+  std::optional<core::EditorState> text_preview_;  // New text or a composition.
+  core::CharacterStyle text_style_;                // For new text.
+  core::ParagraphStyle paragraph_style_;
   void SetSelection(core::IdSet selection);
   void UpdatePreview(Modifiers modifiers);
   void UpdateDrawing();

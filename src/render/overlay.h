@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include <array>
 #include <optional>
 #include <set>
 #include <utility>
@@ -35,6 +36,10 @@ struct Overlay {
   std::optional<core::Rect> key_object;  // The Align panel's key object, framed thickly.
   // The gradient annotator: from the start (a circle) to the end (a square).
   std::optional<std::pair<core::Point, core::Point>> gradient_line;
+  // Text editing: caret (top to bottom), selected text, IME underline.
+  std::optional<std::pair<core::Point, core::Point>> text_caret;
+  std::vector<std::array<core::Point, 4>> text_selection;
+  std::vector<std::pair<core::Point, core::Point>> text_underlines;
 };
 
 }  // namespace leinwand::render

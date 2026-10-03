@@ -101,9 +101,8 @@ struct PreservedObject {
   Matrix transform;
 };
 
-struct Object
-    : std::variant<PathObject, CompoundPathObject, GroupObject, ShapeObject, PreservedObject,
-                   TextObject> {
+struct Object : std::variant<PathObject, CompoundPathObject, GroupObject, ShapeObject,
+                             PreservedObject, TextObject> {
   using variant::variant;
   // std::visit on classes derived from std::variant needs C++23 (P2162).
   const variant& base() const { return *this; }

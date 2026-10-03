@@ -81,6 +81,10 @@ class CanvasItem : public QQuickRhiItem {
   void mouseMoveEvent(QMouseEvent* event) override;
   void mouseReleaseEvent(QMouseEvent* event) override;
   void hoverMoveEvent(QHoverEvent* event) override;
+  void mouseDoubleClickEvent(QMouseEvent* event) override;
+  bool event(QEvent* event) override;
+  QVariant inputMethodQuery(Qt::InputMethodQuery query) const override;
+  void inputMethodEvent(QInputMethodEvent* event) override;
 
  private:
   leinwand::editor::Editor& editor() const;
@@ -92,6 +96,10 @@ class CanvasItem : public QQuickRhiItem {
   leinwand::core::Point ToDocument(QPointF position) const;
   double PickRadius() const;  // A few view pixels, in document points.
   leinwand::editor::Modifiers ToolModifiers() const;
+  // Keys for the text being edited; false when the key is not for it.
+  bool TextKey(QKeyEvent* event);
+  bool IsTextKey(const QKeyEvent* event) const;
+  void TextChanged();  // Redraws and tells the IME where the caret is.
 
   Session* session_;
   leinwand::render::View view_;

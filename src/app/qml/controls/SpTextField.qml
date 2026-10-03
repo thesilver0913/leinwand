@@ -19,6 +19,19 @@ T.TextField {
     font { family: Spectrum.fontFamily; pixelSize: Spectrum.fontSize75 }
     hoverEnabled: true
 
+    // The template does not draw the placeholder ("—" for mixed values).
+    Text {
+        x: root.leftPadding
+        width: root.width - root.leftPadding - root.rightPadding
+        height: root.height
+        verticalAlignment: Text.AlignVCenter
+        text: root.placeholderText
+        color: root.placeholderTextColor
+        font: root.font
+        elide: Text.ElideRight
+        visible: root.length === 0 && root.preeditText === "" && !root.activeFocus
+    }
+
     background: Rectangle {
         radius: Spectrum.cornerRadiusSmallDefault
         color: root.enabled ? Spectrum.gray25 : Spectrum.disabledBackgroundColor

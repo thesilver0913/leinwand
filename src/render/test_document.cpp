@@ -225,6 +225,21 @@ core::Document MakeShowcaseDocument() {
   colors.push_back(masked(b.Path(Rectangle(60, 530, 90, 50), {Fill{Rgb(0xff5a36)}}),
                           b.Path(Circle(105, 555, 18), {Fill{Rgb(0xffffff)}}), true, true));
 
+  // Point text: Japanese and English, two styles, two paragraphs.
+  core::CharacterStyle body;
+  body.size = 22;
+  core::Story story = core::MakeStory("story1", U"文字 Text\n日本語と English", body);
+  story = core::WithCharacterStyle(
+      story, 3, 7, [](core::CharacterStyle& s) { s.font = {"Source Sans 3", "Bold", {}}; });
+  story = core::WithCharacterStyle(story, 8, story.text.size(),
+                                   [](core::CharacterStyle& s) { s.size = 13; });
+  core::TextObject text;
+  text.common.id = b.Id("text");
+  text.common.appearance = {Fill{Rgb(0x1b1b1b)}};
+  text.story = std::make_shared<const core::Story>(std::move(story));
+  text.transform = core::Matrix::Translate(590, 552);
+  colors.push_back(core::MakeObject(std::move(text)));
+
   // A sublayer with a rotated group.
   core::Layer rotated;
   rotated.id = "sublayer";

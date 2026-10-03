@@ -68,9 +68,7 @@ std::vector<std::size_t> Breaks(UBreakIteratorType type, const std::u32string& t
   return breaks;
 }
 
-hb_script_t ScriptOf(char32_t c) {
-  return hb_unicode_script(hb_unicode_funcs_get_default(), c);
-}
+hb_script_t ScriptOf(char32_t c) { return hb_unicode_script(hb_unicode_funcs_get_default(), c); }
 
 bool IsNeutral(hb_script_t s) {
   return s == HB_SCRIPT_COMMON || s == HB_SCRIPT_INHERITED || s == HB_SCRIPT_UNKNOWN;
@@ -133,10 +131,9 @@ LayoutPtr Compute(const core::Story& story) {
       }
       const hb_script_t s = ScriptOf(text[i]);
       if (!IsNeutral(s)) script = s;
-      const bool same = !segments.empty() && segments.back().run == run_of[i] &&
-                        segments.back().face == face &&
-                        (IsNeutral(s) || segments.back().script == s ||
-                         IsNeutral(segments.back().script));
+      const bool same =
+          !segments.empty() && segments.back().run == run_of[i] && segments.back().face == face &&
+          (IsNeutral(s) || segments.back().script == s || IsNeutral(segments.back().script));
       if (same) {
         segments.back().end = i + 1;
         if (IsNeutral(segments.back().script)) segments.back().script = script;
@@ -186,7 +183,8 @@ LayoutPtr Compute(const core::Story& story) {
         if (new_cluster) clusters.push_back({index, {x, x}});
         run.glyphs.push_back(static_cast<std::uint16_t>(info[g].codepoint));
         run.clusters.push_back(index);
-        run.positions.push_back({x + pos[g].x_offset * sx, -style.baseline_shift - pos[g].y_offset * sy});
+        run.positions.push_back(
+            {x + pos[g].x_offset * sx, -style.baseline_shift - pos[g].y_offset * sy});
         const double advance = pos[g].x_advance * sx;
         run.advances.push_back(advance);
         x += advance;
@@ -317,6 +315,14 @@ LayoutPtr LayoutOf(const core::StoryPtr& story) {
 
 std::vector<core::PathData> Outlines(const Layout& layout) {
   std::vector<core::PathData> paths;
+  for (auto& glyph : GlyphOutlines(layout)) {
+    for (auto& path : glyph) paths.push_back(std::move(path));
+  }
+  return paths;
+}
+
+std::vector<std::vector<core::PathData>> GlyphOutlines(const Layout& layout) {
+  std::vector<std::vector<core::PathData>> glyphs;
   for (const GlyphRun& run : layout.runs) {
     const double sx = run.size * run.horizontal_scale, sy = run.size * run.vertical_scale;
     for (std::size_t g = 0; g < run.glyphs.size(); ++g) {
@@ -330,12 +336,14 @@ std::vector<core::PathData> Outlines(const Layout& layout) {
             core::Matrix::Translate(-centre.x, -centre.y);
       }
       m = m * core::Matrix::Scale(sx, sy);
+      std::vector<core::PathData> glyph;
       for (const core::PathData& path : *GlyphOutline(*run.face, run.glyphs[g])) {
-        paths.push_back(core::Transformed(path, m));
+        glyph.push_back(core::Transformed(path, m));
       }
+      if (!glyph.empty()) glyphs.push_back(std::move(glyph));
     }
   }
-  return paths;
+  return glyphs;
 }
 
 std::vector<core::PathData> OutlineOf(const core::TextObject& text) {

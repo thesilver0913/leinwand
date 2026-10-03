@@ -72,12 +72,14 @@ qt_add_qml_module(leinwand
     qml/controls/SpSlider.qml
     qml/controls/SpSwatch.qml
     qml/controls/SpTextField.qml
+    qml/panels/CharacterPanel.qml
     qml/panels/ColorPanel.qml
     qml/panels/GradientPanel.qml
     qml/panels/ImportReportPanel.qml
     qml/panels/AlignPanel.qml
     qml/panels/ArtboardsPanel.qml
     qml/panels/LayersPanel.qml
+    qml/panels/ParagraphPanel.qml
     qml/panels/PathfinderPanel.qml
     qml/panels/PropertiesPanel.qml
     qml/panels/StrokePanel.qml

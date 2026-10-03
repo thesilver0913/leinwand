@@ -14,19 +14,11 @@
 #include "render/document_renderer.h"
 #include "render/image_compare.h"
 #include "render/test_document.h"
-#include "text/font.h"
 
 using namespace leinwand;
 using Catch::Approx;
 
 namespace {
-
-// Text is laid out with the bundled fonts only, the same on every OS.
-const bool fonts_ready = [] {
-  leinwand::text::SetFontSources(
-      {std::make_shared<leinwand::text::FolderFontSource>(LEINWAND_FONTS_DIR)});
-  return true;
-}();
 
 std::string ReadTestFile(const std::string& name) {
   std::ifstream in(std::string(LEINWAND_TESTDATA_DIR) + "/" + name, std::ios::binary);
@@ -278,4 +270,59 @@ TEST_CASE("Showcase as SVG for a browser", "[.][showcase-svg]") {
   std::filesystem::create_directories(path.parent_path());
   std::ofstream(path, std::ios::binary) << io::ExportSvg(showcase);
   Dump(showcase, "svg/showcase.png");
+}
+
+TEST_CASE("SVG text: written as text with tspans, read back as point text") {
+  core::CharacterStyle style;
+  style.size = 20;
+  core::Story story = core::MakeStory("s", U"日本語 Text\n二行目", style);
+  story = core::WithCharacterStyle(
+      story, 4, 8, [](core::CharacterStyle& s) { s.font = {"Source Sans 3", "Bold", {}}; });
+  core::TextObject text;
+  text.common.id = "t";
+  text.common.appearance = {core::Fill{core::RgbColor{1, 0, 0}}};
+  text.story = std::make_shared<const core::Story>(story);
+  text.transform = core::Matrix::Translate(20, 40);
+  core::Layer layer;
+  layer.id = "l";
+  layer.children = {core::MakeObject(text)};
+  core::Document document;
+  document.artboards = {{"ab", "Artboard 1", core::Rect::FromXYWH(0, 0, 200, 100), {}, 0}};
+  document.layers = {core::MakeLayer(std::move(layer))};
+
+  const std::string svg = io::ExportSvg(document);
+  CHECK(svg.find("<text") != std::string::npos);
+  CHECK(svg.find("font-family=\"'Source Sans 3'\"") != std::string::npos);
+  CHECK(svg.find("font-weight=\"700\"") != std::string::npos);
+  const auto again = io::ImportSvg(svg);
+  REQUIRE(again.document);
+  const core::TextObject* back = nullptr;
+  core::VisitObjects(*again.document, [&](const core::Object& o) {
+    if (const auto* t = std::get_if<core::TextObject>(&o)) back = t;
+  });
+  REQUIRE(back);
+  CHECK(back->story->text == story.text);
+  CHECK(core::StyleAt(*back->story, 5).font.style == "Bold");
+  CHECK(core::StyleAt(*back->story, 0).font.family == core::DefaultFont().family);
+  // And it looks the same.
+  int w = 0, h = 0, w2 = 0, h2 = 0;
+  const auto before = Render(document, &w, &h);
+  const auto after = Render(*again.document, &w2, &h2);
+  REQUIRE(w == w2);
+  CHECK(testing::DifferingFraction(before, after) < 0.002);
+}
+
+TEST_CASE("SVG text from other programs: anchors, inherited fonts, text on a path kept") {
+  const auto result = io::ImportSvg(R"svg(<svg xmlns="http://www.w3.org/2000/svg" width="200"
+      height="100"><g font-family="Arial, sans-serif" font-size="12"><text id="a" x="100" y="20"
+      text-anchor="middle" font-weight="bold">  centred
+      text </text></g><defs><path id="p" d="M0 0 H100"/></defs>
+      <text id="b"><textPath href="#p">on a path</textPath></text></svg>)svg");
+  REQUIRE(result.document);
+  const auto* a = std::get_if<core::TextObject>(result.document->FindObject("a"));
+  REQUIRE(a);
+  CHECK(a->story->text == U"centred text");  // White space collapsed.
+  CHECK(a->story->paragraphs[0].align == core::TextAlign::kCenter);
+  CHECK(core::StyleAt(*a->story, 0).size == 12);
+  CHECK(std::holds_alternative<core::PreservedObject>(*result.document->FindObject("b")));
 }
