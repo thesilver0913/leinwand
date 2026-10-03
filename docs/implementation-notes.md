@@ -138,7 +138,7 @@
 - **ウェルカムスクリーン**: 独立したウィンドウ。新規作成のプリセット(印刷: A4、A3、B5、はがき、名刺。Web。アイコン)とカスタムサイズ(幅、高さ、単位、裁ち落とし)、開く、最近使ったファイル(.lwd はサムネイル付き、グリッド / リスト)。ファイルを指定して起動したときと、環境設定でオフにしたときは出さない。カラーモードは RGB だけ(フェーズ1〜3)。
 - **ドキュメントのない状態**: 起動直後や「閉じる」のあとは、ドキュメントのない空のメインウィンドウになる(`Session.hasDocument`)。見本のドキュメントは `--showcase` で開く。
 - **アートボードの裁ち落とし**: `Artboard::bleed`(全辺同じ値)。`.lwd` の `"bleed"`。キャンバスに赤い線で示す。
-- **環境設定**: JSON(Windows は `%APPDATA%\Leinwand\preferences.json`、Linux は `~/.config/leinwand/`)。未知のキーは残す。今ある分類は、一般(キー入力、ラバーバンド、ウェルカムスクリーン)、選択範囲・アンカー表示(許容範囲、アンカーのサイズ)、スマートガイド(許容範囲)、ユーザーインターフェイス(テーマ、言語、UI の拡大率、カンバスカラー)、パフォーマンス(取り消しの回数)、ファイル管理(自動保存の間隔、復元データの保存先)。テキスト、単位、ガイド・グリッド、フォントの分類は、その機能と一緒に足す。UI の拡大率は再起動後に反映する(Qt の起動前に読む)。
+- **環境設定**: JSON(Windows は `%APPDATA%\Leinwand\preferences.json`、macOS は `~/Library/Application Support/Leinwand/`、Linux は `~/.config/leinwand/`)。未知のキーは残す。今ある分類は、一般(キー入力、ラバーバンド、ウェルカムスクリーン)、選択範囲・アンカー表示(許容範囲、アンカーのサイズ)、スマートガイド(許容範囲)、ユーザーインターフェイス(テーマ、言語、UI の拡大率、カンバスカラー)、パフォーマンス(取り消しの回数)、ファイル管理(自動保存の間隔、復元データの保存先)。テキスト、単位、ガイド・グリッド、フォントの分類は、その機能と一緒に足す。UI の拡大率は再起動後に反映する(Qt の起動前に読む)。
 - **キーボードショートカット**: コマンドごとに複数のキーを持てる(先頭をメニューに表示する)。初期値は Illustrator に合わせ、変更は `shortcuts.json` に初期値との差分として保存する。セットの書き出しと読み込みができる。ほかのコマンドと重なるキーを設定すると、重なる相手を表示する(設定は受け付ける)。
 - **翻訳**: `i18n/leinwand_ja.ts`(日本語)と `leinwand_en.ts`(英語の複数形だけ)。`cmake --build --target update_translations` でソースから更新する。用語は Illustrator の日本語版に合わせる。Qt 自身のダイアログの翻訳(`qt_ja`)も読む。言語を変えるとすぐに切り替わる。
 - **アイコン**: 原版の SVG(フィルター付き)から `tools/make_icons.ps1` が Edge のヘッドレスモードで PNG を描き、`.ico` をまとめる(生成物はリポジトリに置く)。16〜32px は影・光・粒子のフィルターを外し、パスとハンドルの線を太くした小サイズ版(`leinwand-icon-small.svg`)を使う。`.lwd` 用の文書アイコン(`leinwand-document.svg`)は、ページの上に小サイズ版の図柄を載せたもので、実行ファイルの2番目のアイコンにする。
@@ -147,6 +147,19 @@
 - **Web インストーラー**: GitHub Releases の API(`/repos/thesilver0913/leinwand/releases`)から一覧を取り、`-windows-x64.zip` と `.zip.sha256` を添付したリリースだけを候補にする。既定は最新版で、「他のバージョン...」で選び直せる。パッケージは SHA-256 を確かめてから PowerShell の `Expand-Archive` で展開し、前の版の `bin` などを消してから置く。.lwd を関連付け、.svg・.ai・.pdf は「プログラムから開く」の候補にだけ入れる。ユーザー単位と全ユーザーのどちらにも入れられる。アンインストールで、作ったレジストリのキーは空なら消す。
 - **リリース**: `v<版>` のタグを push すると `.github/workflows/release.yml` がビルド、テスト、パッケージ作成をして GitHub Releases に公開する。タグは `CMakeLists.txt` の版と一致させる。
 - **試し方**: `tools/package-windows.ps1 -ReleasesUrl http://127.0.0.1:8765/releases.json` で、ローカルのサーバーから取るインストーラーを作れる(`/VERYSILENT /CURRENTUSER` で無人インストールを試せる)。
+
+## macOS 対応
+
+フェーズ2の前に、macOS でビルドとテストが通り、試用版の dmg が作れるところまで進める(2026-10-03 合意)。最初は Apple Silicon(arm64)だけ。
+
+- **描画**: macOS では Qt Quick を Metal で動かし、Skia(Ganesh)は Qt の `MTLDevice` と `MTLCommandQueue` をそのまま使う(`src/render/metal_canvas.*`)。Skia のコマンドバッファーは同じキューに Qt のフレームより先にコミットされるので、Qt がテクスチャを使うときには描き終わっている。Metal のオブジェクトは `const void*` で受け渡すので、Objective-C++ は要らない。Vulkan と VMA は macOS ではビルドしない。
+- **数値の読み取り**: Apple の標準ライブラリには double 用の `std::from_chars` がないため、`core::ParseDouble` を通す(macOS では C ロケールの `strtod_l`)。
+- **アプリバンドル**: `Leinwand.app`。`src/app/Info.plist.in` で .lwd を文書の種類として宣言し(UTI `io.github.thesilver0913.leinwand.document`)、.svg は「このアプリケーションで開く」の候補にだけ入れる。フォントと Qt の翻訳は `Contents/Resources` に置く。Finder から開いたファイルは引数ではなく `QFileOpenEvent` で届く。
+- **アイコン**: Apple のアイコングリッド(1024px の中に 824px のタイル)に合わせ、`tools/make_icons.ps1` が余白付きの `mac-*.png` を描く。`.icns` はビルド時に `iconutil` で作る。文書アイコンは macOS に作らせる(`CFBundleTypeIconSystemGenerated`)。
+- **設定フォルダ**: `~/Library/Application Support/Leinwand`。
+- **ビルド**: プリセット `macos-release`。最低 macOS 12(Qt 6.8 と同じ)。vcpkg はオーバーレイのトリプレット(`cmake/triplets/arm64-osx.cmake`)で同じ最低バージョンに揃える。Skia は `metal` 機能で入れる。
+- **配布**: `tools/package-macos.sh` が `cmake --install`(macdeployqt)、アドホック署名、dmg 作成をする。Developer ID の署名と公証はしない(Apple Developer Program に入るまで)。CI の macOS ジョブは dmg を成果物として上げる(リリースではない)。
+- **未対応**: メニューバーはウィンドウ内に出る(macOS 上部のメニューバーではない)。Intel Mac 向けのビルドはまだない。
 
 ## .ai の読み込みに向けた調査
 

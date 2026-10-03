@@ -23,7 +23,7 @@ Leinwand(ドイツ語で「キャンバス」)は、デスクトップ向けに�
 
 **前提**
 
-- 対象環境はデスクトップ。対象OSはWindows・Linux・macOSの3つ。最初はWindowsで開発し、Linux、macOSの順に対応する。Linuxでは X11 と Wayland の両方、フォント列挙は Fontconfig を前提にする。OS固有の処理(フォント列挙、IME、クリップボード、ファイルダイアログ)は抽象化層の裏に置く。マウス+キーボード操作を基本とし、ペンタブレットの筆圧は後のフェーズで対応する。
+- 対象環境はデスクトップ。対象OSはWindows・Linux・macOSの3つ。最初はWindowsで開発し、Linux、macOSの順に対応する。ただしmacOSは、フェーズ2の前にビルドとテスト(Metal描画)と試用版のディスクイメージまで進める(2026-10-03 決定)。Linuxでは X11 と Wayland の両方、フォント列挙は Fontconfig を前提にする。OS固有の処理(フォント列挙、IME、クリップボード、ファイルダイアログ)は抽象化層の裏に置く。マウス+キーボード操作を基本とし、ペンタブレットの筆圧は後のフェーズで対応する。
 - 最終目標はIllustrator相当だが、一度に作らない。フェーズを区切り、各フェーズ終了時点で「使える」状態にする。
 - 重点3領域(パス編集・文字組み・ファイル互換)は、他の機能より先に深く作り込む。
 
@@ -913,7 +913,7 @@ UIのデザイン言語はAdobeの[Spectrum](https://spectrum.adobe.com/)に準�
 | --- | --- | --- |
 | Windows | exe形式のWebインストーラー。Inno Setupで作成 | 決定 |
 | Linux | deb形式 | 決定 |
-| macOS | 未定(対応時に決める) | 未決 |
+| macOS | dmg形式のディスクイメージ(Apple Silicon)。アドホック署名のみで、Appleの公証は受けない | 決定 |
 
 - Windowsインストーラーの内容: インストール先の選択、スタートメニューとデスクトップのショートカット、ファイルの関連付け(.lwd はLeinwandに関連付ける。.svg .ai .pdf は「プログラムから開く」の候補に登録するだけで、既定のアプリは変更しない)、アンインストーラーの登録。QtとSkiaのランタイムを同梱する。
 - 自動アップデートは当面入れない。バージョン確認だけ後のフェーズで追加し、更新はインストーラーの再実行で行う。
@@ -929,6 +929,7 @@ UIのデザイン言語はAdobeの[Spectrum](https://spectrum.adobe.com/)に準�
 - Inno Setupのダウンロード機能と、スクリプトで作るカスタムページで実現する。
 - 別バージョンが入っている場合は上書きする。複数バージョンの共存は扱わない。
 - ポータブル版は当面作らない。コード署名は後のフェーズで行う。それまではSmartScreenの警告が出ることを配布ページに明記する。
+- macOS版は、Leinwand.app と「アプリケーション」フォルダへのリンクを入れた dmg で配る。Apple Developer Program に入るまでは Developer ID の署名と公証がないため、初回はGatekeeperに止められる。「システム設定 → プライバシーとセキュリティ」の「このまま開く」で許可する手順を配布ページに明記する。
 
 **アプリアイコン**
 
@@ -945,7 +946,7 @@ UIのデザイン言語はAdobeの[Spectrum](https://spectrum.adobe.com/)に準�
 | --- | --- | --- |
 | 名前 | Leinwand | — |
 | 目的と規模 | 趣味・学習。最終目標はIllustrator相当 | 1 |
-| 対応OS | Windows・Linux・macOS。開発はWindows、Linux、macOSの順 | 1 |
+| 対応OS | Windows・Linux・macOS。開発はWindows、Linux、macOSの順。macOSはフェーズ2の前にビルドと試用版まで | 1 |
 | 公開とライセンス | GitHubでソース公開。GPLv3またはそれ以降 | 1 |
 | 技術スタック | C++ + Skia + Qt(LGPLv3、動的リンク) | 2 |
 | UIフレームワーク | Qt Quick(QML) | 2 |
@@ -970,6 +971,7 @@ UIのデザイン言語はAdobeの[Spectrum](https://spectrum.adobe.com/)に準�
 | ウェルカムスクリーン | 独立ウィンドウ。環境設定で表示を切り替え | 9 |
 | Windowsの配布 | exe形式のWebインストーラー(Inno Setup)。過去バージョンも選べる | 9 |
 | Linuxの配布 | deb形式 | 9 |
+| macOSの配布 | dmg形式(Apple Silicon)。Apple Developer Program に入るまではアドホック署名のみ | 9 |
 | 配布元 | GitHub Releases | 9 |
 | ファイルの関連付け | .lwd のみ関連付け。.svg .ai .pdf は「プログラムから開く」の候補に登録 | 9 |
 | 当面やらないこと | ポータブル版、自動アップデート、コード署名(後のフェーズ) | 9 |
@@ -988,7 +990,7 @@ UIのデザイン言語はAdobeの[Spectrum](https://spectrum.adobe.com/)に準�
 * [ ] FontsourceとGoogle FontsのAPIの利用条件の確認
 * [ ] ロゴタイプのフォント(Outfit)のライセンスを、公開前にGoogle Fontsのページで再確認
 * [x] 小サイズ用アイコンと .lwd 用の文書アイコンの作成 → 作成済み(resources/leinwand-icon-small.svg、leinwand-document.svg)
-* [ ] macOSの配布形式(対応時に決める)
+* [x] macOSの配布形式 → dmg、Apple Silicon、アドホック署名(公証なし)(2026-10-03)
 
 - [ ] クラッシュレポーターの捕捉方式の検証(CrashpadがWindowsとLinuxの両方で使えるか、vcpkgで取得できるか)
 - [ ] プリンターへの送り方の検証(フェーズ2)
