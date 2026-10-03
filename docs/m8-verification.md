@@ -58,5 +58,5 @@
 **判断**
 
 - テキストエンジン(`src/text/` を想定)は HarfBuzz と ICU に依存し、Skia には依存しない。グリフ番号と位置、アウトラインを返し、描画は `render` が Skia で行う。
-- OS フォントの列挙とバイト列の取得は、Skia のフォント管理(DirectWrite、Core Text、Fontconfig)を `platform` の裏で使う。Skia の型は外に出さない。
+- OS フォントの列挙とバイト列の取得は、Skia のフォント管理(DirectWrite、Core Text、Fontconfig)で行う案。OS ごとの違いは Skia が吸収するので自前の OS 別コードは要らないが、CLAUDE.md の「フォント列挙は `platform` の裏に置く」とずれるため、置き場所(`render` に置いて名前とバイト列だけを返すか、`platform` から Skia を使うか)は確認してから決める。
 - PDF の CFF フォントは、フェーズ2では Type3 のまま出す(見た目と検索は保たれる)。仕様書 6.2 のとおり、フェーズ4で専用の PDF 書き出しに置き換えるときに、CFF を FontFile3 として埋め込む。日本語の OS フォントには TrueType(游ゴシック、メイリオ)と CFF(ヒラギノ、源ノ角ゴシック)の両方があるので、PDF 書き出しのダイアログで、Type3 になるフォントがあることを知らせる。

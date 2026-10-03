@@ -72,7 +72,7 @@ jobs:
         run: |
           tests=build/${{ matrix.preset }}/tests
           $tests/render_tests "[pathops-probe]" | grep -E "identities|PIXELS|AREA|FAILED|problems"
-          $tests/render_tests "[text-probe]" --success | grep -vE "^(  |-|\.|=|$)" | head -60
+          $tests/render_tests "[text-probe]"
 
       # A disk image to try the macOS build with (not a release).
       - name: Package (macOS)
