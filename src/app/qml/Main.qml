@@ -37,6 +37,13 @@ ApplicationWindow {
         dark: Spectrum.gray500
         toolTipBase: Spectrum.backgroundElevatedColor
         toolTipText: Spectrum.neutralContentColorDefault
+        // Without these, disabled menu items look like enabled ones.
+        disabled {
+            windowText: Spectrum.disabledContentColor
+            text: Spectrum.disabledContentColor
+            buttonText: Spectrum.disabledContentColor
+            highlightedText: Spectrum.disabledContentColor
+        }
     }
 
     // --paths=N: show N generated blobs instead of the showcase document.
@@ -49,8 +56,8 @@ ApplicationWindow {
     }
     property var samples: []
     // Development aids for checking the UI: --showcase (the sample document),
-    // --light, --select-all, and --tabs=layers,swatches to bring panels to
-    // the front.
+    // --light, --select-all, --tabs=layers,swatches to bring panels to the
+    // front, and --preferences=N.
     function argValue(name) {
         const arg = Qt.application.arguments.find(a => a.startsWith("--" + name + "="));
         return arg ? arg.substring(name.length + 3) : "";
@@ -73,6 +80,11 @@ ApplicationWindow {
             });
         if (Qt.application.arguments.indexOf("--light") >= 0)
             Spectrum.dark = false;  // For this run only; the preference stays.
+        // --preferences=N: open the preferences at page N (for checking layouts).
+        if (argValue("preferences") !== "") {
+            preferencesDialog.category = parseInt(argValue("preferences"));
+            preferencesDialog.show();
+        }
         if (Qt.application.arguments.indexOf("--select-all") >= 0)
             Session.selectAll();
     }
@@ -163,21 +175,24 @@ ApplicationWindow {
                 SpPanel { ImportReportPanel { anchors.fill: parent } }
             }
 
-            // Illustrator's default workspace, roughly: properties and layers
-            // above; color, swatches and stroke below.
+            // Illustrator's default workspace, roughly: properties, layers and
+            // artboards; transform, align and pathfinder; color, swatches and stroke.
             Component.onCompleted: {
                 addDockWidget(properties, KDDW.KDDockWidgets.Location_OnRight, null,
                               Qt.size(Spectrum.standardPanelWidth + 20, 0));
                 properties.addDockWidgetAsTab(layers);
                 properties.addDockWidgetAsTab(artboardsPanel);
-                properties.addDockWidgetAsTab(transform);
-                properties.addDockWidgetAsTab(alignPanel);
-                properties.addDockWidgetAsTab(pathfinderPanel);
-                addDockWidget(colorPanel, KDDW.KDDockWidgets.Location_OnBottom, properties);
+                // Transform, Align and Pathfinder in a group of their own, as
+                // in Illustrator, so that no group has more tabs than fit.
+                addDockWidget(transform, KDDW.KDDockWidgets.Location_OnBottom, properties);
+                transform.addDockWidgetAsTab(alignPanel);
+                transform.addDockWidgetAsTab(pathfinderPanel);
+                addDockWidget(colorPanel, KDDW.KDDockWidgets.Location_OnBottom, transform);
                 colorPanel.addDockWidgetAsTab(swatches);
                 colorPanel.addDockWidgetAsTab(stroke);
                 colorPanel.addDockWidgetAsTab(importReport);
                 properties.setAsCurrentTab();
+                transform.setAsCurrentTab();
                 colorPanel.setAsCurrentTab();
                 const panels = { properties: properties, layers: layers, transform: transform,
                                  align: alignPanel, pathfinder: pathfinderPanel,

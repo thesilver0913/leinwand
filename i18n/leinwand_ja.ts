@@ -1050,123 +1050,127 @@ Adobe Inc. の商標です。</translation>
         <translation>ファイル管理</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="83"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="93"/>
         <source>Keyboard increment</source>
         <translation>キー入力</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="92"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="102"/>
         <source>Pen rubber band</source>
         <translation>ペンツールのラバーバンド</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="96"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="106"/>
         <source>Show the welcome screen at startup</source>
         <translation>起動時にウェルカムスクリーンを表示</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="104"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="114"/>
         <source>Selection tolerance</source>
         <translation>選択の許容範囲</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="115"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="125"/>
         <source>Anchor size</source>
         <translation>アンカーのサイズ</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="130"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="140"/>
         <source>Smart guides</source>
         <translation>スマートガイド</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="134"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="144"/>
         <source>Snapping tolerance</source>
         <translation>スナップの許容範囲</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="149"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="159"/>
         <source>Theme</source>
         <translation>テーマ</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="153"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="163"/>
         <source>Dark</source>
         <translation>ダーク</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="153"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="163"/>
         <source>Light</source>
         <translation>ライト</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="153"/>
         <location filename="../src/app/qml/PreferencesDialog.qml" line="163"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="173"/>
         <source>Match the system</source>
         <translation>OS に合わせる</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="159"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="169"/>
         <source>Language</source>
         <translation>言語</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="169"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="179"/>
         <source>UI scaling</source>
         <translation>UI の拡大率</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="179"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="189"/>
         <source>(after a restart)</source>
         <translation>(再起動後に反映)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="182"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="192"/>
         <source>Canvas color</source>
         <translation>カンバスカラー</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="195"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="205"/>
         <source>Undo levels (0: unlimited)</source>
         <translation>取り消しの回数 (0: 無制限)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="207"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="220"/>
+        <source>Drawing always uses the GPU (Vulkan, or Metal on macOS) in this version.</source>
+        <translation>この版では、描画は常に GPU(Vulkan、macOS では Metal)で行います。</translation>
+    </message>
+    <message>
         <source>Drawing always uses the GPU (Vulkan) in this version.</source>
         <translation>このバージョンでは、描画は常に GPU (Vulkan) で行います。</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="214"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="227"/>
         <source>Autosave every (0: off)</source>
         <translation>自動保存の間隔 (0: 保存しない)</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="218"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="231"/>
         <source> min</source>
         <translation> 分</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="226"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="239"/>
         <source>Recovery data folder</source>
         <translation>復元データの保存先</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="230"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="244"/>
         <source>Default</source>
         <translation>初期設定</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="233"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="247"/>
         <source>Choose...</source>
         <translation>選択...</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="240"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="254"/>
         <source>Reset Preferences</source>
         <translation>環境設定をリセット</translation>
     </message>
     <message>
-        <location filename="../src/app/qml/PreferencesDialog.qml" line="242"/>
+        <location filename="../src/app/qml/PreferencesDialog.qml" line="256"/>
         <source>Close</source>
         <translation>閉じる</translation>
     </message>
@@ -1258,100 +1262,100 @@ Adobe Inc. の商標です。</translation>
     </message>
     <message>
         <location filename="../src/app/session.cpp" line="229"/>
-        <location filename="../src/app/session.cpp" line="574"/>
+        <location filename="../src/app/session.cpp" line="576"/>
         <source>Layer 1</source>
         <translation>レイヤー 1</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="230"/>
+        <location filename="../src/app/session.cpp" line="231"/>
         <source>Artboard %1</source>
         <translation>アートボード %1</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="233"/>
-        <location filename="../src/app/session.cpp" line="578"/>
+        <location filename="../src/app/session.cpp" line="234"/>
+        <location filename="../src/app/session.cpp" line="580"/>
         <source>Untitled-%1</source>
         <translation>名称未設定-%1</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="242"/>
-        <location filename="../src/app/session.cpp" line="264"/>
+        <location filename="../src/app/session.cpp" line="243"/>
+        <location filename="../src/app/session.cpp" line="265"/>
         <source>Could not read %1.</source>
         <translation>%1 を読み込めませんでした。</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="246"/>
+        <location filename="../src/app/session.cpp" line="247"/>
         <source>%1 is not a readable SVG file (%2).</source>
         <translation>%1 は読み込める SVG ファイルではありません (%2)。</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="266"/>
+        <location filename="../src/app/session.cpp" line="267"/>
         <source>%1 is not a Leinwand document.</source>
         <translation>%1 は Leinwand のドキュメントではありません。</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="268"/>
+        <location filename="../src/app/session.cpp" line="269"/>
         <source>%1 was made with a newer version of Leinwand (format %2). Update Leinwand to open it.</source>
         <translation>%1 は新しいバージョンの Leinwand で作成されたファイルです (形式 %2)。開くには Leinwand を更新してください。</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="272"/>
+        <location filename="../src/app/session.cpp" line="273"/>
         <source>%1 is damaged and cannot be opened (%2).</source>
         <translation>%1 は壊れているため開けません (%2)。</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="300"/>
+        <location filename="../src/app/session.cpp" line="301"/>
         <source>Could not save %1 (%2). The file on disk was not changed.</source>
         <translation>%1 を保存できませんでした (%2)。ディスク上のファイルは変更されていません。</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="325"/>
-        <location filename="../src/app/session.cpp" line="354"/>
+        <location filename="../src/app/session.cpp" line="326"/>
+        <location filename="../src/app/session.cpp" line="356"/>
         <source>Could not write %1.</source>
         <translation>%1 を書き出せませんでした。</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="333"/>
+        <location filename="../src/app/session.cpp" line="334"/>
         <source>The document has no artboard to export.</source>
         <translation>書き出すアートボードがありません。</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="352"/>
+        <location filename="../src/app/session.cpp" line="354"/>
         <source>The image would be too large at this resolution.</source>
         <translation>この解像度では画像が大きくなりすぎます。</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="362"/>
+        <location filename="../src/app/session.cpp" line="364"/>
         <source>The recovery file could not be read.</source>
         <translation>復元データを読み込めませんでした。</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="375"/>
+        <location filename="../src/app/session.cpp" line="377"/>
         <source>Recovered</source>
         <translation>復元したドキュメント</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="560"/>
+        <location filename="../src/app/session.cpp" line="562"/>
         <source>Cover spread</source>
         <translation>表紙(見開き)</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="561"/>
+        <location filename="../src/app/session.cpp" line="563"/>
         <source>Back cover</source>
         <translation>表4</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="562"/>
+        <location filename="../src/app/session.cpp" line="564"/>
         <source>Spine</source>
         <translation>背</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="563"/>
+        <location filename="../src/app/session.cpp" line="565"/>
         <source>Front cover</source>
         <translation>表1</translation>
     </message>
     <message>
-        <location filename="../src/app/session.cpp" line="672"/>
+        <location filename="../src/app/session.cpp" line="675"/>
         <source>The path operation could not be completed. Nothing was changed.</source>
         <translation>パスの演算を完了できませんでした。何も変更していません。</translation>
     </message>
