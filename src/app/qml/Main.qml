@@ -26,18 +26,28 @@ ApplicationWindow {
     font.pixelSize: Spectrum.fontSize75
     palette {
         window: Spectrum.backgroundLayer1Color
-        windowText: Spectrum.neutralContentColorDefault
         base: Spectrum.gray25
-        text: Spectrum.neutralContentColorDefault
         button: Spectrum.gray200
-        buttonText: Spectrum.neutralContentColorDefault
         highlight: Spectrum.accentBackgroundColorDefault
-        highlightedText: "#ffffff"
         mid: Spectrum.gray400
         dark: Spectrum.gray500
         toolTipBase: Spectrum.backgroundElevatedColor
         toolTipText: Spectrum.neutralContentColorDefault
-        // Without these, disabled menu items look like enabled ones.
+        // Text colours per state: set for all states at once, they would
+        // also cover the disabled state (disabled menu items would look
+        // enabled, whichever assignment ran last).
+        active {
+            windowText: Spectrum.neutralContentColorDefault
+            text: Spectrum.neutralContentColorDefault
+            buttonText: Spectrum.neutralContentColorDefault
+            highlightedText: "#ffffff"
+        }
+        inactive {
+            windowText: Spectrum.neutralContentColorDefault
+            text: Spectrum.neutralContentColorDefault
+            buttonText: Spectrum.neutralContentColorDefault
+            highlightedText: "#ffffff"
+        }
         disabled {
             windowText: Spectrum.disabledContentColor
             text: Spectrum.disabledContentColor
@@ -57,7 +67,7 @@ ApplicationWindow {
     property var samples: []
     // Development aids for checking the UI: --showcase (the sample document),
     // --light, --select-all, --tabs=layers,swatches to bring panels to the
-    // front, and --preferences=N.
+    // front, --menu=N and --preferences=N.
     function argValue(name) {
         const arg = Qt.application.arguments.find(a => a.startsWith("--" + name + "="));
         return arg ? arg.substring(name.length + 3) : "";
@@ -80,6 +90,9 @@ ApplicationWindow {
             });
         if (Qt.application.arguments.indexOf("--light") >= 0)
             Spectrum.dark = false;  // For this run only; the preference stays.
+        // --menu=N: open menu N of the menu bar (for checking how it looks).
+        if (argValue("menu") !== "")
+            Qt.callLater(() => window.menuBar.menuAt(parseInt(argValue("menu"))).popup(0, window.menuBar.height));
         // --preferences=N: open the preferences at page N (for checking layouts).
         if (argValue("preferences") !== "") {
             preferencesDialog.category = parseInt(argValue("preferences"));
