@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- The app icon (spec 9): colour bands sweeping in from the upper right, the
+     first traced as a selected Bezier path with its handles. 48 px and up;
+     leinwand-icon-small.svg is the drawing for smaller sizes. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="Leinwand">
+<defs>
+<radialGradient id="glow1" cx="0.85" cy="0.2" r="0.85"><stop offset="0" stop-color="#5B4BFF" stop-opacity="0.4"></stop><stop offset="1" stop-color="#5B4BFF" stop-opacity="0"></stop></radialGradient>
+<filter id="lift1" filterUnits="userSpaceOnUse" x="-400" y="-400" width="2000" height="2000"><feDropShadow dx="-8" dy="10" stdDeviation="14" flood-color="#000000" flood-opacity="0.38"></feDropShadow></filter>
+<filter id="grain1" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"></feTurbulence><feColorMatrix type="saturate" values="0"></feColorMatrix></filter>
+<filter id="tile1" x="-10%" y="-10%" width="120%" height="120%"><feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.3"></feDropShadow></filter>
+<clipPath id="clip1"><rect x="22" y="22" width="980" height="980" rx="221"></rect></clipPath>
+</defs>
+<rect x="22" y="22" width="980" height="980" rx="221" fill="#121216" filter="url(#tile1)"></rect>
+<g clip-path="url(#clip1)">
+<rect x="22" y="22" width="980" height="980" fill="url(#glow1)"></rect>
+<g transform="translate(1002 22) scale(1.5) translate(-1002 -22)">
+<g fill="none" stroke-width="110" stroke-linecap="round">
+<path d="M 300 -60 C 480 260, 700 200, 1090 560" stroke="#8B4DFF" filter="url(#lift1)"></path>
+<path d="M 420 -60 C 580 200, 780 150, 1090 430" stroke="#2F6BFF" filter="url(#lift1)"></path>
+<path d="M 540 -60 C 680 140, 850 100, 1090 300" stroke="#19C2A0" filter="url(#lift1)"></path>
+<path d="M 660 -60 C 780 80, 920 50, 1090 170" stroke="#FFB627" filter="url(#lift1)"></path>
+<path d="M 790 -60 C 880 20, 980 0, 1090 40" stroke="#FF5A4F" filter="url(#lift1)"></path>
+</g>
+<g transform="translate(-7 12)" stroke="#ffffff" stroke-width="9.5" fill="#ffffff">
+<path d="M 300 -60 C 480 260, 700 200, 1090 560" fill="none"></path>
+<line x1="485" y1="162" x2="748" y2="308"></line>
+<circle cx="485" cy="162" r="17"></circle>
+<circle cx="748" cy="308" r="17"></circle>
+<rect x="594" y="213" width="44" height="44" fill="#121216"></rect>
+</g>
+</g>
+<rect x="22" y="22" width="980" height="980" filter="url(#grain1)" opacity="0.2" style="mix-blend-mode: overlay"></rect>
+</g>
+<rect x="23.5" y="23.5" width="977" height="977" rx="219.5" fill="none" stroke="#ffffff" stroke-opacity="0.14" stroke-width="3"></rect>
+</svg>

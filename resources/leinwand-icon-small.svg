@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- The app icon for 16-32 px (spec 9): the bands of leinwand-icon.svg
+     without the shadows, glow and grain, and the path and its handles drawn
+     thicker so they survive at this size. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 1024 1024">
+<defs>
+<clipPath id="clip"><rect x="22" y="22" width="980" height="980" rx="221"/></clipPath>
+</defs>
+<rect x="22" y="22" width="980" height="980" rx="221" fill="#121216"/>
+<g clip-path="url(#clip)">
+<g transform="translate(1002 22) scale(1.5) translate(-1002 -22)">
+<g fill="none" stroke-width="110" stroke-linecap="round">
+<path d="M 300 -60 C 480 260, 700 200, 1090 560" stroke="#8B4DFF"/>
+<path d="M 420 -60 C 580 200, 780 150, 1090 430" stroke="#2F6BFF"/>
+<path d="M 540 -60 C 680 140, 850 100, 1090 300" stroke="#19C2A0"/>
+<path d="M 660 -60 C 780 80, 920 50, 1090 170" stroke="#FFB627"/>
+<path d="M 790 -60 C 880 20, 980 0, 1090 40" stroke="#FF5A4F"/>
+</g>
+<g transform="translate(-7 12)" stroke="#ffffff" stroke-width="26" fill="#ffffff">
+<path d="M 300 -60 C 480 260, 700 200, 1090 560" fill="none"/>
+<line x1="485" y1="162" x2="748" y2="308"/>
+<circle cx="485" cy="162" r="40"/>
+<circle cx="748" cy="308" r="40"/>
+<rect x="576" y="195" width="80" height="80" fill="#121216"/>
+</g>
+</g>
+</g>
+</svg>

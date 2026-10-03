@@ -1,0 +1,7 @@
+/build/
+/vcpkg_installed/
+/.vcpkg-cache/
+/.vs/
+/.vscode/
+/CMakeUserPresets.json
+aqtinstall.log

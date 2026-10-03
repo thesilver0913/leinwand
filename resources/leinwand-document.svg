@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- The .lwd document icon (spec 9): a page with a folded corner and the app
+     icon (as drawn for small sizes) on it. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <clipPath id="clip"><rect x="22" y="22" width="980" height="980" rx="221"/></clipPath>
+  </defs>
+  <path d="M48 12 H168 L216 60 V232 A12 12 0 0 1 204 244 H48 A12 12 0 0 1 36 232 V24 A12 12 0 0 1 48 12 Z"
+        fill="#FAFAFB" stroke="#9A9CA2" stroke-width="4"/>
+  <path d="M168 12 V48 A12 12 0 0 0 180 60 H216" fill="#E6E7EA" stroke="#9A9CA2" stroke-width="4"
+        stroke-linejoin="round"/>
+  <svg x="60" y="88" width="136" height="136" viewBox="0 0 1024 1024">
+    <rect x="22" y="22" width="980" height="980" rx="221" fill="#121216"/>
+    <g clip-path="url(#clip)">
+      <g transform="translate(1002 22) scale(1.5) translate(-1002 -22)">
+        <g fill="none" stroke-width="110" stroke-linecap="round">
+          <path d="M 300 -60 C 480 260, 700 200, 1090 560" stroke="#8B4DFF"/>
+          <path d="M 420 -60 C 580 200, 780 150, 1090 430" stroke="#2F6BFF"/>
+          <path d="M 540 -60 C 680 140, 850 100, 1090 300" stroke="#19C2A0"/>
+          <path d="M 660 -60 C 780 80, 920 50, 1090 170" stroke="#FFB627"/>
+          <path d="M 790 -60 C 880 20, 980 0, 1090 40" stroke="#FF5A4F"/>
+        </g>
+        <g transform="translate(-7 12)" stroke="#ffffff" stroke-width="20" fill="#ffffff">
+          <path d="M 300 -60 C 480 260, 700 200, 1090 560" fill="none"/>
+          <line x1="485" y1="162" x2="748" y2="308"/>
+          <circle cx="485" cy="162" r="32"/>
+          <circle cx="748" cy="308" r="32"/>
+          <rect x="584" y="203" width="64" height="64" fill="#121216"/>
+        </g>
+      </g>
+    </g>
+  </svg>
+</svg>

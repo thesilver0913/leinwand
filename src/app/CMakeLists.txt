@@ -1,0 +1,174 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+find_package(Qt6 6.8 REQUIRED COMPONENTS Gui Quick QuickControls2 Svg LinguistTools)
+qt_standard_project_setup(REQUIRES 6.8)
+
+qt_add_executable(leinwand WIN32
+  main.cpp
+)
+if(WIN32)
+  # The program icon and version information (spec 9).
+  configure_file(leinwand.rc.in ${CMAKE_CURRENT_BINARY_DIR}/leinwand.rc @ONLY)
+  target_sources(leinwand PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/leinwand.rc)
+endif()
+qt_add_qml_module(leinwand
+  URI Leinwand
+  QML_FILES
+    qml/Main.qml
+    qml/PreferencesDialog.qml
+    qml/ShortcutsDialog.qml
+    qml/Splash.qml
+    qml/WelcomeScreen.qml
+    qml/AppMenuBar.qml
+    qml/ControlBar.qml
+    qml/FillStroke.qml
+    qml/StatusBar.qml
+    qml/Toolbar.qml
+    qml/controls/SpActionButton.qml
+    qml/controls/SpCheckBox.qml
+    qml/controls/SpIcon.qml
+    qml/controls/SpLabel.qml
+    qml/controls/SpNumberField.qml
+    qml/controls/SpPanel.qml
+    qml/controls/SpPicker.qml
+    qml/controls/SpSection.qml
+    qml/controls/SpSegmented.qml
+    qml/controls/SpSlider.qml
+    qml/controls/SpSwatch.qml
+    qml/controls/SpTextField.qml
+    qml/panels/ColorPanel.qml
+    qml/panels/ImportReportPanel.qml
+    qml/panels/LayersPanel.qml
+    qml/panels/PropertiesPanel.qml
+    qml/panels/StrokePanel.qml
+    qml/panels/SwatchesPanel.qml
+    qml/panels/TransformFields.qml
+    qml/panels/TransformPanel.qml
+  SOURCES
+    canvas_item.h canvas_item.cpp
+    icon_provider.h icon_provider.cpp
+    layers_model.h layers_model.cpp
+    preferences.h preferences.cpp
+    shortcuts.h shortcuts.cpp
+    session.h session.cpp
+    spectrum_theme.h spectrum_theme.cpp
+)
+
+# KDDockWidgets' chrome, replaced with Spectrum-styled QML. Plain resources
+# rather than QML_FILES: they import KDDockWidgets' base types from qrc,
+# which qmlcachegen cannot resolve at build time.
+qt_add_resources(leinwand dock_qml
+  PREFIX /dock/qml
+  BASE qml/dock
+  FILES
+    qml/dock/CentralCanvas.qml
+    qml/dock/ClassicIndicator.qml
+    qml/dock/SpectrumFloatingWindow.qml
+    qml/dock/SpectrumGroup.qml
+    qml/dock/SpectrumIndicatorsOverlay.qml
+    qml/dock/SpectrumRubberBand.qml
+    qml/dock/SpectrumSeparator.qml
+    qml/dock/SpectrumTabBar.qml
+    qml/dock/SpectrumTitleBar.qml
+)
+
+# Leinwand's own icons for tools Spectrum has none for (spec 7).
+file(GLOB leinwand_icons ${PROJECT_SOURCE_DIR}/resources/icons/*.svg)
+qt_add_resources(leinwand leinwand_icons
+  PREFIX /icons/leinwand
+  BASE ${PROJECT_SOURCE_DIR}/resources/icons
+  FILES ${leinwand_icons}
+)
+
+# Spectrum 2 tokens, converted at build time (spec 7, "デザイン言語").
+set(spectrum_tokens ${PROJECT_SOURCE_DIR}/third_party/spectrum-tokens/variables.json)
+set(generated ${CMAKE_CURRENT_BINARY_DIR}/generated)
+add_custom_command(
+  OUTPUT ${generated}/spectrum_tokens.inc
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${generated}
+  COMMAND spectrum_theme ${spectrum_tokens} ${generated}/spectrum_tokens.inc
+  DEPENDS spectrum_theme ${spectrum_tokens}
+  COMMENT "Converting the Spectrum design tokens"
+)
+target_sources(leinwand PRIVATE ${generated}/spectrum_tokens.inc)
+target_include_directories(leinwand PRIVATE ${generated})
+
+# Workflow icons, recolored on load by IconProvider.
+file(GLOB spectrum_icons
+  ${PROJECT_SOURCE_DIR}/third_party/spectrum-workflow-icons/svg/*.svg)
+qt_add_resources(leinwand spectrum_icons
+  PREFIX /icons/spectrum
+  BASE ${PROJECT_SOURCE_DIR}/third_party/spectrum-workflow-icons/svg
+  FILES ${spectrum_icons}
+)
+
+# QRhi (rhi/qrhi.h) is only reachable through GuiPrivate in Qt 6.8.
+target_link_libraries(leinwand PRIVATE
+  editor render io Qt6::Gui Qt6::GuiPrivate Qt6::Quick Qt6::QuickControls2 Qt6::Svg
+  KDAB::kddockwidgets
+)
+target_compile_definitions(leinwand PRIVATE LEINWAND_VERSION="${PROJECT_VERSION}")
+
+# The splash artwork and the window icon (spec 9).
+file(GLOB app_icons ${PROJECT_SOURCE_DIR}/resources/icons/app/leinwand-*.png)
+qt_add_resources(leinwand splash
+  PREFIX /
+  BASE ${PROJECT_SOURCE_DIR}
+  FILES ${PROJECT_SOURCE_DIR}/resources/splash.png ${app_icons}
+)
+
+# UI translations (spec 7.3): Japanese and English. `cmake --build --target
+# update_translations` refreshes the .ts files from the sources.
+qt_add_translations(leinwand
+  TS_FILES ${PROJECT_SOURCE_DIR}/i18n/leinwand_ja.ts ${PROJECT_SOURCE_DIR}/i18n/leinwand_en.ts
+  PLURALS_TS_FILE ${PROJECT_SOURCE_DIR}/i18n/leinwand_en.ts
+  RESOURCE_PREFIX /i18n
+)
+
+# The bundled UI fonts (SIL OFL), next to the executable.
+file(GLOB ui_fonts ${PROJECT_SOURCE_DIR}/third_party/fonts/*.otf)
+add_custom_command(TARGET leinwand POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:leinwand>/fonts
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ui_fonts} $<TARGET_FILE_DIR:leinwand>/fonts
+)
+
+# Installation (spec 9): the program with its Qt and vcpkg libraries, the UI
+# fonts and the licences. `cmake --install` gives the folder that is zipped
+# into the release package (tools/package-windows.ps1).
+include(GNUInstallDirs)
+install(TARGETS leinwand
+  BUNDLE DESTINATION .
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+if(WIN32)
+  # Skia and the other vcpkg DLLs, which vcpkg copies next to the program
+  # when it is built (Skia's own dependencies are not CMake targets).
+  install(CODE "
+    file(GLOB vcpkg_dlls \"$<TARGET_FILE_DIR:leinwand>/*.dll\")
+    file(INSTALL \${vcpkg_dlls} DESTINATION \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}\")
+  ")
+endif()
+install(FILES ${ui_fonts} DESTINATION ${CMAKE_INSTALL_BINDIR}/fonts)
+install(FILES
+  ${PROJECT_SOURCE_DIR}/LICENSE
+  ${PROJECT_SOURCE_DIR}/NOTICE.md
+  DESTINATION .
+)
+install(FILES
+  ${PROJECT_SOURCE_DIR}/third_party/fonts/LICENSE-SourceSans3.md
+  ${PROJECT_SOURCE_DIR}/third_party/fonts/LICENSE-SourceHanSans.txt
+  ${PROJECT_SOURCE_DIR}/third_party/spectrum-tokens/LICENSE
+  DESTINATION licenses
+)
+# Drawing is Vulkan only: no software OpenGL or Direct3D shader compiler.
+qt_generate_deploy_qml_app_script(
+  TARGET leinwand
+  OUTPUT_SCRIPT deploy_script
+  NO_UNSUPPORTED_PLATFORM_ERROR
+  DEPLOY_TOOL_OPTIONS --no-opengl-sw --no-system-d3d-compiler --no-system-dxc-compiler
+                      --no-compiler-runtime
+)
+# The MSVC runtime DLLs next to the program rather than the redistributable
+# installer.
+set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ${CMAKE_INSTALL_BINDIR})
+include(InstallRequiredSystemLibraries)
+install(SCRIPT ${deploy_script})
