@@ -34,7 +34,7 @@ Window {
         objectSendBackward: qsTr("Send Backward"), objectSendToBack: qsTr("Send to Back"),
         objectGroup: qsTr("Group"), objectUngroup: qsTr("Ungroup"), objectJoin: qsTr("Join"),
         objectCompoundMake: qsTr("Make Compound Path"), objectCompoundRelease: qsTr("Release Compound Path"),
-        windowPathfinder: qsTr("Pathfinder"),
+        windowPathfinder: qsTr("Pathfinder"), windowAlign: qsTr("Align"), objectAverage: qsTr("Average"),
         selectAll: qsTr("All"), selectDeselect: qsTr("Deselect"),
         viewOutline: qsTr("Outline"), viewZoomIn: qsTr("Zoom In"), viewZoomOut: qsTr("Zoom Out"),
         viewFitArtboard: qsTr("Fit Artboard in Window"), viewActualSize: qsTr("Actual Size"),
@@ -44,7 +44,7 @@ Window {
         toolDeleteAnchor: qsTr("Delete Anchor Point Tool"), toolAnchorPoint: qsTr("Anchor Point Tool"),
         toolLine: qsTr("Line Segment Tool"), toolRectangle: qsTr("Rectangle Tool"),
         toolEllipse: qsTr("Ellipse Tool"), toolPolygon: qsTr("Polygon Tool"), toolStar: qsTr("Star Tool"),
-        toolEyedropper: qsTr("Eyedropper Tool"), toolHand: qsTr("Hand Tool"), toolZoom: qsTr("Zoom Tool"),
+        toolEyedropper: qsTr("Eyedropper Tool"), toolScissors: qsTr("Scissors Tool"), toolHand: qsTr("Hand Tool"), toolZoom: qsTr("Zoom Tool"),
         paintToggle: qsTr("Toggle Fill and Stroke"), paintSwap: qsTr("Swap Fill and Stroke"),
         paintDefault: qsTr("Default Fill and Stroke"), paintNone: qsTr("None")
     })

@@ -3,6 +3,7 @@
 # Qt, so it can be unit-tested.
 add_library(editor STATIC
   editor.cpp
+  editor_align.cpp
   editor_paths.cpp
   editor_pathfinder.cpp
   editor_snap.cpp

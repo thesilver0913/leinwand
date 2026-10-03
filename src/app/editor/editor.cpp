@@ -256,6 +256,7 @@ Overlay Editor::overlay() const {
   Overlay overlay;
   overlay.selection = selection();
   if (dragging()) overlay.guides = guides_;
+  overlay.key_object = KeyObjectBounds();
   const Tool tool = this->tool();
   const bool path_tool = tool == Tool::kPen || tool == Tool::kDirectSelection ||
                          tool == Tool::kAddAnchor || tool == Tool::kDeleteAnchor ||
@@ -386,6 +387,9 @@ void Editor::PointerDown(Point p, Modifiers modifiers, double pick) {
     case Tool::kEyedropper:
       EyedropperDown(p, pick);
       return;
+    case Tool::kScissors:
+      ScissorsDown(p, pick);
+      return;
     case Tool::kRectangle:
     case Tool::kEllipse:
     case Tool::kPolygon:
@@ -425,6 +429,8 @@ void Editor::PointerDown(Point p, Modifiers modifiers, double pick) {
     if (!selection.contains(hit->top_level_id)) return;
   } else if (!selection.contains(hit->top_level_id)) {
     SetSelection({hit->top_level_id});
+  } else if (selection.size() > 1) {
+    drag_.key_candidate = hit->top_level_id;
   }
   drag_.kind = DragKind::kPending;
 }
@@ -573,6 +579,17 @@ void Editor::PointerUp(Point p, Modifiers modifiers) {
                                        : "move",
            std::move(result));
     return;
+  }
+  if (kind == DragKind::kPending && !drag_.key_candidate.empty()) {
+    // A click on a selected object (spec 7.2): it becomes the key object,
+    // and alignment follows it; a second click clears it.
+    if (key_object() == drag_.key_candidate) {
+      key_object_.clear();
+      align_to_ = AlignTo::kSelection;
+    } else {
+      key_object_ = drag_.key_candidate;
+      align_to_ = AlignTo::kKeyObject;
+    }
   }
   drag_ = {};
 }

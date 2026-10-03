@@ -34,6 +34,9 @@ using leinwand::editor::Tool;
 
 constexpr int kHand = 12;
 constexpr int kZoom = 13;
+// Editor tools after the eyedropper come after the view tools in QML's
+// numbering: QML's 14 is the editor's kScissors.
+constexpr int kScissors = 14;
 
 Session* g_instance = nullptr;
 
@@ -417,7 +420,8 @@ QString Session::redoAction() const {
 }
 
 int Session::tool() const {
-  return view_tool_ >= 0 ? view_tool_ : static_cast<int>(editor_->tool());
+  if (view_tool_ >= 0) return view_tool_;
+  return editor_->tool() == Tool::kScissors ? kScissors : static_cast<int>(editor_->tool());
 }
 
 void Session::setTool(int tool) {
@@ -426,7 +430,8 @@ void Session::setTool(int tool) {
     editor_->FinishPath();
     view_tool_ = tool;
   } else {
-    if (tool < 0 || tool > static_cast<int>(Tool::kEyedropper)) return;
+    if (tool == kScissors) tool = static_cast<int>(Tool::kScissors);
+    if (tool < 0 || tool > static_cast<int>(Tool::kScissors)) return;
     if (view_tool_ < 0 && tool == static_cast<int>(editor_->chosen_tool()) &&
         tool == this->tool()) {
       return;
@@ -492,6 +497,35 @@ LEINWAND_COMMAND(releaseCompoundPath, ReleaseCompoundPath)
 LEINWAND_COMMAND(swapFillAndStroke, SwapFillAndStroke)
 LEINWAND_COMMAND(defaultFillAndStroke, DefaultFillAndStroke)
 #undef LEINWAND_COMMAND
+
+void Session::setAlignTo(int to) {
+  if (to < 0 || to > 2 || to == alignTo()) return;
+  editor_->SetAlignTo(static_cast<leinwand::editor::AlignTo>(to));
+  emit documentChanged();
+}
+
+void Session::align(int edge) {
+  if (edge < 0 || edge > 5) return;
+  editor_->AlignSelection(static_cast<leinwand::editor::AlignEdge>(edge));
+  Changed();
+}
+
+void Session::distribute(int edge) {
+  if (edge < 0 || edge > 5) return;
+  editor_->DistributeSelection(static_cast<leinwand::editor::AlignEdge>(edge));
+  Changed();
+}
+
+void Session::distributeSpacing(bool horizontal, double spacing) {
+  editor_->DistributeSpacing(horizontal,
+                             std::isnan(spacing) ? std::nullopt : std::optional<double>(spacing));
+  Changed();
+}
+
+void Session::average(int axis) {
+  editor_->AverageAnchors(axis != 1, axis != 0);
+  Changed();
+}
 
 void Session::pathfinder(int operation) {
   using leinwand::editor::Editor;

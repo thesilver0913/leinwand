@@ -121,6 +121,12 @@ ApplicationWindow {
                 SpPanel { TransformPanel { anchors.fill: parent } }
             }
             KDDW.DockWidget {
+                id: alignPanel
+                uniqueName: "align"
+                title: qsTr("Align")
+                SpPanel { AlignPanel { anchors.fill: parent } }
+            }
+            KDDW.DockWidget {
                 id: pathfinderPanel
                 uniqueName: "pathfinder"
                 title: qsTr("Pathfinder")
@@ -158,6 +164,7 @@ ApplicationWindow {
                               Qt.size(Spectrum.standardPanelWidth + 20, 0));
                 properties.addDockWidgetAsTab(layers);
                 properties.addDockWidgetAsTab(transform);
+                properties.addDockWidgetAsTab(alignPanel);
                 properties.addDockWidgetAsTab(pathfinderPanel);
                 addDockWidget(colorPanel, KDDW.KDDockWidgets.Location_OnBottom, properties);
                 colorPanel.addDockWidgetAsTab(swatches);
@@ -166,7 +173,7 @@ ApplicationWindow {
                 properties.setAsCurrentTab();
                 colorPanel.setAsCurrentTab();
                 const panels = { properties: properties, layers: layers, transform: transform,
-                                 pathfinder: pathfinderPanel,
+                                 align: alignPanel, pathfinder: pathfinderPanel,
                                  color: colorPanel, swatches: swatches, stroke: stroke };
                 for (const name of window.argValue("tabs").split(","))
                     if (panels[name])
@@ -176,6 +183,13 @@ ApplicationWindow {
     }
 
     // Panels with their own keys (Illustrator's Window menu).
+    Shortcut {
+        sequences: Shortcuts.windowAlign
+        onActivated: {
+            alignPanel.open();
+            alignPanel.setAsCurrentTab();
+        }
+    }
     Shortcut {
         sequences: Shortcuts.windowPathfinder
         onActivated: {
@@ -197,6 +211,7 @@ ApplicationWindow {
     Shortcut { sequences: Shortcuts.toolRectangle; enabled: Session.hasDocument; onActivated: Session.tool = 1 }
     Shortcut { sequences: Shortcuts.toolEllipse; enabled: Session.hasDocument; onActivated: Session.tool = 2 }
     Shortcut { sequences: Shortcuts.toolEyedropper; enabled: Session.hasDocument; onActivated: Session.tool = 11 }
+    Shortcut { sequences: Shortcuts.toolScissors; enabled: Session.hasDocument; onActivated: Session.tool = 14 }
     Shortcut { sequences: Shortcuts.toolHand; enabled: Session.hasDocument; onActivated: Session.tool = 12 }
     Shortcut { sequences: Shortcuts.toolZoom; enabled: Session.hasDocument; onActivated: Session.tool = 13 }
 
@@ -210,13 +225,14 @@ ApplicationWindow {
 
     // --- Files (spec 3.3, 6) ---------------------------------------------------
 
-    readonly property var panels: [properties, layers, transform, pathfinderPanel, colorPanel,
+    readonly property var panels: [properties, layers, transform, alignPanel, pathfinderPanel, colorPanel,
                                    swatches, stroke, importReport]
     property alias openDialog: openDialog
     property alias saveAsDialog: saveAsDialog
     property alias pngOptions: pngOptions
     property alias aboutDialog: aboutDialog
     property alias preferencesDialog: preferencesDialog
+    property alias averageDialog: averageDialog
     property alias shortcutsDialog: shortcutsDialog
 
     function showWelcome() {
@@ -428,6 +444,7 @@ ApplicationWindow {
         onOpenRequested: window.guard(() => openDialog.open())
         transientParent: window
     }
+    AverageDialog { id: averageDialog }
     PreferencesDialog {
         id: preferencesDialog
         transientParent: window

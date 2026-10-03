@@ -205,6 +205,7 @@ leinwand::render::Overlay CanvasItem::overlay(double pixel_ratio) const {
   overlay.rubber_band = std::move(o.rubber_band);
   overlay.guides = std::move(o.guides);
   overlay.outline = outline_view_;
+  overlay.key_object = o.key_object;
   return overlay;
 }
 
@@ -589,6 +590,9 @@ void CanvasItem::UpdateCursor(QPointF position) {
       return;
     case Tool::kEyedropper:
       setCursor(IconCursor(QStringLiteral("Eyedropper"), {2.2, 17.8}));
+      return;
+    case Tool::kScissors:
+      setCursor(IconCursor(QStringLiteral("Cut"), {10, 10}));
       return;
     default:
       setCursor(Qt::CrossCursor);

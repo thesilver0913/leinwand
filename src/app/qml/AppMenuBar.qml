@@ -86,6 +86,7 @@ MenuBar {
         Menu {
             title: qsTr("&Path")
             Action { text: qsTr("&Join"); shortcut: root.key("objectJoin"); onTriggered: Session.joinEnds() }
+            Action { text: qsTr("&Average..."); shortcut: root.key("objectAverage"); onTriggered: root.window.averageDialog.open() }
         }
         Menu {
             title: qsTr("Compound Pat&h")

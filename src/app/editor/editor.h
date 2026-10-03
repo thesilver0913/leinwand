@@ -41,6 +41,7 @@ enum class Tool {
   kConvertAnchor,
   kDirectSelection,
   kEyedropper,
+  kScissors,  // Cuts a path where it is clicked (C).
 };
 
 // What a pen click would do at a point (spec 4.2: the cursor shows it).
@@ -108,7 +109,12 @@ struct Overlay {
   std::vector<PathOverlay> paths;                           // Anchors and handles being edited.
   std::optional<core::PathData> rubber_band;                // The pen's next segment.
   std::vector<std::pair<core::Point, core::Point>> guides;  // Smart guides while dragging.
+  std::optional<core::Rect> key_object;                     // Drawn with a thick outline.
 };
+
+// The Align panel (spec 7.2): what objects line up with.
+enum class AlignTo { kSelection, kKeyObject, kArtboard };
+enum class AlignEdge { kLeft, kHorizontalCenter, kRight, kTop, kVerticalCenter, kBottom };
 
 class Editor {
  public:
@@ -264,8 +270,9 @@ class Editor {
     core::Point space_from;                  // Space during a pen drag: last position.
     std::optional<core::PathData> original;  // The path before this drag.
     std::optional<core::Document> base;      // Document the drag edits from.
-    double pick = 0.0;  // Pick radius at the press, also the snapping distance.
-    core::Point grab;   // The point that snaps: a grabbed anchor, or the press.
+    double pick = 0.0;          // Pick radius at the press, also the snapping distance.
+    std::string key_candidate;  // A selected object pressed: the key if not dragged.
+    core::Point grab;           // The point that snaps: a grabbed anchor, or the press.
   };
 
   // A path object being edited, in its own coordinates.
@@ -284,6 +291,9 @@ class Editor {
   // Paths whose anchors can be edited: the selection and the pen's path.
   std::vector<std::string> EditablePaths() const;
   std::optional<AnchorRef> AnchorAt(core::Point p, double pick) const;
+  void ScissorsDown(core::Point p, double pick);
+  // Cuts the path at an anchor: an open path in two, a closed one open.
+  void CutPath(PathRef ref, int index, core::Document base);
   void PenDown(core::Point p, Modifiers modifiers, double pick);
   void PenMove();
   void PenUp();
@@ -333,6 +343,27 @@ class Editor {
   };
   PathfinderOutcome ApplyPathfinder(geometry::Pathfinder operation);
 
+  // The Align panel (editor_align.cpp). With direct selection and anchors
+  // selected, alignment moves the anchors. A lone object aligns to the
+  // artboard, as in Illustrator. Each command is one undo step.
+  AlignTo align_to() const { return align_to_; }
+  void SetAlignTo(AlignTo to) { align_to_ = to; }
+  // The key object: a selected object clicked again with the selection tool
+  // (clicking it once more clears it). Empty when none is set or it left
+  // the selection.
+  std::string key_object() const;
+  void AlignSelection(AlignEdge edge);
+  // Distribute Objects: the outermost stay; the others' edges (or centres)
+  // are spread evenly between them.
+  void DistributeSelection(AlignEdge edge);
+  // Distribute Spacing: equal gaps between the objects. With a key object
+  // and `spacing`, the key stays and the others sit that far apart; else
+  // the outermost stay.
+  void DistributeSpacing(bool horizontal, std::optional<double> spacing = std::nullopt);
+  // Object > Path > Average (Alt+Ctrl+J): the selected anchors move to
+  // their mean position, along one axis or both.
+  void AverageAnchors(bool horizontal, bool vertical);
+
   // Object > Compound Path (Ctrl+8, Alt+Shift+Ctrl+8). Make joins the
   // selected paths and compound paths into one compound path with the
   // backmost one's appearance (as in Illustrator), placed where the
@@ -353,6 +384,9 @@ class Editor {
   core::History history_;
   core::IdGenerator ids_;
   const geometry::PathOpsEngine* path_ops_ = nullptr;
+  std::optional<core::Rect> KeyObjectBounds() const;  // Document coordinates.
+  AlignTo align_to_ = AlignTo::kSelection;
+  std::string key_object_;
   Drag drag_;
   Tool tool_ = Tool::kSelection;
   int polygon_sides_ = 6;

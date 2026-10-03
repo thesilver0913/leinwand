@@ -33,6 +33,9 @@ class Session : public QObject {
   QML_SINGLETON
   Q_PROPERTY(int objectCount READ objectCount NOTIFY documentChanged)
   Q_PROPERTY(int selectionCount READ selectionCount NOTIFY documentChanged)
+  // The Align panel: 0 selection, 1 key object, 2 artboard.
+  Q_PROPERTY(int alignTo READ alignTo WRITE setAlignTo NOTIFY documentChanged)
+  Q_PROPERTY(bool hasKeyObject READ hasKeyObject NOTIFY documentChanged)
   Q_PROPERTY(int anchorCount READ anchorCount NOTIFY documentChanged)
   Q_PROPERTY(QString undoAction READ undoAction NOTIFY documentChanged)
   Q_PROPERTY(QString redoAction READ redoAction NOTIFY documentChanged)
@@ -88,6 +91,9 @@ class Session : public QObject {
 
   int objectCount() const { return object_count_; }
   int selectionCount() const { return static_cast<int>(editor_->selection().size()); }
+  int alignTo() const { return static_cast<int>(editor_->align_to()); }
+  void setAlignTo(int to);
+  bool hasKeyObject() const { return !editor_->key_object().empty(); }
   int anchorCount() const { return static_cast<int>(editor_->anchor_selection().size()); }
   QString undoAction() const;
   QString redoAction() const;
@@ -161,6 +167,13 @@ class Session : public QObject {
   // order (0 unite ... 9 minus back). Shows an error when the operation
   // fails, and changes nothing then.
   Q_INVOKABLE void pathfinder(int operation);
+  // The Align panel; edges follow editor::AlignEdge (0 left ... 5 bottom).
+  Q_INVOKABLE void align(int edge);
+  Q_INVOKABLE void distribute(int edge);
+  // A NaN spacing means automatic (the outermost objects stay).
+  Q_INVOKABLE void distributeSpacing(bool horizontal, double spacing);
+  // Object > Path > Average: 0 horizontal, 1 vertical, 2 both.
+  Q_INVOKABLE void average(int axis);
   Q_INVOKABLE void makeCompoundPath();     // Ctrl+8
   Q_INVOKABLE void releaseCompoundPath();  // Alt+Shift+Ctrl+8
 

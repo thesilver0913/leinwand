@@ -34,6 +34,7 @@ add_executable(editor_tests
   editor/style_test.cpp
   editor/number_input_test.cpp
   editor/pathfinder_test.cpp
+  editor/align_test.cpp
 )
 # The pathfinder tests run on render's Skia PathOps engine.
 target_link_libraries(editor_tests PRIVATE editor render Catch2::Catch2WithMain)
