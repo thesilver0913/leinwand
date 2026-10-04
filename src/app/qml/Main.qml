@@ -109,6 +109,10 @@ ApplicationWindow {
         }
         if (Qt.application.arguments.indexOf("--print") >= 0)
             Qt.callLater(() => printDialog.open());
+        // --autosave-seconds=N: autosave to the file every N seconds, this run
+        // only (for checking autosaving).
+        if (argValue("autosave-seconds") !== "")
+            Session.overrideAutosave(parseInt(argValue("autosave-seconds")));
         // --tool=N: start with tool N (for checking how a tool looks).
         if (argValue("tool") !== "")
             Session.tool = parseInt(argValue("tool"));

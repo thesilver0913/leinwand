@@ -41,6 +41,8 @@ const QVariantMap& Defaults() {
       {"undoLimit", 0.0},  // 0: unlimited.
       // File handling.
       {"autosaveMinutes", 2.0},
+      {"autosaveToFile", false},        // Saved .lwd files are written in place too.
+      {"autosaveBackups", 5.0},         // Earlier versions kept per document.
       {"recoveryFolder", QString()},    // Empty: the default.
       {"recentFiles", QVariantList()},  // Newest first.
   };

@@ -5,6 +5,7 @@ find_package(miniz CONFIG REQUIRED)
 find_package(pugixml CONFIG REQUIRED)
 
 add_library(io STATIC
+  backup.cpp
   import_report.cpp
   lwd_file.cpp
   lwd_json.cpp

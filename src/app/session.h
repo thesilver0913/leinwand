@@ -242,7 +242,13 @@ class Session : public QObject {
   Q_INVOKABLE void setArtboardBounds(int index, double x, double y, double width, double height);
   Q_INVOKABLE void makeCompoundPath();     // Ctrl+8
   Q_INVOKABLE void releaseCompoundPath();  // Alt+Shift+Ctrl+8
-  Q_INVOKABLE void createTrimMarks();      // Japanese or Western, by preference.
+  // Where autosaving to the file keeps the earlier versions of the current
+  // document (spec 3.3), for the preferences' "show" button.
+  Q_INVOKABLE QString backupFolder() const;
+  // Development: autosave every `seconds`, to the file itself, for this run
+  // only (the preferences stay as they are).
+  Q_INVOKABLE void overrideAutosave(int seconds);
+  Q_INVOKABLE void createTrimMarks();  // Japanese or Western, by preference.
   // Edit > Cut, Copy, Paste (Ctrl+X, C, V), Paste in Front (Ctrl+F), in
   // Back (Ctrl+B), in Place (Shift+Ctrl+V). Objects stay in Leinwand's own
   // clipboard (across documents); while editing text, text goes through the
@@ -352,7 +358,11 @@ class Session : public QObject {
   leinwand::render::SkiaPathOps path_ops_;  // Before editor_, which points to it.
   std::unique_ptr<leinwand::editor::Editor> editor_;
   QPrinter& Printer();
-  std::unique_ptr<QPrinter> printer_;                 // Kept for the OS dialog's settings.
+  void AutosaveToFile();
+  static QString BackupFolder(const QString& file);
+  std::uint64_t document_generation_ = 0;
+  bool autosave_override_ = false;     // Changes whenever a document is opened or made.
+  std::unique_ptr<QPrinter> printer_;  // Kept for the OS dialog's settings.
   std::vector<leinwand::core::ObjectPtr> clipboard_;  // Copied objects, document coordinates.
   std::unique_ptr<LayersModel> layers_;
   int object_count_ = 0;

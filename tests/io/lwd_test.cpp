@@ -351,3 +351,10 @@ TEST_CASE("Two different stories under one id are written apart; bad run lengths
             "characters": [{"length": -1}]}], "layers": []})")
             .error == LoadError::kCorrupt);
 }
+
+// Writes the showcase as a .lwd file for trying the app with: test-output/showcase.lwd.
+TEST_CASE("Showcase as .lwd", "[.][showcase-lwd]") {
+  const auto path = std::filesystem::path(LEINWAND_TEST_OUTPUT_DIR) / "showcase.lwd";
+  std::filesystem::create_directories(path.parent_path());
+  CHECK(io::SaveLwd(path, render::MakeShowcaseDocument(), "test", {}, nullptr));
+}

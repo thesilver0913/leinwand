@@ -240,6 +240,40 @@ Window {
                         }
                     }
                     Row2 {
+                        label: qsTr("Autosave to the file itself")
+                        SpCheckBox {
+                            checked: Preferences.autosaveToFile
+                            onClicked: Preferences.autosaveToFile = checked
+                        }
+                    }
+                    SpLabel {
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        elide: Text.ElideNone
+                        text: qsTr("Documents saved as .lwd are saved in place at the interval above. Untitled and imported documents still use recovery data. Undo history is not kept in the file, so earlier versions are kept as backups.")
+                    }
+                    Row2 {
+                        label: qsTr("Backups to keep")
+                        SpNumberField {
+                            Layout.preferredWidth: 90
+                            enabled: Preferences.autosaveToFile
+                            value: Preferences.autosaveBackups
+                            unit: ""
+                            decimals: 0
+                            minimum: 0
+                            maximum: 50
+                            onCommitted: v => Preferences.autosaveBackups = v
+                        }
+                        SpActionButton {
+                            quiet: false
+                            text: qsTr("Show Backups")
+                            onClicked: {
+                                const folder = Session.backupFolder();
+                                Qt.openUrlExternally("file:///" + folder.replace(/^\/+/, ""));
+                            }
+                        }
+                    }
+                    Row2 {
                         label: qsTr("Recovery data folder")
                         SpTextField {
                             Layout.fillWidth: true

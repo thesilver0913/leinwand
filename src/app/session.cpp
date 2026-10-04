@@ -3,6 +3,7 @@
 
 #include <QClipboard>
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -25,6 +26,7 @@
 #include "core/style.h"
 #include "editor/number_input.h"
 #include "editor/preflight.h"
+#include "io/backup.h"
 #include "io/lwd.h"
 #include "io/svg.h"
 #include "layers_model.h"
@@ -188,6 +190,7 @@ void Session::AddRecent(const QString& path) {
 
 void Session::SetDocument(leinwand::core::Document document) {
   has_document_ = true;
+  ++document_generation_;
   const bool guides = editor_ ? editor_->smart_guides() : true;
   editor_ = std::make_unique<leinwand::editor::Editor>(std::move(document));
   editor_->SetSmartGuides(guides);
@@ -211,7 +214,9 @@ void Session::ApplyPreferences() {
   editor_->SetUndoLimit(static_cast<std::size_t>(p.Number(QStringLiteral("undoLimit"))));
   // Autosave every so many minutes (spec 3.3); 0 turns it off.
   const double minutes = p.Number(QStringLiteral("autosaveMinutes"));
-  if (minutes > 0) {
+  if (autosave_override_) {
+    // Kept as set for this run.
+  } else if (minutes > 0) {
     autosave_->start(static_cast<int>(minutes * 60 * 1000));
   } else {
     autosave_->stop();
@@ -320,6 +325,8 @@ bool Session::save() {
 }
 
 bool Session::saveAs(const QUrl& url) {
+  // An autosave still writing the same file finishes first.
+  QThreadPool::globalInstance()->waitForDone();
   QString path = LocalPath(url);
   if (QFileInfo(path).suffix().isEmpty()) path += QStringLiteral(".lwd");
   const auto& document = editor_->document();
@@ -438,8 +445,82 @@ void Session::selectReported(const QVariantList& ids) {
   Changed();
 }
 
+QString Session::BackupFolder(const QString& file) {
+  // One folder per document: its name, and a hash of its full path so that
+  // documents of the same name do not share their backups.
+  const QFileInfo info(file);
+  const QString key = QString::fromLatin1(
+      QCryptographicHash::hash(info.absoluteFilePath().toUtf8(), QCryptographicHash::Sha1)
+          .toHex()
+          .left(10));
+  return QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
+         QStringLiteral("/backups/") + info.completeBaseName() + u'-' + key;
+}
+
+QString Session::backupFolder() const {
+  if (file_path_.isEmpty()) {
+    return QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
+           QStringLiteral("/backups");
+  }
+  return BackupFolder(file_path_);
+}
+
+// Autosaving to the document's own file (spec 3.3, an option): a saved
+// .lwd is written in place, on another thread, after the file as it was is
+// copied to its backups. Documents without a .lwd file keep using the
+// recovery file.
+void Session::AutosaveToFile() {
+  const std::uint64_t revision = editor_->history().revision();
+  autosaved_revision_ = revision;
+  const leinwand::core::Document snapshot = editor_->document();
+  const QString path = file_path_;
+  const QString folder = BackupFolder(path);
+  const QString stamp =
+      QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss-zzz"));
+  const int keep =
+      static_cast<int>(Preferences::instance()->Number(QStringLiteral("autosaveBackups")));
+  const std::uint64_t generation = document_generation_;
+  QThreadPool::globalInstance()->start([this, snapshot, path, folder, stamp, keep, revision,
+                                        generation] {
+    std::string error;
+    bool ok = leinwand::io::BackUp(FsPath(path), FsPath(folder), stamp.toStdString(), keep);
+    if (!ok) {
+      error = "the backup could not be made";
+    } else {
+      ok = leinwand::io::SaveLwd(FsPath(path), snapshot, kAppVersion, Thumbnail(snapshot), &error);
+    }
+    QMetaObject::invokeMethod(
+        this,
+        [this, ok, error, path, revision, generation] {
+          // The document may have been closed or saved elsewhere meanwhile.
+          if (generation != document_generation_ || path != file_path_) return;
+          if (!ok) {
+            Fail(tr("Could not autosave %1 (%2). The file on disk was not changed.")
+                     .arg(QFileInfo(path).fileName(), QString::fromStdString(error)));
+            return;
+          }
+          saved_revision_ = revision;
+          discardRecovery(recovery_path_);  // The file itself is current now.
+          emit documentChanged();
+        },
+        Qt::QueuedConnection);
+  });
+}
+
+void Session::overrideAutosave(int seconds) {
+  autosave_override_ = true;
+  autosave_->start(std::max(1, seconds) * 1000);
+}
+
 void Session::Autosave() {
   if (!dirty() || editor_->history().revision() == autosaved_revision_) return;
+  const bool to_file =
+      autosave_override_ || Preferences::instance()->Flag(QStringLiteral("autosaveToFile"));
+  if (to_file && !file_path_.isEmpty() &&
+      file_path_.endsWith(QStringLiteral(".lwd"), Qt::CaseInsensitive)) {
+    AutosaveToFile();
+    return;
+  }
   autosaved_revision_ = editor_->history().revision();
   QDir().mkpath(RecoveryDir());
   // A snapshot: the model is immutable, so the copy can be written on another

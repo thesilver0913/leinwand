@@ -94,6 +94,7 @@ catch_discover_tests(render_tests)
 # File formats; SVG results are compared by rendering them.
 find_package(nlohmann_json CONFIG REQUIRED)
 add_executable(io_tests
+  io/backup_test.cpp
   io/lwd_test.cpp
   io/svg_syntax_test.cpp
   io/svg_test.cpp
