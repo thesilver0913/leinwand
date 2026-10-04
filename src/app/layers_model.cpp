@@ -22,6 +22,7 @@ QString KindOf(const leinwand::core::Object& object) {
     return group->clipped ? QStringLiteral("clipGroup") : QStringLiteral("group");
   }
   if (std::holds_alternative<CompoundPathObject>(object)) return QStringLiteral("compoundPath");
+  if (std::holds_alternative<TextObject>(object)) return QStringLiteral("text");
   if (const auto* shape = std::get_if<ShapeObject>(&object)) {
     return std::visit(
         [](const auto& s) {
@@ -235,8 +236,16 @@ bool LayersModel::AddObjectRows(const ObjectPtr& object, int depth, const std::s
   const bool expanded = group && IsExpanded(common.id, false);
   const bool selected = selection.contains(common.id);
   const size_t at = rows_.size();
-  rows_.push_back({common.id, common.name, KindOf(*object), depth, common.visible, common.locked,
-                   dimmed, selected, false, group && !group->children.empty(), expanded, parent});
+  // Text without a name of its own shows its first line, as in Illustrator.
+  std::string name = common.name;
+  if (const auto* text = std::get_if<leinwand::core::TextObject>(object.get());
+      text && name.empty() && text->story) {
+    std::u32string line = text->story->text.substr(0, text->story->text.find(U'\n'));
+    if (line.size() > 40) line = line.substr(0, 40) + U"…";
+    name = leinwand::core::ToUtf8(line);
+  }
+  rows_.push_back({common.id, name, KindOf(*object), depth, common.visible, common.locked, dimmed,
+                   selected, false, group && !group->children.empty(), expanded, parent});
   bool holds = selected;
   if (group) {
     for (auto it = group->children.rbegin(); it != group->children.rend(); ++it) {

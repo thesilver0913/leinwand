@@ -8,6 +8,7 @@
 #include <nlohmann/json.hpp>
 #include <variant>
 
+#include "core/style.h"
 #include "render/test_document.h"
 
 using namespace leinwand;
@@ -30,7 +31,8 @@ TEST_CASE("The showcase document survives a JSON round trip unchanged") {
   CHECK(RoundTrip(document) == json);
   // Spot colors, swatch references, clip groups and hidden layers are all in
   // there (live shapes have a test of their own).
-  for (const char* expected : {"\"spot\"", "\"swatch\"", "\"clipped\"", "\"visible\""}) {
+  for (const char* expected :
+       {"\"spot\"", "\"swatch\"", "\"clipped\"", "\"visible\"", "\"mask\"", "\"invert\""}) {
     CHECK(json.find(expected) != std::string::npos);
   }
 }
@@ -93,7 +95,7 @@ TEST_CASE("document.json follows the spec's shape: fixed key order, defaults omi
         R"({"p":[50,150],"in":[20,0],"out":[0,-30],"kind":"smooth"})");
   CHECK(object["appearance"][0].dump() ==
         R"({"type":"stroke","paint":{"space":"rgb","values":[0,0,0]},"width":2})");
-  CHECK(j["format"]["version"] == "1.1");
+  CHECK(j["format"]["version"] == "1.4");
 }
 
 TEST_CASE("Unknown fields, enum values and object types are kept and written back") {
@@ -211,4 +213,141 @@ TEST_CASE("A book cover keeps its template settings") {
   spec.spine = 12.0;
   const auto given = io::ReadDocumentJson(io::WriteDocumentJson(core::WithCover({}, spec), "test"));
   CHECK(given.document->cover->spine == 12.0);
+}
+
+TEST_CASE("Gradients survive a JSON round trip") {
+  core::PathObject path;
+  path.common.id = "g";
+  path.path.anchors = {{{0, 0}}, {{10, 0}}, {{10, 10}}};
+  core::Fill fill{core::RgbColor{1, 0, 0}};
+  fill.gradient = core::Gradient{
+      core::GradientType::kRadial,
+      {{0.0, core::RgbColor{1, 0, 0}, 1.0, 0.3}, {1.0, core::CmykColor{0, 0, 0, 1}, 0.5, 0.5}},
+      {5, 5},
+      {10, 5},
+      0.5,
+      core::Point{4, 4}};
+  core::Stroke stroke{core::RgbColor{0, 0, 0}};
+  stroke.gradient = core::Gradient{
+      core::GradientType::kLinear,
+      {{0.0, core::RgbColor{0, 0, 1}, 1.0, 0.5}, {1.0, core::RgbColor{0, 1, 0}, 1.0, 0.5}},
+      {0, 0},
+      {10, 10}};
+  path.common.appearance = {stroke, fill};
+  core::Layer layer;
+  layer.id = "l";
+  layer.children = {core::MakeObject(path)};
+  core::Document document;
+  document.layers = {core::MakeLayer(std::move(layer))};
+  const auto loaded = io::ReadDocumentJson(io::WriteDocumentJson(document, "test"));
+  REQUIRE(loaded.document);
+  const auto& a = core::CommonOf(*loaded.document->FindObject("g")).appearance;
+  CHECK(core::FrontFill(a)->gradient == fill.gradient);
+  CHECK(core::FrontStroke(a)->gradient == stroke.gradient);
+}
+
+TEST_CASE("Opacity masks and isolated groups survive a JSON round trip") {
+  core::PathObject art;
+  art.common.id = "art";
+  art.path.anchors = {{{0, 0}}, {{10, 0}}, {{10, 10}}};
+  core::GroupObject group;
+  group.common.id = "g";
+  group.isolated = true;
+  group.common.mask = std::make_shared<const core::OpacityMask>(
+      core::OpacityMask{core::MakeObject(art), false, true});
+  core::Layer layer;
+  layer.id = "l";
+  layer.children = {core::MakeObject(group)};
+  core::Document document;
+  document.layers = {core::MakeLayer(std::move(layer))};
+  const std::string json = io::WriteDocumentJson(document, "test");
+  CHECK(json.find("\"clip\": false") != std::string::npos);
+  const auto loaded = io::ReadDocumentJson(json);
+  REQUIRE(loaded.document);
+  const auto& g = std::get<core::GroupObject>(*loaded.document->FindObject("g"));
+  CHECK(g.isolated);
+  REQUIRE(g.common.mask);
+  CHECK(!g.common.mask->clip);
+  CHECK(g.common.mask->invert);
+  CHECK(core::CommonOf(*g.common.mask->art).id == "art");
+  // A mask without its art is a broken file, not a silent drop.
+  CHECK(!io::ReadDocumentJson(
+             R"({"format": {"version": "1.3"}, "layers": [{"id": "l", "type": "layer",
+             "children": [{"id": "p", "type": "path", "mask": {"clip": false}}]}]})")
+             .document);
+}
+
+TEST_CASE("Text survives a JSON round trip: stories, styles and kept outlines") {
+  core::CharacterStyle bold;
+  bold.font = {"Source Sans 3", "Bold", "SourceSans3-Bold"};
+  bold.size = 20;
+  bold.leading = 30;
+  bold.tracking = 50;
+  bold.kerning = core::KerningMode::kNone;
+  core::Story story = core::MakeStory("story1", U"日本語 and\nEnglish");
+  story = core::WithCharacterStyle(story, 4, 7, [&](core::CharacterStyle& s) { s = bold; });
+  story = core::WithParagraphStyle(story, 8, 8, [](core::ParagraphStyle& p) {
+    p.align = core::TextAlign::kRight;
+    p.space_before = 6;
+  });
+  core::TextObject text;
+  text.common.id = "t";
+  text.story = std::make_shared<const core::Story>(story);
+  text.transform = core::Matrix::Translate(10, 20);
+  core::GroupObject outlines;
+  outlines.common.id = "g";
+  core::TextObject kept = text;
+  kept.common.id = "kept";
+  core::Story kept_story = story;
+  kept_story.id = "story2";
+  kept.story = std::make_shared<const core::Story>(kept_story);
+  outlines.outlined_text = core::MakeObject(kept);
+  core::Layer layer;
+  layer.id = "l";
+  layer.children = {core::MakeObject(text), core::MakeObject(outlines)};
+  core::Document document;
+  document.layers = {core::MakeLayer(std::move(layer))};
+
+  const std::string json = io::WriteDocumentJson(document, "test");
+  const auto j = nlohmann::json::parse(json);
+  REQUIRE(j["stories"].size() == 2);  // Written once each, at the top level.
+  CHECK(j["stories"][0]["text"] == "日本語 and\nEnglish");
+  CHECK(j["layers"][0]["children"][0]["story"] == "story1");
+  CHECK(j["layers"][0]["children"][0].contains("bounds"));  // For older versions.
+  const auto loaded = io::ReadDocumentJson(json);
+  REQUIRE(loaded.document);
+  const auto& t = std::get<core::TextObject>(*loaded.document->FindObject("t"));
+  CHECK(*t.story == story);
+  CHECK(t.transform == text.transform);
+  const auto& g = std::get<core::GroupObject>(*loaded.document->FindObject("g"));
+  REQUIRE(g.outlined_text);
+  CHECK(std::get<core::TextObject>(*g.outlined_text).story->id == "story2");
+  CHECK(RoundTrip(document) == json);
+  // A text whose story is missing is a broken file.
+  auto broken = j;
+  broken.erase("stories");
+  CHECK(io::ReadDocumentJson(broken.dump()).error == LoadError::kCorrupt);
+}
+
+TEST_CASE("Two different stories under one id are written apart; bad run lengths are refused") {
+  core::TextObject a;
+  a.common.id = "a";
+  a.story = std::make_shared<const core::Story>(core::MakeStory("same", U"one"));
+  core::TextObject b;
+  b.common.id = "b";
+  b.story = std::make_shared<const core::Story>(core::MakeStory("same", U"two"));
+  core::Layer layer;
+  layer.id = "l";
+  layer.children = {core::MakeObject(a), core::MakeObject(b)};
+  core::Document document;
+  document.layers = {core::MakeLayer(std::move(layer))};
+  const auto loaded = io::ReadDocumentJson(io::WriteDocumentJson(document, "test"));
+  REQUIRE(loaded.document);
+  CHECK(std::get<core::TextObject>(*loaded.document->FindObject("a")).story->text == U"one");
+  CHECK(std::get<core::TextObject>(*loaded.document->FindObject("b")).story->text == U"two");
+
+  CHECK(io::ReadDocumentJson(
+            R"({"format": {"version": "1.4"}, "stories": [{"id": "s", "text": "ab",
+            "characters": [{"length": -1}]}], "layers": []})")
+            .error == LoadError::kCorrupt);
 }

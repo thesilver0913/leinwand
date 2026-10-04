@@ -45,7 +45,10 @@ MenuBar {
             enabled: root.hasDocument
             Action { text: qsTr("Export as &SVG..."); shortcut: root.key("fileExportSvg"); onTriggered: root.window.exportSvg() }
             Action { text: qsTr("Export as &PNG..."); shortcut: root.key("fileExportPng"); onTriggered: root.window.pngOptions.open() }
+            Action { text: qsTr("Export as P&DF..."); shortcut: root.key("fileExportPdf"); onTriggered: root.window.pdfOptions.open() }
         }
+        Action { text: qsTr("Pre&flight"); enabled: root.hasDocument; onTriggered: root.window.showPanel(root.window.preflight) }
+        Action { text: qsTr("&Print..."); enabled: root.hasDocument; shortcut: root.key("filePrint"); onTriggered: root.window.printDialog.open() }
         MenuSeparator {}
         Action { text: qsTr("Co&ver Setup..."); enabled: root.hasDocument && Session.hasCover; onTriggered: root.window.coverDialog.open() }
         MenuSeparator {}
@@ -66,6 +69,12 @@ MenuBar {
             onTriggered: Session.redo()
         }
         MenuSeparator {}
+        Action { text: qsTr("Cu&t"); enabled: root.hasDocument; shortcut: root.key("editCut"); onTriggered: Session.cut() }
+        Action { text: qsTr("&Copy"); enabled: root.hasDocument; shortcut: root.key("editCopy"); onTriggered: Session.copy() }
+        Action { text: qsTr("&Paste"); enabled: root.hasDocument && Session.canPaste; shortcut: root.key("editPaste"); onTriggered: Session.paste(0) }
+        Action { text: qsTr("Paste in &Front"); enabled: root.hasDocument && Session.canPaste; shortcut: root.key("editPasteInFront"); onTriggered: Session.paste(2) }
+        Action { text: qsTr("Paste in &Back"); enabled: root.hasDocument && Session.canPaste; shortcut: root.key("editPasteInBack"); onTriggered: Session.paste(3) }
+        Action { text: qsTr("Paste in Pl&ace"); enabled: root.hasDocument && Session.canPaste; shortcut: root.key("editPasteInPlace"); onTriggered: Session.paste(1) }
         Action { text: qsTr("C&lear"); enabled: root.hasDocument; shortcut: root.key("editClear"); onTriggered: Session.deleteSelection() }
         MenuSeparator {}
         Action { text: qsTr("&Keyboard Shortcuts..."); shortcut: root.key("editShortcuts"); onTriggered: root.window.shortcutsDialog.show() }
@@ -83,7 +92,7 @@ MenuBar {
         }
         MenuSeparator {}
         Action { text: qsTr("&Group"); shortcut: root.key("objectGroup"); onTriggered: Session.group() }
-        Action { text: qsTr("&Ungroup"); shortcut: root.key("objectUngroup"); onTriggered: Session.ungroup() }
+        Action { text: qsTr("&Ungroup"); shortcut: root.key("objectUngroup"); onTriggered: root.window.ungroup() }
         MenuSeparator {}
         Menu {
             title: qsTr("&Path")
@@ -95,6 +104,18 @@ MenuBar {
             Action { text: qsTr("&Make"); shortcut: root.key("objectCompoundMake"); onTriggered: Session.makeCompoundPath() }
             Action { text: qsTr("&Release"); shortcut: root.key("objectCompoundRelease"); onTriggered: Session.releaseCompoundPath() }
         }
+        Action { text: qsTr("Create &Trim Marks"); onTriggered: Session.createTrimMarks() }
+        Menu {
+            title: qsTr("Clipping &Mask")
+            Action { text: qsTr("&Make"); shortcut: root.key("objectClipMake"); onTriggered: Session.makeClippingMask() }
+            Action { text: qsTr("&Release"); shortcut: root.key("objectClipRelease"); onTriggered: Session.releaseClippingMask() }
+        }
+    }
+    Menu {
+        title: qsTr("&Type")
+        enabled: root.hasDocument
+        Action { text: qsTr("Create &Outlines"); shortcut: root.key("typeCreateOutlines"); onTriggered: Session.createOutlines() }
+        Action { text: qsTr("&Revert Outlines to Text"); shortcut: root.key("typeRevertOutlines"); onTriggered: Session.revertOutlines() }
     }
     Menu {
         title: qsTr("&Select")
@@ -134,10 +155,7 @@ MenuBar {
             delegate: MenuItem {
                 required property var modelData
                 text: modelData.title
-                onTriggered: {
-                    modelData.open();
-                    modelData.setAsCurrentTab();
-                }
+                onTriggered: root.window.showPanel(modelData)
             }
             onObjectAdded: (index, object) => windowMenu.insertItem(index, object)
             onObjectRemoved: (index, object) => windowMenu.removeItem(object)

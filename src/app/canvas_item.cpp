@@ -3,9 +3,13 @@
 
 #include <rhi/qrhi.h>
 
+#include <QClipboard>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QGuiApplication>
 #include <QHoverEvent>
+#include <QInputMethod>
+#include <QInputMethodEvent>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
@@ -58,7 +62,7 @@ class CanvasRenderer : public QQuickRhiItemRenderer {
   void synchronize(QQuickRhiItem* rhi_item) override {
     auto* item = static_cast<CanvasItem*>(rhi_item);
     // A snapshot: copying the document shares all of its (immutable) nodes.
-    document_ = item->document();
+    document_ = item->shownDocument();
     const double dpr = item->window()->effectiveDevicePixelRatio();
     const View& view = item->view();
     view_ = {view.pan_x * dpr, view.pan_y * dpr, view.zoom * dpr};
@@ -169,6 +173,7 @@ CanvasItem::CanvasItem(QQuickItem* parent) : QQuickRhiItem(parent), session_(Ses
   setAcceptedMouseButtons(Qt::LeftButton | Qt::MiddleButton);
   setAcceptHoverEvents(true);
   setFlag(ItemIsFocusScope);
+  setFlag(ItemAcceptsInputMethod);
   setActiveFocusOnTab(true);
   session_->SetCanvas(this);
   connect(session_, &Session::documentChanged, this, [this] { update(); });
@@ -190,6 +195,15 @@ leinwand::editor::Editor& CanvasItem::editor() const { return session_->editor()
 
 const leinwand::core::Document& CanvasItem::document() const { return editor().document(); }
 
+QPointF CanvasItem::documentCentre() const {
+  const auto p = ToDocument(QPointF(width() / 2, height() / 2));
+  return {p.x, p.y};
+}
+
+const leinwand::core::Document& CanvasItem::shownDocument() const {
+  return editor().shown_document();
+}
+
 leinwand::render::Overlay CanvasItem::overlay(double pixel_ratio) const {
   leinwand::editor::Overlay o = editor().overlay();
   leinwand::render::Overlay overlay;
@@ -206,6 +220,11 @@ leinwand::render::Overlay CanvasItem::overlay(double pixel_ratio) const {
   overlay.guides = std::move(o.guides);
   overlay.outline = outline_view_;
   overlay.key_object = o.key_object;
+  overlay.gradient_line = o.gradient_line;
+  overlay.text_caret = o.text_caret;
+  overlay.text_selection = std::move(o.text_selection);
+  overlay.text_underlines = std::move(o.text_underlines);
+  overlay.corner_widgets = std::move(o.corner_widgets);
   return overlay;
 }
 
@@ -316,8 +335,168 @@ void CanvasItem::wheelEvent(QWheelEvent* event) {
   event->accept();
 }
 
+// --- Text editing (spec 5.1, "編集") --------------------------------------------
+
+bool CanvasItem::IsTextKey(const QKeyEvent* event) const {
+  if (!editor().text_editing()) return false;
+  const auto mods = event->modifiers() & ~(Qt::KeypadModifier | Qt::ShiftModifier);
+  const int key = event->key();
+  if (mods == Qt::ControlModifier) {
+    return key == Qt::Key_A || key == Qt::Key_C || key == Qt::Key_X || key == Qt::Key_V ||
+           key == Qt::Key_Home || key == Qt::Key_End;
+  }
+  if (mods != Qt::NoModifier && mods != Qt::GroupSwitchModifier) return false;
+  switch (key) {
+    case Qt::Key_Left:
+    case Qt::Key_Right:
+    case Qt::Key_Up:
+    case Qt::Key_Down:
+    case Qt::Key_Home:
+    case Qt::Key_End:
+    case Qt::Key_Backspace:
+    case Qt::Key_Delete:
+    case Qt::Key_Return:
+    case Qt::Key_Enter:
+    case Qt::Key_Escape:
+      return true;
+    default:
+      return !event->text().isEmpty() && event->text().at(0).isPrint();
+  }
+}
+
+bool CanvasItem::event(QEvent* event) {
+  // Keys that are shortcuts elsewhere (V, Delete, Ctrl+A, ...) go to the text
+  // while it is edited.
+  if (event->type() == QEvent::ShortcutOverride && IsTextKey(static_cast<QKeyEvent*>(event))) {
+    event->accept();
+    return true;
+  }
+  return QQuickRhiItem::event(event);
+}
+
+bool CanvasItem::TextKey(QKeyEvent* event) {
+  using leinwand::editor::TextMove;
+  if (!IsTextKey(event)) return false;
+  auto& e = editor();
+  const bool shift = event->modifiers().testFlag(Qt::ShiftModifier);
+  const bool control = event->modifiers().testFlag(Qt::ControlModifier);
+  switch (event->key()) {
+    case Qt::Key_Left:
+      e.MoveCaret(TextMove::kLeft, shift);
+      break;
+    case Qt::Key_Right:
+      e.MoveCaret(TextMove::kRight, shift);
+      break;
+    case Qt::Key_Up:
+      e.MoveCaret(TextMove::kUp, shift);
+      break;
+    case Qt::Key_Down:
+      e.MoveCaret(TextMove::kDown, shift);
+      break;
+    case Qt::Key_Home:
+      e.MoveCaret(control ? TextMove::kStart : TextMove::kLineStart, shift);
+      break;
+    case Qt::Key_End:
+      e.MoveCaret(control ? TextMove::kEnd : TextMove::kLineEnd, shift);
+      break;
+    case Qt::Key_Backspace:
+      e.DeleteBackward();
+      break;
+    case Qt::Key_Delete:
+      e.DeleteForward();
+      break;
+    case Qt::Key_Return:
+    case Qt::Key_Enter:
+      e.InsertText(U"\n");
+      break;
+    case Qt::Key_Escape:
+      e.EndTextEdit();
+      break;
+    default:
+      if (control) {
+        QClipboard* clipboard = QGuiApplication::clipboard();
+        if (event->key() == Qt::Key_A) {
+          e.SelectAllText();
+        } else if (event->key() == Qt::Key_C || event->key() == Qt::Key_X) {
+          const std::u32string selected = e.SelectedText();
+          if (!selected.empty()) {
+            clipboard->setText(QString::fromStdU32String(selected));
+            if (event->key() == Qt::Key_X) e.DeleteForward();
+          }
+        } else if (event->key() == Qt::Key_V) {
+          e.InsertText(clipboard->text().toStdU32String());
+        }
+      } else {
+        e.InsertText(event->text().toStdU32String());
+      }
+      break;
+  }
+  TextChanged();
+  return true;
+}
+
+void CanvasItem::TextChanged() {
+  EditorChanged();
+  if (QInputMethod* method = QGuiApplication::inputMethod()) {
+    method->update(Qt::ImEnabled | Qt::ImCursorRectangle | Qt::ImHints);
+  }
+}
+
+QVariant CanvasItem::inputMethodQuery(Qt::InputMethodQuery query) const {
+  switch (query) {
+    case Qt::ImEnabled:
+      return editor().text_editing();
+    case Qt::ImHints:
+      return static_cast<int>(Qt::ImhMultiLine);
+    case Qt::ImCursorRectangle: {
+      // The caret, for the candidate window (spec 5.1: it follows the caret).
+      const auto caret = editor().CaretRect();
+      if (!caret) return QRectF();
+      const auto z = view_.zoom;
+      return QRectF(caret->left * z + view_.pan_x, caret->top * z + view_.pan_y,
+                    std::max(1.0, caret->width() * z), caret->height() * z);
+    }
+    default:
+      return QQuickRhiItem::inputMethodQuery(query);
+  }
+}
+
+void CanvasItem::inputMethodEvent(QInputMethodEvent* event) {
+  if (!editor().text_editing()) {
+    event->ignore();
+    return;
+  }
+  auto& e = editor();
+  if (!event->commitString().isEmpty()) e.InsertText(event->commitString().toStdU32String());
+  const QString preedit = event->preeditString();
+  int cursor = preedit.size();
+  for (const auto& attribute : event->attributes()) {
+    if (attribute.type == QInputMethodEvent::Cursor) cursor = attribute.start;
+  }
+  // The cursor counts UTF-16 units; the editor counts code points.
+  const std::u32string composing = preedit.toStdU32String();
+  const std::size_t code_points =
+      QStringView(preedit).left(std::clamp(cursor, 0, int(preedit.size()))).toUcs4().size();
+  e.SetPreedit(composing, code_points);
+  TextChanged();
+  event->accept();
+}
+
+void CanvasItem::mouseDoubleClickEvent(QMouseEvent* event) {
+  if (event->button() != Qt::LeftButton) return;
+  const int tool_before = session_->tool();
+  editor().DoubleClick(ToDocument(event->position()), PickRadius());
+  if (session_->tool() != tool_before) session_->NotifyToolChanged();
+  TextChanged();
+  event->accept();
+}
+
 void CanvasItem::keyPressEvent(QKeyEvent* event) {
   using leinwand::editor::Tool;
+  if (TextKey(event)) {
+    event->accept();
+    return;
+  }
   modifiers_ = event->modifiers();
   if (!tool_dragging_) session_->UpdateTemporaryTool(modifiers_);
   if (event->isAutoRepeat() && event->key() == Qt::Key_Space) return;
@@ -414,7 +593,7 @@ void CanvasItem::mousePressEvent(QMouseEvent* event) {
     session_->UpdateTemporaryTool(modifiers_);
     tool_dragging_ = true;
     editor().PointerDown(ToDocument(event->position()), ToolModifiers(), PickRadius());
-    EditorChanged();
+    TextChanged();
   }
   UpdateCursor(event->position());
   event->accept();
@@ -603,6 +782,12 @@ void CanvasItem::UpdateCursor(QPointF position) {
     case Tool::kScissors:
       setCursor(IconCursor(QStringLiteral("Cut"), {10, 10}));
       return;
+    case Tool::kGradient:
+      setCursor(Qt::CrossCursor);
+      return;
+    case Tool::kType:
+      setCursor(Qt::IBeamCursor);
+      return;
     default:
       setCursor(Qt::CrossCursor);
       return;
@@ -634,6 +819,9 @@ void CanvasItem::UpdateCursor(QPointF position) {
     case Kind::kRotate:
       // Qt has no rotate cursor; a custom one comes with the icon set (M7).
       setCursor(Qt::CrossCursor);
+      return;
+    case Kind::kCorner:
+      setCursor(Qt::PointingHandCursor);  // A live corner widget.
       return;
     case Kind::kObject:
     case Kind::kNothing:

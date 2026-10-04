@@ -19,7 +19,8 @@ Item {
         return ({ layer: qsTr("Layer"), group: qsTr("<Group>"), clipGroup: qsTr("<Clip Group>"),
                   path: qsTr("<Path>"), compoundPath: qsTr("<Compound Path>"),
                   rectangle: qsTr("<Rectangle>"), ellipse: qsTr("<Ellipse>"),
-                  polygon: qsTr("<Polygon>"), star: qsTr("<Star>"), line: qsTr("<Line>") })[kind] ?? kind;
+                  polygon: qsTr("<Polygon>"), star: qsTr("<Star>"), line: qsTr("<Line>"),
+                  text: qsTr("<Text>") })[kind] ?? kind;
     }
 
     ColumnLayout {

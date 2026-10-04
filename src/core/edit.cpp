@@ -2,6 +2,7 @@
 #include "core/edit.h"
 
 #include <algorithm>
+#include <functional>
 #include <utility>
 #include <variant>
 
@@ -116,6 +117,8 @@ void Walk(const Document& document, Visit&& visit) {
   for (const auto& layer : document.layers) Walk(*layer, visit);
 }
 
+}  // namespace
+
 ObjectPtr WithFreshIds(const ObjectPtr& object, IdGenerator& ids) {
   return std::visit(
       [&](const auto& o) -> ObjectPtr {
@@ -124,13 +127,25 @@ ObjectPtr WithFreshIds(const ObjectPtr& object, IdGenerator& ids) {
         copy.common.id = ids.Next();
         if constexpr (std::is_same_v<T, GroupObject>) {
           for (auto& child : copy.children) child = WithFreshIds(child, ids);
+          if (copy.outlined_text) copy.outlined_text = WithFreshIds(copy.outlined_text, ids);
+        }
+        if constexpr (std::is_same_v<T, TextObject>) {
+          // A copy of the text has a story of its own.
+          if (copy.story) {
+            Story story = *copy.story;
+            story.id = ids.Next();
+            copy.story = std::make_shared<const Story>(std::move(story));
+          }
+        }
+        if (copy.common.mask && copy.common.mask->art) {
+          OpacityMask mask = *copy.common.mask;
+          mask.art = WithFreshIds(mask.art, ids);
+          copy.common.mask = std::make_shared<const OpacityMask>(std::move(mask));
         }
         return MakeObject(std::move(copy));
       },
       object->base());
 }
-
-}  // namespace
 
 std::vector<Located> FindObjects(const Document& document, const IdSet& ids) {
   std::vector<Located> found;
@@ -170,9 +185,47 @@ Document AddObject(const Document& document, ObjectPtr object, const std::string
   return result;
 }
 
+Document InsertObjects(const Document& document, const std::string& anchor_id,
+                       const std::vector<ObjectPtr>& objects, bool in_front) {
+  bool done = false;
+  return Rewrite(document, [&](auto& list, const Matrix& to_document) {
+    if (done) return false;
+    using Entry = typename std::decay_t<decltype(list)>::value_type;
+    for (auto it = list.begin(); it != list.end(); ++it) {
+      const ObjectPtr* object = ObjectIn(*it);
+      if (!object || CommonOf(**object).id != anchor_id) continue;
+      // Into the anchor's parent's coordinates.
+      const Matrix to_local = to_document.Inverted().value_or(Matrix{});
+      std::vector<Entry> placed;
+      for (const ObjectPtr& o : objects) placed.push_back(Transformed(o, to_local));
+      list.insert(in_front ? it + 1 : it, placed.begin(), placed.end());
+      done = true;
+      return true;
+    }
+    return false;
+  });
+}
+
 IdSet AllObjectIds(const Document& document) {
   IdSet ids;
-  VisitObjects(document, [&](const Object& object) { ids.insert(CommonOf(object).id); });
+  // Opacity masks' art, the text kept by outlines and stories too, so that
+  // new ids never clash with them.
+  std::function<void(const Object&)> add = [&](const Object& object) {
+    ids.insert(CommonOf(object).id);
+    if (const auto* text = std::get_if<TextObject>(&object); text && text->story) {
+      ids.insert(text->story->id);
+    }
+    if (const auto* group = std::get_if<GroupObject>(&object); group && group->outlined_text) {
+      add(*group->outlined_text);
+    }
+    const auto& mask = CommonOf(object).mask;
+    if (!mask || !mask->art) return;
+    add(*mask->art);
+    if (const auto* group = std::get_if<GroupObject>(mask->art.get())) {
+      for (const auto& child : group->children) add(*child);
+    }
+  };
+  VisitObjects(document, add);
   return ids;
 }
 

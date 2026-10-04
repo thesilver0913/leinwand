@@ -9,10 +9,12 @@
 #include <sstream>
 
 #include "core/edit.h"
+#include "core/style.h"
 #include "core/transform.h"
 #include "geometry/bezier.h"
 #include "io/svg.h"
 #include "io/svg_syntax.h"
+#include "text/layout.h"
 
 namespace leinwand::io {
 
@@ -48,6 +50,13 @@ struct Inherited {
   RgbColor color{0, 0, 0};        // For currentColor.
   bool visible = true;            // visibility
   bool paint_fill_first = false;  // paint-order: stroke drawn below the fill.
+  // Text.
+  std::string font_family = "sans-serif";
+  double font_size = 16.0;  // CSS "medium".
+  int font_weight = 400;
+  bool italic = false;
+  double letter_spacing = 0.0;
+  std::string text_anchor = "start";
 };
 
 using Properties = std::map<std::string, std::string>;
@@ -62,6 +71,11 @@ bool HasPrefix(const char* name) { return std::string(name).find(':') != std::st
 
 // Applies a transform to an object's coordinates. Paths and shapes take it
 // into their geometry, so their strokes are scaled too, as SVG draws them.
+bool Covers(const Rect& outer, const Rect& inner) {
+  return outer.left <= inner.left && outer.top <= inner.top && outer.right >= inner.right &&
+         outer.bottom >= inner.bottom;
+}
+
 ObjectPtr Bake(const ObjectPtr& object, const Matrix& m) {
   if (m.IsIdentity()) return object;
   ObjectPtr result = core::Transformed(object, m);
@@ -289,7 +303,14 @@ class Importer {
                                                 "filter",
                                                 "mix-blend-mode",
                                                 "paint-order",
-                                                "clip-rule"};
+                                                "clip-rule",
+                                                "isolation",
+                                                "font-family",
+                                                "font-size",
+                                                "font-weight",
+                                                "font-style",
+                                                "letter-spacing",
+                                                "text-anchor"};
     Properties p;
     for (const char* name : kPresentation) {
       if (const pugi::xml_attribute a = node.attribute(name)) p[name] = a.value();
@@ -363,6 +384,29 @@ class Importer {
     if (const std::string v = Value(p, "stroke"); !v.empty() && v != "inherit") {
       s.stroke = ParsePaint(v, s);
     }
+    if (const std::string v = Value(p, "font-family"); !v.empty() && v != "inherit") {
+      s.font_family = v;
+    }
+    if (const std::string v = Value(p, "font-size"); !v.empty() && v != "inherit") {
+      if (const auto n = svg::ParseLength(v, s.font_size)) s.font_size = *n;
+    }
+    if (const std::string v = Value(p, "font-weight"); !v.empty() && v != "inherit") {
+      s.font_weight = v == "bold"     ? 700
+                      : v == "normal" ? 400
+                      : v == "bolder" ? std::min(900, s.font_weight + 300)
+                      : v == "lighter"
+                          ? std::max(100, s.font_weight - 300)
+                          : static_cast<int>(svg::ParseLength(v).value_or(s.font_weight));
+    }
+    if (const std::string v = Value(p, "font-style"); !v.empty() && v != "inherit") {
+      s.italic = v == "italic" || v == "oblique";
+    }
+    if (const std::string v = Value(p, "letter-spacing"); !v.empty() && v != "inherit") {
+      s.letter_spacing = v == "normal" ? 0.0 : svg::ParseLength(v).value_or(0.0);
+    }
+    if (const std::string v = Value(p, "text-anchor"); !v.empty() && v != "inherit") {
+      s.text_anchor = v;
+    }
     number("fill-opacity", s.fill_opacity);
     number("stroke-opacity", s.stroke_opacity);
     number("stroke-width", s.stroke_width);
@@ -393,54 +437,140 @@ class Importer {
     }
   }
 
-  // A gradient's first stop, following href to inherited stops.
-  std::optional<std::pair<RgbColor, double>> FirstStop(pugi::xml_node gradient,
-                                                       int depth = 0) const {
-    if (!gradient || depth > 8) return std::nullopt;
-    for (pugi::xml_node stop : gradient.children()) {
-      if (LocalName(stop.name()) != "stop") continue;
-      const auto p = Specified(stop, {});
-      double alpha = 1;
-      const auto color =
-          svg::ParseColor(Value(p, "stop-color").empty()
-                              ? std::string(stop.attribute("stop-color").as_string("black"))
-                              : Value(p, "stop-color"),
-                          &alpha);
-      const double opacity = stop.attribute("stop-opacity").as_double(1.0);
-      return std::pair{color.value_or(RgbColor{0, 0, 0}), alpha * opacity};
-    }
+  // A fill or stroke as resolved: a color, or a gradient (with its first
+  // stop's color shown in the panels).
+  struct Resolved {
+    Color color;
+    double alpha = 1.0;
+    std::optional<Gradient> gradient;
+  };
+
+  // The gradient a gradient inherits from (href), if any.
+  pugi::xml_node Parent(pugi::xml_node gradient) const {
     std::string href =
         gradient.attribute("xlink:href").as_string(gradient.attribute("href").as_string());
     if (!href.empty() && href[0] == '#') href.erase(0, 1);
     const auto it = by_id_.find(href);
-    return it == by_id_.end() ? std::nullopt : FirstStop(it->second, depth + 1);
+    return it == by_id_.end() ? pugi::xml_node() : it->second;
   }
 
-  // The fill or stroke for an object, or none. Gradients and patterns are
-  // approximated by a solid color until phase 2 (reported).
-  std::optional<std::pair<Color, double>> Resolve(const Paint& paint, const std::string& id,
-                                                  const char* what) {
+  // The first value of an attribute along the href chain.
+  std::string InheritedAttribute(pugi::xml_node gradient, const char* name) const {
+    for (int depth = 0; gradient && depth < 8; ++depth, gradient = Parent(gradient)) {
+      if (const auto attr = gradient.attribute(name)) return attr.value();
+    }
+    return {};
+  }
+
+  // The stops of the first gradient along the href chain that has any.
+  std::vector<pugi::xml_node> Stops(pugi::xml_node gradient) const {
+    for (int depth = 0; gradient && depth < 8; ++depth, gradient = Parent(gradient)) {
+      std::vector<pugi::xml_node> stops;
+      for (pugi::xml_node stop : gradient.children()) {
+        if (LocalName(stop.name()) == "stop") stops.push_back(stop);
+      }
+      if (!stops.empty()) return stops;
+    }
+    return {};
+  }
+
+  // A gradient paint server, in the element's user space. `bbox` is the
+  // element's geometric bounds there, for the default objectBoundingBox
+  // units. nullopt without stops; one stop paints its color.
+  std::optional<Resolved> GradientPaint(pugi::xml_node node, const Rect& bbox,
+                                        const std::string& id, const char* what) {
+    const bool radial = LocalName(node.name()) == "radialGradient";
+    Gradient g;
+    g.type = radial ? GradientType::kRadial : GradientType::kLinear;
+    // Offsets are numbers or percentages and never go back.
+    double last = 0;
+    for (pugi::xml_node stop : Stops(node)) {
+      const auto p = Specified(stop, {});
+      double offset = svg::ParseLength(stop.attribute("offset").as_string("0"), 1.0).value_or(0);
+      offset = std::clamp(std::max(offset, last), 0.0, 1.0);
+      last = offset;
+      auto property = [&](const char* name, const char* fallback) {
+        const std::string v = Value(p, name);
+        return v.empty() ? std::string(stop.attribute(name).as_string(fallback)) : v;
+      };
+      double alpha = 1;
+      const auto color = svg::ParseColor(property("stop-color", "black"), &alpha);
+      const double opacity = svg::ParseLength(property("stop-opacity", "1")).value_or(1.0);
+      GradientStop s;
+      s.offset = offset;
+      s.color = color.value_or(RgbColor{0, 0, 0});
+      s.opacity = std::clamp(alpha * opacity, 0.0, 1.0);
+      g.stops.push_back(s);
+    }
+    if (g.stops.empty()) return std::nullopt;
+    Resolved result{g.stops.front().color, g.stops.front().opacity, std::nullopt};
+    if (g.stops.size() == 1) return result;
+
+    // Gradient space to user space: the bounding box (by default), after the
+    // gradientTransform.
+    const bool user = InheritedAttribute(node, "gradientUnits") == "userSpaceOnUse";
+    if (!user && (!bbox.IsValid() || bbox.width() <= 0 || bbox.height() <= 0)) {
+      return result;  // No box to lay the gradient out in.
+    }
+    Matrix to_user =
+        user ? Matrix{}
+             : Matrix::Translate(bbox.left, bbox.top) * Matrix::Scale(bbox.width(), bbox.height());
+    if (const std::string t = InheritedAttribute(node, "gradientTransform"); !t.empty()) {
+      if (const auto m = svg::ParseTransform(t)) to_user = to_user * *m;
+    }
+    // A coordinate: a number, or a percentage taken as a fraction.
+    auto coord = [&](const char* name, double fallback) {
+      const std::string v = InheritedAttribute(node, name);
+      return v.empty() ? fallback : svg::ParseLength(v, 1.0).value_or(fallback);
+    };
+    if (!radial) {
+      g.start = to_user.Map({coord("x1", 0), coord("y1", 0)});
+      g.end = to_user.Map({coord("x2", 1), coord("y2", 0)});
+    } else {
+      const double cx = coord("cx", 0.5), cy = coord("cy", 0.5), r = coord("r", 0.5);
+      g.start = to_user.Map({cx, cy});
+      g.end = to_user.Map({cx + r, cy});
+      const Point along = to_user.MapVector({r, 0});
+      const Point across = to_user.MapVector({0, r});
+      const double along_length = std::hypot(along.x, along.y);
+      if (along_length > 0) g.aspect = std::hypot(across.x, across.y) / along_length;
+      const double fx = coord("fx", cx), fy = coord("fy", cy);
+      if (fx != cx || fy != cy) g.focal = to_user.Map({fx, fy});
+      // Axes no longer at right angles (a skew) cannot be kept exactly.
+      if (std::abs(along.x * across.x + along.y * across.y) > 1e-9 * along_length * along_length) {
+        out_.report.Add(std::string(what) + " skewed radial gradient (approximated)",
+                        ReportAction::kApproximated, id);
+      }
+    }
+    if (const std::string spread = InheritedAttribute(node, "spreadMethod");
+        !spread.empty() && spread != "pad") {
+      out_.report.Add(std::string(what) + " gradient spreadMethod \"" + spread + "\" (padded)",
+                      ReportAction::kApproximated, id);
+    }
+    result.gradient = std::move(g);
+    return result;
+  }
+
+  // The fill or stroke for an object, or none. Patterns are approximated by
+  // their fallback color (reported).
+  std::optional<Resolved> Resolve(const Paint& paint, const std::string& id, const char* what,
+                                  const Rect& bbox) {
     switch (paint.kind) {
       case Paint::Kind::kNone:
         return std::nullopt;
       case Paint::Kind::kColor:
       case Paint::Kind::kCurrentColor:
-        return std::pair<Color, double>{paint.color, paint.alpha};
+        return Resolved{paint.color, paint.alpha, std::nullopt};
       case Paint::Kind::kUrl: {
         const auto it = by_id_.find(paint.url);
         const std::string kind = it == by_id_.end() ? "" : LocalName(it->second.name());
         if (kind == "linearGradient" || kind == "radialGradient") {
-          out_.report.Add(std::string(what) + " gradient (solid color of its first stop)",
-                          ReportAction::kApproximated, id);
-          if (const auto stop = FirstStop(it->second)) {
-            return std::pair<Color, double>{stop->first, stop->second};
-          }
-          return std::nullopt;
+          return GradientPaint(it->second, bbox, id, what);
         }
         out_.report.Add(std::string(what) + " " + (kind.empty() ? "missing paint server" : kind) +
                             " (fallback color)",
                         ReportAction::kApproximated, id);
-        if (paint.fallback) return std::pair<Color, double>{*paint.fallback, 1.0};
+        if (paint.fallback) return Resolved{*paint.fallback, 1.0, std::nullopt};
         return std::nullopt;
       }
     }
@@ -448,7 +578,8 @@ class Importer {
   }
 
   // Appearance and common fields from the computed style.
-  void ApplyCommon(ObjectCommon& common, const Properties& p, const Inherited& s, bool painted) {
+  void ApplyCommon(ObjectCommon& common, const Properties& p, const Inherited& s, bool painted,
+                   const Rect& bbox = {}) {
     if (Value(p, "display") == "none" || !s.visible) common.visible = false;
     if (const std::string v = Value(p, "opacity"); !v.empty()) {
       common.opacity = std::clamp(svg::ParseLength(v).value_or(1.0), 0.0, 1.0);
@@ -468,13 +599,11 @@ class Importer {
     if (!Value(p, "filter").empty() && Value(p, "filter") != "none") {
       out_.report.Add("filter", ReportAction::kDiscarded);
     }
-    if (!Value(p, "mask").empty() && Value(p, "mask") != "none") {
-      out_.report.Add("mask", ReportAction::kDiscarded);
-    }
     if (!painted) return;
     Appearance appearance;
-    if (const auto stroke = Resolve(s.stroke, common.id, "stroke"); stroke && s.stroke_width > 0) {
-      Stroke item{stroke->first};
+    if (const auto stroke = Resolve(s.stroke, common.id, "stroke", bbox);
+        stroke && s.stroke_width > 0) {
+      Stroke item{stroke->color, stroke->gradient};
       item.width = s.stroke_width;
       item.cap = s.cap;
       item.join = s.join;
@@ -484,12 +613,14 @@ class Importer {
         item.dashes = s.dashes;
       }
       item.dash_offset = s.dash_offset;
-      item.opacity = std::clamp(s.stroke_opacity * stroke->second, 0.0, 1.0);
+      // A gradient carries its opacity in its stops.
+      item.opacity =
+          std::clamp(s.stroke_opacity * (stroke->gradient ? 1.0 : stroke->alpha), 0.0, 1.0);
       appearance.push_back(item);
     }
-    if (const auto fill = Resolve(s.fill, common.id, "fill")) {
-      Fill item{fill->first};
-      item.opacity = std::clamp(s.fill_opacity * fill->second, 0.0, 1.0);
+    if (const auto fill = Resolve(s.fill, common.id, "fill", bbox)) {
+      Fill item{fill->color, fill->gradient};
+      item.opacity = std::clamp(s.fill_opacity * (fill->gradient ? 1.0 : fill->alpha), 0.0, 1.0);
       // Front to back: the stroke is in front unless paint-order says so.
       if (s.paint_fill_first) {
         appearance.insert(appearance.begin(), item);
@@ -539,8 +670,9 @@ class Importer {
         if (auto o = Element(child, s, ancestors)) group.children.push_back(*o);
       }
       ApplyCommon(group.common, p, s, false);
+      group.isolated = Value(p, "isolation") == "isolate";
       object = MakeObject(std::move(group));
-      return WithClip(*object, node, p);
+      return WithMask(WithClip(*object, node, p), node, p);
     }
     if (!foreign && name == "svg") {
       // A nested viewport: its content, placed at x, y.
@@ -627,29 +759,37 @@ class Importer {
 
     if (shape) {
       shape->common.id = id;
-      ApplyCommon(shape->common, p, s, true);
+      ApplyCommon(shape->common, p, s, true, geometry::Bounds(*MakeObject(*shape)));
       object = Bake(MakeObject(*shape), transform);
-      return WithClip(*object, node, p);
+      return WithMask(WithClip(*object, node, p), node, p);
     }
     if (outline) {
       std::erase_if(*outline, [](const PathData& d) { return d.anchors.empty(); });
       if (outline->empty()) return std::nullopt;
+      Rect bbox;
+      for (const PathData& d : *outline) bbox = bbox.Union(geometry::Bounds(d));
       if (outline->size() == 1 && s.fill_rule == FillRule::kNonZero) {
         PathObject path;
         path.common.id = id;
         path.path = outline->front();
-        ApplyCommon(path.common, p, s, true);
+        ApplyCommon(path.common, p, s, true, bbox);
         object = MakeObject(std::move(path));
       } else {
         CompoundPathObject compound;
         compound.common.id = id;
         compound.subpaths = *outline;
         compound.fill_rule = s.fill_rule;
-        ApplyCommon(compound.common, p, s, true);
+        ApplyCommon(compound.common, p, s, true, bbox);
         object = MakeObject(std::move(compound));
       }
       object = Bake(*object, transform);
-      return WithClip(*object, node, p);
+      return WithMask(WithClip(*object, node, p), node, p);
+    }
+
+    if (!foreign && name == "text") {
+      if (auto text = Text(node, p, s, transform, ancestors, id)) {
+        return WithMask(WithClip(*text, node, p), node, p);
+      }
     }
 
     // Everything else is kept as XML (spec 6.1): written back in place.
@@ -740,6 +880,357 @@ class Importer {
          o = o.next_sibling(), c = c.next_sibling()) {
       if (o.type() == pugi::node_element) InlineCss(c, o, ancestors);
     }
+  }
+
+  // <text> as point text (spec 6.1): its characters and <tspan>s become a
+  // story, a new line wherever the text moves down. Positions within a line
+  // are left to the layout. Text on a path stays as XML (phase 3).
+  std::optional<ObjectPtr> Text(pugi::xml_node node, const Properties& p, const Inherited& s,
+                                const Matrix& transform, std::vector<pugi::xml_node> ancestors,
+                                const std::string& id) {
+    bool supported = true;
+    std::function<void(pugi::xml_node)> check = [&](pugi::xml_node n) {
+      for (pugi::xml_node c : n.children()) {
+        if (c.type() != pugi::node_element) continue;
+        if (LocalName(c.name()) != "tspan") supported = false;
+        check(c);
+      }
+    };
+    check(node);
+    if (!supported) return std::nullopt;
+
+    struct Chunk {
+      std::u32string text;
+      Inherited style;
+      std::optional<double> x, y;
+      double dy = 0;
+    };
+    std::vector<Chunk> chunks;
+    const bool preserve = std::string(node.attribute("xml:space").value()) == "preserve";
+    bool positioned_inside = false;
+    auto first_of = [](const char* list) -> std::optional<double> {
+      const auto values = svg::ParseNumberList(list);
+      if (values.empty()) return std::nullopt;
+      return values.front();
+    };
+    std::function<void(pugi::xml_node, const Inherited&, std::optional<double>,
+                       std::optional<double>, double, std::vector<pugi::xml_node>)>
+        walk = [&](pugi::xml_node n, const Inherited& style, std::optional<double> x,
+                   std::optional<double> y, double dy, std::vector<pugi::xml_node> anc) {
+          if (svg::ParseNumberList(n.attribute("x").value()).size() > 1 || n.attribute("rotate") ||
+              n.attribute("textLength")) {
+            positioned_inside = true;
+          }
+          anc.push_back(n);
+          for (pugi::xml_node c : n.children()) {
+            if (c.type() == pugi::node_pcdata || c.type() == pugi::node_cdata) {
+              chunks.push_back({core::FromUtf8(c.value()), style, x, y, dy});
+              x.reset();
+              y.reset();
+              dy = 0;
+            } else if (c.type() == pugi::node_element) {
+              const Properties cp = Specified(c, anc);
+              Inherited cs = style;
+              ApplyInherited(c, cp, cs);
+              std::optional<double> cx = first_of(c.attribute("x").value());
+              std::optional<double> cy = first_of(c.attribute("y").value());
+              const double cdy = first_of(c.attribute("dy").value()).value_or(0);
+              if (first_of(c.attribute("dx").value())) positioned_inside = true;
+              walk(c, cs, cx ? cx : x, cy ? cy : y, cdy + dy, anc);
+              x.reset();
+              y.reset();
+              dy = 0;
+            }
+          }
+        };
+    walk(node, s, first_of(node.attribute("x").value()), first_of(node.attribute("y").value()),
+         first_of(node.attribute("dy").value()).value_or(0), ancestors);
+
+    // White space as SVG treats it.
+    for (Chunk& chunk : chunks) {
+      std::u32string out;
+      for (char32_t c : chunk.text) {
+        if (c == U'\n' || c == U'\r') {
+          if (preserve) out.push_back(U' ');
+          continue;
+        }
+        if (c == U'\t') c = U' ';
+        if (!preserve && c == U' ' && !out.empty() && out.back() == U' ') continue;
+        out.push_back(c);
+      }
+      chunk.text = std::move(out);
+    }
+    if (!preserve) {
+      bool after_space = true;  // Leading space goes.
+      for (Chunk& chunk : chunks) {
+        if (after_space && !chunk.text.empty() && chunk.text.front() == U' ') {
+          chunk.text.erase(0, 1);
+        }
+        if (!chunk.text.empty()) after_space = chunk.text.back() == U' ';
+      }
+      for (auto it = chunks.rbegin(); it != chunks.rend(); ++it) {
+        if (it->text.empty()) continue;
+        if (it->text.back() == U' ') it->text.pop_back();
+        break;
+      }
+    }
+
+    // The story: a paragraph per line.
+    core::Story story;
+    story.id = FreshId("story");
+    story.characters.clear();
+    std::vector<double> leadings{0};  // Per paragraph; 0 = auto.
+    std::optional<double> origin_x, origin_y, line_y;
+    bool indented = false;
+    for (const Chunk& chunk : chunks) {
+      if (chunk.text.empty() && !chunk.y && chunk.dy == 0) continue;
+      double y = line_y.value_or(chunk.y.value_or(0));
+      if (chunk.y) y = *chunk.y;
+      y += chunk.dy;
+      if (!line_y) {
+        origin_x = chunk.x.value_or(0);
+        origin_y = y;
+        line_y = y;
+      } else if (std::abs(y - *line_y) > 1e-9) {
+        story.text.push_back(U'\n');
+        story.characters.push_back({1, story.characters.back().style});
+        leadings.push_back(y - *line_y);
+        line_y = y;
+        if (chunk.x && std::abs(*chunk.x - *origin_x) > 1e-6) indented = true;
+      } else if (chunk.x) {
+        positioned_inside = true;
+      }
+      core::CharacterStyle style;
+      style.font = FontFor(chunk.style);
+      style.size = chunk.style.font_size;
+      if (chunk.style.letter_spacing != 0 && style.size > 0) {
+        style.tracking = chunk.style.letter_spacing / style.size * 1000;
+      }
+      story.text += chunk.text;
+      story.characters.push_back({chunk.text.size(), style});
+    }
+    if (!line_y) return std::nullopt;  // No text at all.
+    if (story.characters.empty()) story.characters.push_back({0, {}});
+    story.paragraphs.assign(leadings.size(), core::ParagraphStyle{});
+    const core::TextAlign align = s.text_anchor == "middle" ? core::TextAlign::kCenter
+                                  : s.text_anchor == "end"  ? core::TextAlign::kRight
+                                                            : core::TextAlign::kLeft;
+    for (auto& paragraph : story.paragraphs) paragraph.align = align;
+    // Normalise the runs (joins equal neighbours, drops empty ones).
+    core::Story normal = core::Inserted(story, 0, U"", nullptr);
+    normal = core::WithCharacterStyle(normal, 0, normal.text.size(), [](core::CharacterStyle&) {});
+    // Line spacing other than auto becomes the lines' leading.
+    for (std::size_t para = 1; para < leadings.size(); ++para) {
+      const std::size_t from = core::ParagraphStart(normal, para);
+      const std::size_t to = std::max(core::ParagraphEnd(normal, para), from);
+      const double leading = leadings[para];
+      normal = core::WithCharacterStyle(normal, from == to ? from : from, to,
+                                        [&](core::CharacterStyle& c) {
+                                          if (std::abs(core::LeadingOf(c) - leading) > 1e-6) {
+                                            c.leading = leading;
+                                          }
+                                        });
+    }
+    if (positioned_inside || indented) {
+      out_.report.Add("text positioned by character or line (laid out again)",
+                      ReportAction::kApproximated, id);
+    }
+    core::TextObject text;
+    text.common.id = id;
+    text.story = std::make_shared<const core::Story>(std::move(normal));
+    text.transform = transform * Matrix::Translate(*origin_x, *origin_y);
+    ApplyCommon(text.common, p, s, true);
+    return MakeObject(std::move(text));
+  }
+
+  // The font for a CSS font-family list, weight and style: the first family
+  // there is (generic names mean the default font), in the style closest to
+  // the weight.
+  core::FontRef FontFor(const Inherited& s) const {
+    std::vector<std::string> names;
+    std::vector<std::string> listed{""};
+    for (char c : s.font_family) {
+      if (c == ',') {
+        listed.emplace_back();
+      } else {
+        listed.back() += c;
+      }
+    }
+    for (std::string name : listed) {
+      std::erase_if(name, [](char c) { return c == '\'' || c == '"'; });
+      while (!name.empty() && name.front() == ' ') name.erase(0, 1);
+      while (!name.empty() && name.back() == ' ') name.pop_back();
+      if (!name.empty()) names.push_back(name);
+    }
+    const std::vector<text::FontFamily> families = text::Families();
+    for (const std::string& name : names) {
+      for (const text::FontFamily& family : families) {
+        if (family.name != name || family.styles.empty()) continue;
+        std::string best = family.styles.front();
+        int best_distance = 1000;
+        for (const std::string& style : family.styles) {
+          int distance = std::abs(WeightOfStyle(style) - s.font_weight);
+          if (IsItalicStyle(style) != s.italic) distance += 50;
+          if (distance < best_distance) {
+            best_distance = distance;
+            best = style;
+          }
+        }
+        return {family.name, best, {}};
+      }
+    }
+    core::FontRef font = core::DefaultFont();
+    if (s.font_weight >= 600) {
+      font.style = "Bold";
+      font.postscript_name.clear();
+    }
+    if (!names.empty() && names.front() != "sans-serif" && names.front() != "serif" &&
+        names.front() != "monospace") {
+      // A font that is not here: keep its name (spec 5.2, missing fonts).
+      font = {names.front(), s.font_weight >= 600 ? "Bold" : "Regular", {}};
+    }
+    return font;
+  }
+
+  static int WeightOfStyle(const std::string& style) {
+    std::string s;
+    for (char c : style) s += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    std::erase(s, ' ');
+    std::erase(s, '-');
+    static const std::pair<const char*, int> kWeights[] = {
+        {"extralight", 200}, {"ultralight", 200}, {"semibold", 600}, {"demibold", 600},
+        {"extrabold", 800},  {"ultrabold", 800},  {"thin", 100},     {"hairline", 100},
+        {"light", 300},      {"medium", 500},     {"bold", 700},     {"black", 900},
+        {"heavy", 900}};
+    for (const auto& [name, weight] : kWeights) {
+      if (s.find(name) != std::string::npos) return weight;
+    }
+    return 400;
+  }
+  static bool IsItalicStyle(const std::string& style) {
+    std::string s;
+    for (char c : style) s += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s.find("italic") != std::string::npos || s.find("oblique") != std::string::npos;
+  }
+
+  // The element a "url(#id)" reference points to, if it is a `kind`.
+  std::optional<pugi::xml_node> Referenced(const std::string& value, const char* kind) const {
+    if (value.rfind("url(", 0) != 0) return std::nullopt;
+    std::string ref = value.substr(4, value.find(')') - 4);
+    ref.erase(std::remove_if(ref.begin(), ref.end(),
+                             [](char c) { return c == '\'' || c == '"' || c == ' ' || c == '#'; }),
+              ref.end());
+    const auto it = by_id_.find(ref);
+    if (it == by_id_.end() || LocalName(it->second.name()) != kind) return std::nullopt;
+    return it->second;
+  }
+
+  // Whether a filter only inverts colors (as Leinwand writes inverted masks).
+  bool IsInvertFilter(const std::string& value) const {
+    const auto filter = Referenced(value, "filter");
+    if (!filter) return false;
+    int count = 0;
+    pugi::xml_node only;
+    for (pugi::xml_node child : filter->children()) {
+      if (child.type() != pugi::node_element) continue;
+      ++count;
+      only = child;
+    }
+    if (count != 1 || LocalName(only.name()) != "feColorMatrix") return false;
+    const auto v = svg::ParseNumberList(only.attribute("values").value());
+    static const double kInvert[20] = {-1, 0, 0,  0, 1, 0, -1, 0, 0, 1,
+                                       0,  0, -1, 0, 1, 0, 0,  0, 1, 0};
+    return v.size() == 20 && std::equal(v.begin(), v.end(), kInvert);
+  }
+
+  // mask="url(#id)": a luminance mask becomes the object's opacity mask
+  // (spec 6.1). The mask's content is in the element's user space, which
+  // includes its transform; the model keeps it in the parent's.
+  ObjectPtr WithMask(const ObjectPtr& object, pugi::xml_node node, const Properties& p) {
+    const std::string value = Value(p, "mask");
+    if (value.empty() || value == "none") return object;
+    const std::string id = CommonOf(*object).id;
+    const auto mask_node = Referenced(value, "mask");
+    if (!mask_node) {
+      out_.report.Add("mask (missing <mask>, ignored)", ReportAction::kDiscarded, id);
+      return object;
+    }
+    if (std::string(mask_node->attribute("maskContentUnits").value()) == "objectBoundingBox") {
+      out_.report.Add("mask in object units (ignored)", ReportAction::kDiscarded, id);
+      return object;
+    }
+    if (std::string(mask_node->attribute("mask-type").value()) == "alpha") {
+      out_.report.Add("alpha mask (as a luminance mask)", ReportAction::kApproximated, id);
+    }
+    if (std::string(mask_node->attribute("maskUnits").value()) != "userSpaceOnUse" &&
+        (mask_node->attribute("x") || mask_node->attribute("width"))) {
+      out_.report.Add("mask region (ignored)", ReportAction::kApproximated, id);
+    }
+    Matrix element_transform;
+    if (const auto m = svg::ParseTransform(node.attribute("transform").value()))
+      element_transform = *m;
+
+    OpacityMask mask;
+    pugi::xml_node content = *mask_node;
+    {
+      // Leinwand's inverted masks: everything inside one color-inverting group.
+      std::vector<pugi::xml_node> elements;
+      for (pugi::xml_node child : content.children()) {
+        if (child.type() == pugi::node_element) elements.push_back(child);
+      }
+      if (elements.size() == 1 && LocalName(elements[0].name()) == "g" &&
+          IsInvertFilter(elements[0].attribute("filter").value())) {
+        mask.invert = true;
+        content = elements[0];
+      }
+    }
+    const Rect masked = geometry::Bounds(*object);
+    std::vector<ObjectPtr> art;
+    bool first = true;
+    for (pugi::xml_node child : content.children()) {
+      if (child.type() != pugi::node_element) continue;
+      Inherited plain;
+      auto o = Element(child, plain, {root_, *mask_node});
+      if (!o) continue;
+      ObjectPtr placed = Bake(*o, element_transform);
+      // A first rectangle in plain white or black over the whole object is
+      // the background: white shows the object where there is no other art.
+      if (first && LocalName(child.name()) == "rect") {
+        const Fill* fill = core::FrontFill(CommonOf(*placed).appearance);
+        const RgbColor* rgb =
+            fill && !fill->gradient ? std::get_if<RgbColor>(&fill->paint) : nullptr;
+        const bool white = rgb && *rgb == RgbColor{1, 1, 1};
+        const bool black = rgb && *rgb == RgbColor{0, 0, 0};
+        if ((white || black) && fill->opacity == 1.0 && Covers(geometry::Bounds(*placed), masked)) {
+          mask.clip = mask.invert ? black : !white;
+          first = false;
+          continue;
+        }
+      }
+      first = false;
+      art.push_back(placed);
+    }
+    if (art.empty()) {
+      if (mask.clip == mask.invert) return object;  // All white: no mask.
+      GroupObject empty;
+      empty.common.id = FreshId("mask");
+      art.push_back(MakeObject(std::move(empty)));
+    }
+    if (art.size() == 1) {
+      mask.art = art.front();
+    } else {
+      GroupObject group;
+      group.common.id = FreshId("mask");
+      group.children = std::move(art);
+      mask.art = MakeObject(std::move(group));
+    }
+    return std::visit(
+        [&](const auto& o) -> ObjectPtr {
+          auto copy = o;
+          copy.common.mask = std::make_shared<const OpacityMask>(std::move(mask));
+          return MakeObject(std::move(copy));
+        },
+        object->base());
   }
 
   // clip-path="url(#id)": the object goes into a clipping group with the

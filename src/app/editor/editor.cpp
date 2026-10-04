@@ -4,10 +4,12 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <numbers>
 #include <utility>
 #include <variant>
 
+#include "core/layers.h"
 #include "core/transform.h"
 #include "editor/tool_math.h"
 #include "geometry/bezier.h"
@@ -95,6 +97,7 @@ Editor::Editor(core::Document document) : history_({std::move(document), {}}) {
 
 void Editor::SetTool(Tool tool) {
   FinishPath();
+  if (tool != Tool::kType) EndTextEdit();
   drag_ = {};
   tool_ = tool;
   temporary_tool_.reset();
@@ -238,6 +241,11 @@ const core::Document& Editor::document() const {
   return drag_.preview ? drag_.preview->document : history_.current().document;
 }
 
+const core::Document& Editor::shown_document() const {
+  if (drag_.preview) return drag_.preview->document;
+  return text_preview_ ? text_preview_->document : history_.current().document;
+}
+
 const core::IdSet& Editor::selection() const {
   return drag_.preview ? drag_.preview->selection : history_.current().selection;
 }
@@ -258,6 +266,16 @@ Overlay Editor::overlay() const {
   if (dragging()) overlay.guides = guides_;
   overlay.key_object = KeyObjectBounds();
   const Tool tool = this->tool();
+  if (tool == Tool::kType) {
+    // The text being edited shows its caret and selection, not a box.
+    TextOverlay(overlay);
+    return overlay;
+  }
+  if (tool == Tool::kGradient) {
+    // The gradient tool shows the gradient annotator instead of the box.
+    overlay.gradient_line = GradientLine();
+    return overlay;
+  }
   const bool path_tool = tool == Tool::kPen || tool == Tool::kDirectSelection ||
                          tool == Tool::kAddAnchor || tool == Tool::kDeleteAnchor ||
                          tool == Tool::kConvertAnchor;
@@ -308,6 +326,10 @@ Overlay Editor::overlay() const {
     }
     return overlay;
   }
+  if (tool == Tool::kSelection &&
+      (drag_.kind == DragKind::kNone || drag_.kind == DragKind::kCornerRadius)) {
+    overlay.corner_widgets = CornerWidgets(widget_pick_);
+  }
   // The box hides while the selection is being transformed, as in Illustrator.
   if (drag_.kind == DragKind::kNone || drag_.kind == DragKind::kPending ||
       drag_.kind == DragKind::kMarquee) {
@@ -340,6 +362,8 @@ std::optional<Handle> Editor::RotateZoneAt(Point p, double pick) const {
 
 Hover Editor::HoverAt(Point p, double pick) const {
   if (tool() != Tool::kSelection) return {};
+  widget_pick_ = pick;
+  if (CornerWidgetAt(p, pick)) return {Hover::Kind::kCorner};
   if (const auto h = HandleAt(p, pick)) return {Hover::Kind::kHandle, *h};
   if (const auto h = RotateZoneAt(p, pick)) return {Hover::Kind::kRotate, *h};
   if (geometry::HitTest(document(), p, pick)) return {Hover::Kind::kObject};
@@ -349,15 +373,20 @@ Hover Editor::HoverAt(Point p, double pick) const {
 void Editor::SetSelection(core::IdSet selection) {
   history_.SetSelection(std::move(selection));
   AdoptSelectionStyle();
+  // A preview of edited text is built on the current state; keep it so.
+  if (text_preview_) UpdateTextPreview();
 }
 
 void Editor::Commit(const std::string& action, core::EditorState state) {
   if (gesture_ && gesture_pushed_) {
     history_.Amend(action, std::move(state));
-    return;
+  } else {
+    history_.Push(action, std::move(state));
+    gesture_pushed_ = gesture_;
   }
-  history_.Push(action, std::move(state));
-  gesture_pushed_ = gesture_;
+  // Edits made while text is being edited (from the panels) must show
+  // through the text's preview, which is built on the current state.
+  if (text_preview_) UpdateTextPreview();
 }
 
 void Editor::BeginGesture() {
@@ -377,7 +406,11 @@ void Editor::PointerDown(Point p, Modifiers modifiers, double pick) {
   const Tool tool = this->tool();
   // Switching to a selection tool, even with Ctrl held, ends the pen path.
   if (tool == Tool::kSelection || tool == Tool::kDirectSelection) FinishPath();
+  if (tool != Tool::kType) EndTextEdit();
   switch (tool) {
+    case Tool::kType:
+      TypeDown(p, modifiers, pick);
+      return;
     case Tool::kPen:
       PenDown(p, modifiers, pick);
       return;
@@ -403,6 +436,9 @@ void Editor::PointerDown(Point p, Modifiers modifiers, double pick) {
     case Tool::kArtboard:
       ArtboardDown(p, pick);
       return;
+    case Tool::kGradient:
+      GradientDown(p, pick);
+      return;
     case Tool::kRectangle:
     case Tool::kEllipse:
     case Tool::kPolygon:
@@ -414,6 +450,11 @@ void Editor::PointerDown(Point p, Modifiers modifiers, double pick) {
       return;
     case Tool::kSelection:
       break;
+  }
+  widget_pick_ = pick;
+  if (const auto corner = CornerWidgetAt(p, pick)) {
+    CornerDown(*corner, modifiers);
+    return;
   }
   if (!selection().empty()) {
     if (const auto h = HandleAt(p, pick)) {
@@ -469,6 +510,15 @@ void Editor::PointerMove(Point p, Modifiers modifiers) {
     case DragKind::kArtboardMove:
     case DragKind::kArtboardResize:
       ArtboardDrag();
+      return;
+    case DragKind::kGradient:
+      GradientDrag();
+      return;
+    case DragKind::kTextSelect:
+      TypeDrag();
+      return;
+    case DragKind::kCornerRadius:
+      CornerDrag();
       return;
     default:
       break;
@@ -579,6 +629,24 @@ void Editor::PointerUp(Point p, Modifiers modifiers) {
     SetSelection(std::move(selection));
     return;
   }
+  if (kind == DragKind::kTextSelect) {
+    drag_ = {};
+    return;
+  }
+  if (kind == DragKind::kCornerRadius) {
+    std::optional<core::EditorState> result = std::move(drag_.preview);
+    drag_ = {};
+    if (result) Commit("corner radius", std::move(*result));
+    return;
+  }
+  if (kind == DragKind::kGradient) {
+    drag_.modifiers = modifiers;
+    GradientDrag();
+    std::optional<core::EditorState> result = std::move(drag_.preview);
+    drag_ = {};
+    if (result) Commit("gradient", std::move(*result));
+    return;
+  }
   if (kind == DragKind::kArtboardDraw || kind == DragKind::kArtboardMove ||
       kind == DragKind::kArtboardResize) {
     drag_.modifiers = modifiers;
@@ -628,11 +696,24 @@ void Editor::PointerUp(Point p, Modifiers modifiers) {
 
 void Editor::CancelDrag() { drag_ = {}; }
 
-void Editor::SelectAll() { SetSelection(TopLevelSelectable(document())); }
+void Editor::SelectAll() {
+  if (text_editing()) {
+    SelectAllText();
+    return;
+  }
+  SetSelection(TopLevelSelectable(document()));
+}
 
-void Editor::Deselect() { SetSelection({}); }
+void Editor::Deselect() {
+  EndTextEdit();
+  SetSelection({});
+}
 
 void Editor::Delete() {
+  if (text_editing()) {
+    DeleteForward();
+    return;
+  }
   if (tool() == Tool::kArtboard) {
     RemoveActiveArtboard();
     return;
@@ -646,6 +727,7 @@ void Editor::Delete() {
 }
 
 void Editor::Group() {
+  EndTextEdit();
   if (selection().empty()) return;
   const std::string id = ids_.Next();
   Commit("group", {core::GroupObjects(document(), selection(), id), {id}});
@@ -662,6 +744,69 @@ void Editor::Ungroup() {
   core::Document result = core::UngroupObjects(document(), groups, &released);
   released.insert(others.begin(), others.end());
   Commit("ungroup", {std::move(result), std::move(released)});
+}
+
+std::vector<core::ObjectPtr> Editor::CopySelection() const {
+  std::vector<core::ObjectPtr> objects;
+  for (const auto& found :
+       core::FindObjects(document(), core::WithoutNested(document(), selection()))) {
+    objects.push_back(core::Transformed(found.object, found.to_document));
+  }
+  return objects;
+}
+
+void Editor::Paste(const std::vector<core::ObjectPtr>& objects, PasteMode mode, Point centre) {
+  EndTextEdit();
+  if (objects.empty()) return;
+  std::vector<core::ObjectPtr> fresh;
+  for (const auto& object : objects) fresh.push_back(core::WithFreshIds(object, ids_));
+  if (mode == PasteMode::kCentre) {
+    Rect bounds;
+    for (const auto& object : fresh) bounds = bounds.Union(geometry::Bounds(*object));
+    if (bounds.IsValid()) {
+      const Matrix move = Matrix::Translate(centre.x - (bounds.left + bounds.right) / 2,
+                                            centre.y - (bounds.top + bounds.bottom) / 2);
+      for (auto& object : fresh) object = core::Transformed(object, move);
+    }
+  }
+  core::IdSet pasted;
+  for (const auto& object : fresh) pasted.insert(core::CommonOf(*object).id);
+  core::Document result = document();
+  // In front of or behind the selection, in its parent.
+  const auto selected = core::FindObjects(result, core::WithoutNested(result, selection()));
+  if ((mode == PasteMode::kFront || mode == PasteMode::kBack) && !selected.empty()) {
+    const std::string anchor =
+        core::CommonOf(
+            *(mode == PasteMode::kFront ? selected.back().object : selected.front().object))
+            .id;
+    result = core::InsertObjects(result, anchor, fresh, mode == PasteMode::kFront);
+  } else {
+    // On top of the active layer (paste in back: at its bottom).
+    int index = 0;
+    for (const auto& object : fresh) {
+      const std::string id = core::CommonOf(*object).id;
+      result = core::AddObject(result, object, "layer-" + id);
+      if (!active_layer_.empty() && core::LayerAcceptsArt(result, active_layer_)) {
+        result =
+            core::MoveItem(result, id, active_layer_,
+                           mode == PasteMode::kBack ? index++ : std::numeric_limits<int>::max());
+      }
+    }
+  }
+  anchors_.clear();
+  Commit("paste", {std::move(result), std::move(pasted)});
+}
+
+bool Editor::UngroupChangesLook() const {
+  for (const auto& found : core::FindObjects(document(), selection())) {
+    const auto* group = std::get_if<core::GroupObject>(found.object.get());
+    if (!group) continue;
+    if (group->common.mask || group->common.blend_mode != core::BlendMode::kNormal ||
+        group->isolated || group->outlined_text) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void Editor::Arrange(core::Arrange arrange) {
@@ -683,7 +828,13 @@ void Editor::Nudge(double dx, double dy) {
 
 void Editor::Undo() {
   drag_ = {};
+  // Undoing a composition or untyped new text just drops it.
+  if (text_.pending) {
+    EndTextEdit();
+    return;
+  }
   history_.Undo();
+  ValidateTextEdit();
   anchors_.clear();
   // Undoing pen clicks keeps drawing, until the path itself is gone.
   if (drawing_path() && !GetPath(document(), pen_.path_id)) FinishPath();
@@ -692,6 +843,7 @@ void Editor::Undo() {
 void Editor::Redo() {
   drag_ = {};
   history_.Redo();
+  ValidateTextEdit();
   anchors_.clear();
 }
 

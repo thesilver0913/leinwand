@@ -186,3 +186,42 @@ TEST_CASE("Rotation is absolute for a single shape, counter-clockwise positive")
   editor.Undo();
   CHECK(editor.Info()->rotation == Approx(0));
 }
+
+TEST_CASE("Live corners: dragging a widget rounds every corner; Alt-click changes the type") {
+  Editor editor(Empty());
+  editor.SetTool(Tool::kRectangle);
+  editor.PointerDown({100, 100}, {}, 4);
+  editor.PointerMove({300, 200}, {});
+  editor.PointerUp({300, 200}, {});
+  editor.SetTool(Tool::kSelection);
+  // A widget inside each corner, along the diagonal.
+  const auto widgets = editor.overlay().corner_widgets;
+  REQUIRE(widgets.size() == 4);
+  CHECK(widgets[0].x > 100);
+  CHECK(widgets[0].y > 100);
+  // Drag the top-left one 20 pt in along the diagonal: radius 20.
+  editor.PointerDown(widgets[0], {}, 4);
+  editor.PointerMove({100 + 20, 100 + 20}, {});
+  editor.PointerUp({100 + 20, 100 + 20}, {});
+  const auto* shape =
+      std::get_if<core::ShapeObject>(editor.document().FindObject(*editor.selection().begin()));
+  REQUIRE(shape);
+  const auto& rect = std::get<core::RectangleShape>(shape->shape);
+  for (const auto& corner : rect.corners) CHECK(corner.radius == Approx(20));
+  // The widget sits at the arc's centre now.
+  CHECK(editor.overlay().corner_widgets[0].x == Approx(120));
+  // Alt-click cycles the type.
+  editor.PointerDown(editor.overlay().corner_widgets[1], {.alt = true}, 4);
+  editor.PointerUp(editor.overlay().corner_widgets[1], {.alt = true});
+  const auto& cycled = std::get<core::RectangleShape>(
+      std::get<core::ShapeObject>(*editor.document().FindObject(*editor.selection().begin()))
+          .shape);
+  CHECK(cycled.corners[3].kind == core::CornerKind::kInvertedRound);
+  editor.Undo();
+  editor.Undo();
+  CHECK(std::get<core::RectangleShape>(
+            std::get<core::ShapeObject>(*editor.document().FindObject(*editor.selection().begin()))
+                .shape)
+            .corners[0]
+            .radius == 0);
+}

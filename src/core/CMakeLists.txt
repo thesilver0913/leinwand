@@ -4,13 +4,16 @@ add_library(core STATIC
   cover.cpp
   document.cpp
   edit.cpp
+  gradient.cpp
   layers.cpp
+  marks.cpp
   number.cpp
   history.cpp
   object.cpp
   shape.cpp
   style.cpp
   id.cpp
+  text.cpp
   transform.cpp
 )
 target_include_directories(core PUBLIC ${PROJECT_SOURCE_DIR}/src)

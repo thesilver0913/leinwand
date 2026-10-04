@@ -26,17 +26,34 @@ ApplicationWindow {
     font.pixelSize: Spectrum.fontSize75
     palette {
         window: Spectrum.backgroundLayer1Color
-        windowText: Spectrum.neutralContentColorDefault
         base: Spectrum.gray25
-        text: Spectrum.neutralContentColorDefault
         button: Spectrum.gray200
-        buttonText: Spectrum.neutralContentColorDefault
         highlight: Spectrum.accentBackgroundColorDefault
-        highlightedText: "#ffffff"
         mid: Spectrum.gray400
         dark: Spectrum.gray500
         toolTipBase: Spectrum.backgroundElevatedColor
         toolTipText: Spectrum.neutralContentColorDefault
+        // Text colours per state: set for all states at once, they would
+        // also cover the disabled state (disabled menu items would look
+        // enabled, whichever assignment ran last).
+        active {
+            windowText: Spectrum.neutralContentColorDefault
+            text: Spectrum.neutralContentColorDefault
+            buttonText: Spectrum.neutralContentColorDefault
+            highlightedText: "#ffffff"
+        }
+        inactive {
+            windowText: Spectrum.neutralContentColorDefault
+            text: Spectrum.neutralContentColorDefault
+            buttonText: Spectrum.neutralContentColorDefault
+            highlightedText: "#ffffff"
+        }
+        disabled {
+            windowText: Spectrum.disabledContentColor
+            text: Spectrum.disabledContentColor
+            buttonText: Spectrum.disabledContentColor
+            highlightedText: Spectrum.disabledContentColor
+        }
     }
 
     // --paths=N: show N generated blobs instead of the showcase document.
@@ -49,8 +66,8 @@ ApplicationWindow {
     }
     property var samples: []
     // Development aids for checking the UI: --showcase (the sample document),
-    // --light, --select-all, and --tabs=layers,swatches to bring panels to
-    // the front.
+    // --light, --select-all, --tabs=layers,swatches to bring panels to the
+    // front, --menu=N and --preferences=N.
     function argValue(name) {
         const arg = Qt.application.arguments.find(a => a.startsWith("--" + name + "="));
         return arg ? arg.substring(name.length + 3) : "";
@@ -73,8 +90,28 @@ ApplicationWindow {
             });
         if (Qt.application.arguments.indexOf("--light") >= 0)
             Spectrum.dark = false;  // For this run only; the preference stays.
+        // --menu=N: open menu N of the menu bar (for checking how it looks).
+        if (argValue("menu") !== "")
+            Qt.callLater(() => window.menuBar.menuAt(parseInt(argValue("menu"))).popup(0, window.menuBar.height));
+        // --preferences=N: open the preferences at page N (for checking layouts).
+        if (argValue("preferences") !== "") {
+            preferencesDialog.category = parseInt(argValue("preferences"));
+            preferencesDialog.show();
+        }
         if (Qt.application.arguments.indexOf("--select-all") >= 0)
             Session.selectAll();
+        // --print-to=FILE: print through Qt's print path into a PDF, then quit
+        // (for checking printing without a printer). --print: the Print dialog.
+        if (argValue("print-to") !== "") {
+            Session.print({ output: argValue("print-to"), paper: "A4", scaling: 1, marks: 1,
+                            range: 0 });
+            Qt.callLater(Qt.quit);
+        }
+        if (Qt.application.arguments.indexOf("--print") >= 0)
+            Qt.callLater(() => printDialog.open());
+        // --tool=N: start with tool N (for checking how a tool looks).
+        if (argValue("tool") !== "")
+            Session.tool = parseInt(argValue("tool"));
     }
 
     menuBar: AppMenuBar { window: window }
@@ -151,10 +188,40 @@ ApplicationWindow {
                 SpPanel { SwatchesPanel { anchors.fill: parent } }
             }
             KDDW.DockWidget {
+                id: gradientPanel
+                uniqueName: "gradient"
+                title: qsTr("Gradient")
+                SpPanel { GradientPanel { anchors.fill: parent } }
+            }
+            KDDW.DockWidget {
+                id: transparencyPanel
+                uniqueName: "transparency"
+                title: qsTr("Transparency")
+                SpPanel { TransparencyPanel { anchors.fill: parent } }
+            }
+            KDDW.DockWidget {
+                id: characterPanel
+                uniqueName: "character"
+                title: qsTr("Character")
+                SpPanel { CharacterPanel { anchors.fill: parent } }
+            }
+            KDDW.DockWidget {
+                id: paragraphPanel
+                uniqueName: "paragraph"
+                title: qsTr("Paragraph")
+                SpPanel { ParagraphPanel { anchors.fill: parent } }
+            }
+            KDDW.DockWidget {
                 id: stroke
                 uniqueName: "stroke"
                 title: qsTr("Stroke")
                 SpPanel { StrokePanel { anchors.fill: parent } }
+            }
+            KDDW.DockWidget {
+                id: preflightPanel
+                uniqueName: "preflight"
+                title: qsTr("Preflight")
+                SpPanel { PreflightPanel { anchors.fill: parent } }
             }
             KDDW.DockWidget {
                 id: importReport
@@ -163,29 +230,42 @@ ApplicationWindow {
                 SpPanel { ImportReportPanel { anchors.fill: parent } }
             }
 
-            // Illustrator's default workspace, roughly: properties and layers
-            // above; color, swatches and stroke below.
+            // Illustrator's default workspace, roughly: properties, layers and
+            // artboards (and the import report when there is one); transform, align and
+            // pathfinder; color, swatches, character and paragraph; stroke,
+            // gradient and transparency.
             Component.onCompleted: {
                 addDockWidget(properties, KDDW.KDDockWidgets.Location_OnRight, null,
-                              Qt.size(Spectrum.standardPanelWidth + 20, 0));
+                              Qt.size(Spectrum.standardPanelWidth + 50, 0));
                 properties.addDockWidgetAsTab(layers);
                 properties.addDockWidgetAsTab(artboardsPanel);
-                properties.addDockWidgetAsTab(transform);
-                properties.addDockWidgetAsTab(alignPanel);
-                properties.addDockWidgetAsTab(pathfinderPanel);
-                addDockWidget(colorPanel, KDDW.KDDockWidgets.Location_OnBottom, properties);
+                // Transform, Align and Pathfinder in a group of their own, as
+                // in Illustrator, so that no group has more tabs than fit.
+                addDockWidget(transform, KDDW.KDDockWidgets.Location_OnBottom, properties);
+                transform.addDockWidgetAsTab(alignPanel);
+                transform.addDockWidgetAsTab(pathfinderPanel);
+                addDockWidget(colorPanel, KDDW.KDDockWidgets.Location_OnBottom, transform);
                 colorPanel.addDockWidgetAsTab(swatches);
-                colorPanel.addDockWidgetAsTab(stroke);
-                colorPanel.addDockWidgetAsTab(importReport);
+                colorPanel.addDockWidgetAsTab(characterPanel);
+                colorPanel.addDockWidgetAsTab(paragraphPanel);
+                // Stroke and Gradient together, as in Illustrator.
+                addDockWidget(stroke, KDDW.KDDockWidgets.Location_OnBottom, colorPanel);
+                stroke.addDockWidgetAsTab(gradientPanel);
+                stroke.addDockWidgetAsTab(transparencyPanel);
                 properties.setAsCurrentTab();
+                transform.setAsCurrentTab();
                 colorPanel.setAsCurrentTab();
+                stroke.setAsCurrentTab();
                 const panels = { properties: properties, layers: layers, transform: transform,
                                  align: alignPanel, pathfinder: pathfinderPanel,
                                  artboards: artboardsPanel,
-                                 color: colorPanel, swatches: swatches, stroke: stroke };
+                                 color: colorPanel, swatches: swatches, gradient: gradientPanel, transparency: transparencyPanel,
+                                 character: characterPanel, paragraph: paragraphPanel,
+                                 preflight: preflightPanel,
+                                 stroke: stroke };
                 for (const name of window.argValue("tabs").split(","))
                     if (panels[name])
-                        panels[name].setAsCurrentTab();
+                        window.showPanel(panels[name]);
             }
         }
     }
@@ -196,6 +276,34 @@ ApplicationWindow {
         onActivated: {
             alignPanel.open();
             alignPanel.setAsCurrentTab();
+        }
+    }
+    Shortcut {
+        sequences: Shortcuts.windowCharacter
+        onActivated: {
+            characterPanel.open();
+            characterPanel.setAsCurrentTab();
+        }
+    }
+    Shortcut {
+        sequences: Shortcuts.windowParagraph
+        onActivated: {
+            paragraphPanel.open();
+            paragraphPanel.setAsCurrentTab();
+        }
+    }
+    Shortcut {
+        sequences: Shortcuts.windowTransparency
+        onActivated: {
+            transparencyPanel.open();
+            transparencyPanel.setAsCurrentTab();
+        }
+    }
+    Shortcut {
+        sequences: Shortcuts.windowGradient
+        onActivated: {
+            gradientPanel.open();
+            gradientPanel.setAsCurrentTab();
         }
     }
     Shortcut {
@@ -221,6 +329,8 @@ ApplicationWindow {
     Shortcut { sequences: Shortcuts.toolEyedropper; enabled: Session.hasDocument; onActivated: Session.tool = 11 }
     Shortcut { sequences: Shortcuts.toolScissors; enabled: Session.hasDocument; onActivated: Session.tool = 14 }
     Shortcut { sequences: Shortcuts.toolArtboard; enabled: Session.hasDocument; onActivated: Session.tool = 15 }
+    Shortcut { sequences: Shortcuts.toolGradient; enabled: Session.hasDocument; onActivated: Session.tool = 16 }
+    Shortcut { sequences: Shortcuts.toolType; enabled: Session.hasDocument; onActivated: Session.tool = 17 }
     Shortcut { sequences: Shortcuts.toolHand; enabled: Session.hasDocument; onActivated: Session.tool = 12 }
     Shortcut { sequences: Shortcuts.toolZoom; enabled: Session.hasDocument; onActivated: Session.tool = 13 }
 
@@ -236,15 +346,35 @@ ApplicationWindow {
 
     readonly property var panels: [properties, layers, artboardsPanel, transform, alignPanel, pathfinderPanel,
                                    colorPanel,
-                                   swatches, stroke, importReport]
+                                   swatches, characterPanel, paragraphPanel, gradientPanel, transparencyPanel,
+                                   stroke, preflightPanel, importReport]
     property alias openDialog: openDialog
     property alias saveAsDialog: saveAsDialog
     property alias pngOptions: pngOptions
+    property alias pdfOptions: pdfOptions
+    property alias printDialog: printDialog
+    property alias preflight: preflightPanel
     property alias aboutDialog: aboutDialog
     property alias preferencesDialog: preferencesDialog
     property alias averageDialog: averageDialog
     property alias coverDialog: coverDialog
     property alias shortcutsDialog: shortcutsDialog
+
+    // Opens a panel; one not in the layout docks beside the properties
+    // rather than floating.
+    function showPanel(panel) {
+        if (!panel.isOpen)
+            properties.addDockWidgetAsTab(panel);
+        panel.setAsCurrentTab();
+    }
+
+    // Ungrouping that would change the look asks first.
+    function ungroup() {
+        if (Session.ungroupChangesLook())
+            ungroupDialog.open();
+        else
+            Session.ungroup();
+    }
 
     function showWelcome() {
         welcome.show();
@@ -326,6 +456,17 @@ ApplicationWindow {
         onAccepted: Session.exportSvg(selectedFile)
     }
     FileDialog {
+        id: exportPdfDialog
+        property bool allArtboards: true
+        property bool outlineText: false
+        property int marks: 0
+        title: qsTr("Export as PDF")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "pdf"
+        nameFilters: [qsTr("PDF files (*.pdf)")]
+        onAccepted: Session.exportPdf(selectedFile, allArtboards, outlineText, marks)
+    }
+    FileDialog {
         id: exportPngDialog
         property real scale: 1
         property bool transparent: false
@@ -352,6 +493,16 @@ ApplicationWindow {
         }
     }
     MessageDialog {
+        id: ungroupDialog
+        text: qsTr("Ungroup and change how it looks?")
+        informativeText: qsTr("The group's opacity mask, blend mode or isolated blending cannot move to its contents and will be removed (and outlines lose the text they keep).")
+        buttons: MessageDialog.Ok | MessageDialog.Cancel
+        onButtonClicked: (button, role) => {
+            if (button === MessageDialog.Ok)
+                Session.ungroup();
+        }
+    }
+    MessageDialog {
         id: errorDialog
         text: Session.error
         buttons: MessageDialog.Ok
@@ -361,7 +512,10 @@ ApplicationWindow {
         function onErrorChanged() { errorDialog.open(); }
         function onImportReportChanged() {
             if (Session.importReport.length > 0) {
-                importReport.open();
+                // Docked beside the properties when it first has something
+                // to show (it is not in the default layout).
+                if (!importReport.isOpen)
+                    properties.addDockWidgetAsTab(importReport);
                 importReport.setAsCurrentTab();
             }
         }
@@ -425,6 +579,53 @@ ApplicationWindow {
             exportPngDialog.transparent = transparentBackground.checked;
             exportPngDialog.allArtboards = exportRange.currentIndex === 1;
             exportPngDialog.open();
+        }
+    }
+
+    PrintDialog { id: printDialog }
+
+    // PDF export options (spec 6.2, "書き出しの設定").
+    Dialog {
+        id: pdfOptions
+        title: qsTr("PDF Export Options")
+        anchors.centerIn: parent
+        modal: true
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        ColumnLayout {
+            spacing: 8
+            SpLabel { text: qsTr("Range"); subdued: false }
+            SpPicker {
+                id: pdfRange
+                Layout.preferredWidth: 280
+                model: [qsTr("All artboards (one page each)"), qsTr("Active artboard")]
+                currentIndex: 0
+            }
+            SpLabel { text: qsTr("Fonts"); subdued: false }
+            SpPicker {
+                id: pdfFonts
+                Layout.preferredWidth: 280
+                model: [qsTr("Embed (subset)"), qsTr("Convert to outlines")]
+                currentIndex: 0
+            }
+            SpLabel {
+                Layout.preferredWidth: 300
+                wrapMode: Text.WordWrap
+                visible: pdfFonts.currentIndex === 0
+                text: qsTr("OpenType fonts with PostScript outlines are written as drawn glyphs (Type 3); the text stays searchable.")
+            }
+            SpLabel { text: qsTr("Marks and Bleed"); subdued: false }
+            SpPicker {
+                id: pdfMarks
+                Layout.preferredWidth: 280
+                model: [qsTr("None"), qsTr("Japanese trim marks"), qsTr("Western trim marks")]
+                currentIndex: 0
+            }
+        }
+        onAccepted: {
+            exportPdfDialog.allArtboards = pdfRange.currentIndex === 0;
+            exportPdfDialog.outlineText = pdfFonts.currentIndex === 1;
+            exportPdfDialog.marks = pdfMarks.currentIndex;
+            exportPdfDialog.open();
         }
     }
 
@@ -512,7 +713,7 @@ ApplicationWindow {
             const avg = i => window.samples.reduce((s, v) => s + v[i], 0) / window.samples.length;
             console.log("bench paths=" + Session.objectCount + " fps=" + avg(0).toFixed(1)
                         + " drawMs=" + avg(1).toFixed(2));
-            Qt.quit();
+            Qt.callLater(Qt.quit);
         }
     }
 }

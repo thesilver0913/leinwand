@@ -5,7 +5,7 @@ project(Leinwand VERSION 0.2.0 LANGUAGES CXX)
 # A pre-release label ("alpha.1") for test builds published as GitHub
 # pre-releases; empty for a release. The full version is then
 # 0.2.0-alpha.1, as the tag (v0.2.0-alpha.1) must read.
-set(LEINWAND_PRERELEASE "alpha.1")
+set(LEINWAND_PRERELEASE "alpha.2")
 if(LEINWAND_PRERELEASE)
   set(LEINWAND_VERSION_STRING "${PROJECT_VERSION}-${LEINWAND_PRERELEASE}")
 else()
@@ -27,6 +27,7 @@ else()
 endif()
 
 add_subdirectory(src/core)
+add_subdirectory(src/text)
 add_subdirectory(src/geometry)
 add_subdirectory(src/render)
 add_subdirectory(src/io)

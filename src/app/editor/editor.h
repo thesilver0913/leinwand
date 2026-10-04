@@ -4,6 +4,7 @@
 // the canvas item translates Qt input into these calls.
 #pragma once
 
+#include <array>
 #include <functional>
 #include <optional>
 #include <set>
@@ -16,6 +17,7 @@
 #include "core/edit.h"
 #include "core/history.h"
 #include "core/id.h"
+#include "core/marks.h"
 #include "core/shape.h"
 #include "core/types.h"
 #include "geometry/pathfinder.h"
@@ -43,6 +45,21 @@ enum class Tool {
   kEyedropper,
   kScissors,  // Cuts a path where it is clicked (C).
   kArtboard,  // Draws, moves and resizes artboards (Shift+O).
+  kGradient,  // Drags out the gradient of the selection (G).
+  kType,      // Point text: click to type, click text to edit it (T).
+};
+
+// Caret movement while editing text.
+enum class TextMove { kLeft, kRight, kUp, kDown, kLineStart, kLineEnd, kStart, kEnd };
+
+// What the Character and Paragraph panels show: the styles in the text
+// selection while editing, else in the selected text objects, else the
+// style for new text.
+struct TextStyleState {
+  bool editing = false;
+  bool selected_text = false;
+  std::vector<core::CharacterStyle> characters;  // At least one.
+  std::vector<core::ParagraphStyle> paragraphs;  // At least one.
 };
 
 // What a pen click would do at a point (spec 4.2: the cursor shows it).
@@ -80,8 +97,23 @@ struct StyleState {
   bool fill_mixed = false;  // The selected objects differ (shown as "?").
   bool stroke_mixed = false;
   std::optional<core::Stroke> stroke_style;  // Settings of the first front stroke.
+  // The gradient of the active side (fill or stroke) of the first selected
+  // object, or of the style for new objects.
+  std::optional<core::Gradient> gradient;
   double opacity = 1.0;
   bool opacity_mixed = false;
+};
+
+// What the Transparency panel shows for the selection (spec 7.2).
+struct TransparencyState {
+  bool selected = false;
+  double opacity = 1.0;
+  bool opacity_mixed = false;
+  core::BlendMode blend_mode = core::BlendMode::kNormal;
+  bool blend_mixed = false;
+  std::optional<core::OpacityMask> mask;  // The first selected object's mask.
+  bool has_group = false;                 // Isolated blending applies to groups.
+  bool isolated = false;
 };
 
 // What the transform panel shows for the current selection.
@@ -98,7 +130,7 @@ enum class Handle { kTopLeft, kTop, kTopRight, kRight, kBottomRight, kBottom, kB
 
 // What the pointer is over, for the cursor.
 struct Hover {
-  enum class Kind { kNothing, kObject, kHandle, kRotate } kind = Kind::kNothing;
+  enum class Kind { kNothing, kObject, kHandle, kRotate, kCorner } kind = Kind::kNothing;
   Handle handle = Handle::kTopLeft;  // For kHandle and kRotate (the nearest corner).
 };
 
@@ -111,6 +143,16 @@ struct Overlay {
   std::optional<core::PathData> rubber_band;                // The pen's next segment.
   std::vector<std::pair<core::Point, core::Point>> guides;  // Smart guides while dragging.
   std::optional<core::Rect> key_object;                     // Drawn with a thick outline.
+  // The gradient tool's annotator: the gradient's start and end in document
+  // coordinates.
+  std::optional<std::pair<core::Point, core::Point>> gradient_line;
+  // Text being edited: the caret (top to bottom), the selected text as
+  // quadrilaterals and the IME composition's underline.
+  std::optional<std::pair<core::Point, core::Point>> text_caret;
+  std::vector<std::array<core::Point, 4>> text_selection;
+  std::vector<std::pair<core::Point, core::Point>> text_underlines;
+  // Live corner widgets of the selected rectangle or polygon.
+  std::vector<core::Point> corner_widgets;
 };
 
 // The Align panel (spec 7.2): what objects line up with.
@@ -121,8 +163,11 @@ class Editor {
  public:
   explicit Editor(core::Document document);
 
-  // The document to show: the current state, or the live preview of a drag.
+  // The document to edit: the current state, or the live preview of a drag.
   const core::Document& document() const;
+  // The document to draw: as document(), with new text and the IME's
+  // composition shown while text is edited (not part of the document yet).
+  const core::Document& shown_document() const;
   const core::IdSet& selection() const;
   Overlay overlay() const;
   const core::History& history() const { return history_; }
@@ -226,6 +271,18 @@ class Editor {
   void Group();
   void Ungroup();
   void Arrange(core::Arrange arrange);
+  // Edit > Copy (Ctrl+C): the selection in document coordinates, front to
+  // back order kept. Paste (Ctrl+V) centres the objects on `centre` (the
+  // view's middle); in place (Shift+Ctrl+V) keeps their position; in front
+  // (Ctrl+F) and in back (Ctrl+B) also put them just in front of or behind
+  // the selection, as in Illustrator. Pasted objects get fresh ids.
+  std::vector<core::ObjectPtr> CopySelection() const;
+  enum class PasteMode { kCentre, kInPlace, kFront, kBack };
+  void Paste(const std::vector<core::ObjectPtr>& objects, PasteMode mode, core::Point centre = {});
+  // Whether ungrouping the selection would change how it looks: a group's
+  // opacity mask, blend mode or isolated blending (or the text its outlines
+  // keep) cannot move to its contents.
+  bool UngroupChangesLook() const;
   void Nudge(double dx, double dy);
   void Undo();
   void Redo();
@@ -249,6 +306,9 @@ class Editor {
     kArtboardDraw,    // The artboard tool outside every artboard.
     kArtboardMove,    // Inside one: moves it with the artwork on it.
     kArtboardResize,  // On a handle of the active one.
+    kGradient,        // The gradient tool: start (or one end) to the pointer.
+    kTextSelect,      // The type tool: selecting text in the edited text.
+    kCornerRadius,    // A live corner widget.
   };
   struct Drag {
     DragKind kind = DragKind::kNone;
@@ -369,6 +429,28 @@ class Editor {
   // their mean position, along one axis or both.
   void AverageAnchors(bool horizontal, bool vertical);
 
+  // Gradients (editor_gradient.cpp, spec 7.2). They act on the active side
+  // (fill or stroke) of the selection, and on the style for new objects.
+  // Applying a gradient to an object without one lays a white-to-black
+  // gradient across it; with one, it changes its type. While a stop is
+  // selected, SetFill / SetStroke color that stop instead.
+  void ApplyGradient(core::GradientType type);
+  void SetGradientAngle(double degrees);
+  void SetGradientAspect(double aspect);  // Radial only.
+  // The selected stop; it is deselected when the selection changes.
+  int gradient_stop() const {
+    return gradient_stop_selection_ == selection() ? gradient_stop_ : -1;
+  }
+  void SelectGradientStop(int index) {
+    gradient_stop_ = index;
+    gradient_stop_selection_ = selection();
+  }
+  int AddGradientStop(double offset);  // Returns the new stop, now selected.
+  void RemoveGradientStop(int index);
+  int MoveGradientStop(int index, double offset);  // Returns its index after sorting.
+  void SetGradientStopOpacity(int index, double opacity);
+  void SetGradientStopMidpoint(int index, double midpoint);
+
   // Artboards (editor_artboards.cpp, spec 7.2). The active artboard is a
   // view state: alignment, export and "fit artboard" use it. Each edit is
   // one undo step; the last artboard cannot be removed.
@@ -382,6 +464,9 @@ class Editor {
   void SetArtboardBounds(int index, const core::Rect& bounds);
   // Lays the cover's artboards out again (spec 7.5); one undo step.
   void SetCover(const core::CoverSpec& spec, const core::CoverNames& names);
+  // Object > Create Trim Marks (editor_artboards.cpp, spec 7.5).
+  void CreateTrimMarks(core::TrimMarkStyle style);
+  void SetTrimMarksName(std::string name) { trim_marks_name_ = std::move(name); }
 
   // Object > Compound Path (Ctrl+8, Alt+Shift+Ctrl+8). Make joins the
   // selected paths and compound paths into one compound path with the
@@ -390,8 +475,96 @@ class Editor {
   void MakeCompoundPath();
   void ReleaseCompoundPath();
 
+  // Clipping masks and the Transparency panel (editor_transparency.cpp,
+  // spec 7.2). Ctrl+7: the frontmost selected path clips the others, in a
+  // new group; Alt+Ctrl+7 turns selected clipping groups back into groups.
+  void MakeClippingMask();
+  void ReleaseClippingMask();
+  TransparencyState Transparency() const;
+  void SetBlendMode(core::BlendMode mode);
+  void SetIsolated(bool isolated);
+  // The frontmost selected object becomes the opacity mask of the others
+  // (grouped when there are several); releasing puts it back in front.
+  void MakeOpacityMask();
+  void ReleaseOpacityMask();
+  void SetMaskClip(bool clip);
+  void SetMaskInvert(bool invert);
+
+  // Text (editor_text.cpp, spec 5 and 7.2). While text is edited, keys and
+  // the IME go to it; ending the edit selects the text object (an emptied
+  // one is removed). New text exists only once something is typed into it.
+  bool text_editing() const { return !text_.id.empty(); }
+  const std::string& edited_text_id() const { return text_.id; }
+  void EndTextEdit();
+  void InsertText(std::u32string_view text);
+  void DeleteBackward();
+  void DeleteForward();
+  void MoveCaret(TextMove move, bool extend);
+  void SelectAllText();
+  void SelectWordAt(core::Point p);
+  std::u32string SelectedText() const;
+  // The IME's composition, shown at the caret until it is committed.
+  void SetPreedit(std::u32string preedit, std::size_t cursor);
+  // The caret in document coordinates (for the IME's candidate window).
+  std::optional<core::Rect> CaretRect() const;
+  // A double click: selects a word in edited text, or starts editing text
+  // with a selection tool (switching to the type tool).
+  void DoubleClick(core::Point p, double pick);
+  TextStyleState TextStyle() const;
+  void EditCharacterStyle(const std::function<void(core::CharacterStyle&)>& edit);
+  void EditParagraphStyle(const std::function<void(core::ParagraphStyle&)>& edit);
+  // Type > Create Outlines (Shift+Ctrl+O): selected text becomes groups of
+  // compound paths that keep the text (spec 7.5); Revert Outlines turns
+  // such groups back into the text.
+  void CreateOutlines();
+  void RevertOutlines();
+
  private:
   void Commit(const std::string& action, core::EditorState state);
+  // Replaces each selected object (not those inside selected groups) by
+  // what `edit` returns; one undo step when anything changed.
+  void EditSelected(const std::string& action,
+                    const std::function<core::ObjectPtr(const core::ObjectPtr&)>& edit);
+  void EditMask(const std::function<void(core::OpacityMask&)>& edit);
+
+  // Live corners (editor_corners.cpp).
+  struct CornerRef {
+    core::Point at;      // The corner, in the shape's coordinates.
+    core::Point inward;  // Unit vector along the bisector, into the shape.
+    double factor = 1;   // The arc's centre lies factor × radius along it.
+    double radius = 0;
+  };
+  std::vector<CornerRef> Corners(core::Matrix* to_document) const;
+  std::vector<core::Point> CornerWidgets(double pick) const;  // Document coordinates.
+  std::optional<int> CornerWidgetAt(core::Point p, double pick) const;
+  void CornerDown(int index, Modifiers modifiers);
+  void CornerDrag();
+  mutable double widget_pick_ = 4.0;  // The last pick radius, for sizing widgets.
+
+  struct TextEdit {
+    std::string id;           // The text being edited; empty when none.
+    core::ObjectPtr pending;  // New text not in the document yet.
+    std::size_t caret = 0, anchor = 0;
+    std::u32string preedit;
+    std::size_t preedit_cursor = 0;
+    std::optional<core::CharacterStyle> pending_style;  // Set with no selection.
+    bool typing = false;                                // The last edit was typing (merges steps).
+    std::optional<double> goal_x;                       // Up and down keep the column.
+  };
+  const core::TextObject* EditedText(core::Matrix* to_document = nullptr) const;
+  std::pair<std::size_t, std::size_t> TextRange() const;
+  core::CharacterStyle TypingStyle() const;
+  void BeginTextEdit(const std::string& id, std::size_t caret);
+  void ValidateTextEdit();  // After undo and redo.
+  void UpdateTextPreview();
+  void CommitStory(core::Story story, std::size_t caret, const std::string& action, bool typing);
+  void TextOverlay(Overlay& overlay) const;
+  void TypeDown(core::Point p, Modifiers modifiers, double pick);
+  void TypeDrag();
+  TextEdit text_;
+  std::optional<core::EditorState> text_preview_;  // New text or a composition.
+  core::CharacterStyle text_style_;                // For new text.
+  core::ParagraphStyle paragraph_style_;
   void SetSelection(core::IdSet selection);
   void UpdatePreview(Modifiers modifiers);
   void UpdateDrawing();
@@ -405,10 +578,19 @@ class Editor {
   const geometry::PathOpsEngine* path_ops_ = nullptr;
   std::optional<core::Rect> KeyObjectBounds() const;  // Document coordinates.
   void ArtboardDown(core::Point p, double pick);
+  void GradientDown(core::Point p, double pick);
+  void GradientDrag();
+  // Edits the active side's gradient of the selection and of the new-object
+  // style, where there is one.
+  void EditGradient(const std::string& action, const std::function<void(core::Gradient&)>& edit);
+  std::optional<std::pair<core::Point, core::Point>> GradientLine() const;
+  int gradient_stop_ = -1;
+  core::IdSet gradient_stop_selection_;
   void ArtboardDrag();  // Updates drag_.preview.
   std::string NewArtboardName(const core::Document& document) const;
   int active_artboard_ = 0;
   std::string artboard_prefix_ = "Artboard";
+  std::string trim_marks_name_ = "Trim Marks";
   AlignTo align_to_ = AlignTo::kSelection;
   std::string key_object_;
   Drag drag_;

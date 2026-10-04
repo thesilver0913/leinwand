@@ -130,10 +130,10 @@ core::Document MakeShowcaseDocument() {
   dashed.dashes = {0.01, 14};  // Dots.
   strokes.push_back(b.Path(Circle(510, 105, 45), {dashed}));
   // Two fills: a translucent multiply fill over a solid one.
-  strokes.push_back(
-      b.Path(Star(660, 105, 55, 25, 5),
-             {MakeStroke(Rgb(0x6b3a00), 2), Fill{Rgb(0xff8a00), 0.6, core::BlendMode::kMultiply},
-              Fill{Rgb(0xffe066)}}));
+  strokes.push_back(b.Path(
+      Star(660, 105, 55, 25, 5),
+      {MakeStroke(Rgb(0x6b3a00), 2),
+       Fill{Rgb(0xff8a00), std::nullopt, 0.6, core::BlendMode::kMultiply}, Fill{Rgb(0xffe066)}}));
 
   // Row 2: compound path, group opacity, blend modes, clipping.
   std::vector<core::LayerChild> composition;
@@ -178,6 +178,67 @@ core::Document MakeShowcaseDocument() {
     colors.push_back(b.Path(Rectangle(180 + i * 70, 420, 60, 90),
                             {Fill{core::SpotColor{"spot-teal", tints[i]}}}));
   }
+  // Gradients: linear with three stops and a moved midpoint; radial,
+  // squashed, with an off-centre highlight.
+  Fill linear{Rgb(0x2d6cdf)};
+  linear.gradient = core::Gradient{core::GradientType::kLinear,
+                                   {{0.0, Rgb(0x2d6cdf), 1.0, 0.25},
+                                    {0.6, Rgb(0xffffff), 1.0, 0.5},
+                                    {1.0, Rgb(0xff8a00), 0.5, 0.5}},
+                                   {470, 440},
+                                   {560, 440}};
+  colors.push_back(b.Path(Rectangle(470, 420, 90, 40), {linear}));
+  Fill radial{Rgb(0xffffff)};
+  radial.gradient = core::Gradient{core::GradientType::kRadial,
+                                   {{0.0, Rgb(0xffffff), 1.0, 0.5}, {1.0, Rgb(0x7a3cff), 1.0, 0.5}},
+                                   {515, 490},
+                                   {560, 490},
+                                   0.6,
+                                   core::Point{500, 480}};
+  colors.push_back(b.Path(Rectangle(470, 470, 90, 40), {radial}));
+
+  // Row 4: opacity masks. Stripes fading out under a gradient mask; a mask
+  // without "Clip" (a black circle punches a hole); an inverted one.
+  std::vector<core::ObjectPtr> fading;
+  for (int i = 0; i < 15; ++i) {
+    fading.push_back(b.Path(Rectangle(180 + i * 18, 530, 9, 50), {Fill{Rgb(0x2d6cdf)}}));
+  }
+  Fill fade{Rgb(0xffffff)};
+  fade.gradient = core::Gradient{core::GradientType::kLinear,
+                                 {{0.0, Rgb(0xffffff), 1.0, 0.5}, {1.0, Rgb(0x000000), 1.0, 0.5}},
+                                 {180, 555},
+                                 {450, 555}};
+  const auto masked = [&](core::ObjectPtr object, core::ObjectPtr art, bool clip, bool invert) {
+    return std::visit(
+        [&](const auto& o) -> core::ObjectPtr {
+          auto copy = o;
+          copy.common.mask = std::make_shared<const core::OpacityMask>(
+              core::OpacityMask{std::move(art), clip, invert});
+          return core::MakeObject(std::move(copy));
+        },
+        object->base());
+  };
+  colors.push_back(masked(b.Group(std::move(fading)), b.Path(Rectangle(180, 530, 270, 50), {fade}),
+                          true, false));
+  colors.push_back(masked(b.Path(Rectangle(470, 530, 90, 50), {Fill{Rgb(0x3fbf7f)}}),
+                          b.Path(Circle(515, 555, 18), {Fill{Rgb(0x000000)}}), false, false));
+  colors.push_back(masked(b.Path(Rectangle(60, 530, 90, 50), {Fill{Rgb(0xff5a36)}}),
+                          b.Path(Circle(105, 555, 18), {Fill{Rgb(0xffffff)}}), true, true));
+
+  // Point text: Japanese and English, two styles, two paragraphs.
+  core::CharacterStyle body;
+  body.size = 22;
+  core::Story story = core::MakeStory("story1", U"文字 Text\n日本語と English", body);
+  story = core::WithCharacterStyle(
+      story, 3, 7, [](core::CharacterStyle& s) { s.font = {"Source Sans 3", "Bold", {}}; });
+  story = core::WithCharacterStyle(story, 8, story.text.size(),
+                                   [](core::CharacterStyle& s) { s.size = 13; });
+  core::TextObject text;
+  text.common.id = b.Id("text");
+  text.common.appearance = {Fill{Rgb(0x1b1b1b)}};
+  text.story = std::make_shared<const core::Story>(std::move(story));
+  text.transform = core::Matrix::Translate(590, 552);
+  colors.push_back(core::MakeObject(std::move(text)));
 
   // A sublayer with a rotated group.
   core::Layer rotated;

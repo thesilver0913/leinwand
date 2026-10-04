@@ -10,6 +10,7 @@
 
 #include "core/edit.h"
 #include "core/style.h"
+#include "geometry/bezier.h"
 #include "render/document_renderer.h"
 #include "render/image_compare.h"
 #include "render/test_document.h"
@@ -85,8 +86,23 @@ TEST_CASE("SVG import: size, layers, shapes, CSS and what it could not take") {
 
   // #star gets gold from the id rule and is clipped by the circle.
   CHECK(HasRow(result.report, "clip-path", io::ReportAction::kConverted));
-  CHECK(HasRow(result.report, "fill gradient", io::ReportAction::kApproximated));
-  CHECK(HasRow(result.report, "<text>", io::ReportAction::kPreserved));
+  // The sky's gradient stays a gradient (phase 2), laid across the whole
+  // rect from its bounding box and scaled by the viewBox with it.
+  bool sky = false;
+  for (const auto& id : core::AllObjectIds(*result.document)) {
+    const core::Object* object = result.document->FindObject(id);
+    if (!object) continue;  // A story id.
+    const auto* fill = core::FrontFill(core::CommonOf(*object).appearance);
+    if (!fill || !fill->gradient) continue;
+    sky = true;
+    CHECK(fill->gradient->start.x == Approx(0));
+    CHECK(fill->gradient->end.x == Approx(200));
+    CHECK(fill->gradient->stops.size() == 2);
+  }
+  CHECK(sky);
+  CHECK_FALSE(HasRow(result.report, "fill gradient", io::ReportAction::kApproximated));
+  // <text> becomes point text (M14).
+  CHECK_FALSE(HasRow(result.report, "<text>", io::ReportAction::kPreserved));
   CHECK(HasRow(result.report, "<defs>", io::ReportAction::kPreserved));
 }
 
@@ -140,10 +156,10 @@ TEST_CASE("Preserved SVG elements are written back in place") {
   const auto result = io::ImportSvg(ReadTestFile("svg/features.svg"));
   REQUIRE(result.document);
   const std::string svg = io::ExportSvg(*result.document);
-  CHECK(svg.find(">Hello</text>") != std::string::npos);
+  CHECK(svg.find(">Hello</tspan></text>") != std::string::npos);
   CHECK(svg.find("linearGradient") != std::string::npos);
-  // The text's CSS class was turned into an inline style.
-  CHECK(svg.find("fill:#e34850") != std::string::npos);
+  // The text's CSS class gave it its paint.
+  CHECK(svg.find("fill=\"#e34850\"") != std::string::npos);
   CHECK(svg.find("inkscape:label=\"Art\"") != std::string::npos);
 }
 
@@ -164,4 +180,149 @@ TEST_CASE("SVG: a physical size keeps its size in points") {
   const auto& rect = std::get<core::ShapeObject>(
       *std::get<core::ObjectPtr>(result.document->layers[0]->children[0]));
   CHECK(std::get<core::RectangleShape>(rect.shape).width == Approx(28.3465).epsilon(1e-4));
+}
+
+TEST_CASE("SVG gradients: user space, transforms, inherited stops, radial") {
+  const auto result = io::ImportSvg(R"svg(<svg xmlns="http://www.w3.org/2000/svg"
+      xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="100">
+    <defs>
+      <linearGradient id="base">
+        <stop offset="0" stop-color="red"/>
+        <stop offset="50%" stop-color="lime" stop-opacity="0.5"/>
+        <stop offset="1" stop-color="blue"/>
+      </linearGradient>
+      <linearGradient id="user" xlink:href="#base" gradientUnits="userSpaceOnUse"
+          x1="10" y1="0" x2="110" y2="0" gradientTransform="translate(5 0)"/>
+      <radialGradient id="ring" xlink:href="#base" cx="0.5" cy="0.5" r="0.5" fx="0.25"/>
+    </defs>
+    <rect id="a" width="200" height="50" fill="url(#user)"/>
+    <rect id="b" y="50" width="200" height="50" fill="url(#ring)"/>
+  </svg>)svg");
+  REQUIRE(result.document);
+  const auto gradient = [&](const char* id) {
+    return core::FrontFill(core::CommonOf(*result.document->FindObject(id)).appearance)->gradient;
+  };
+  const auto a = gradient("a");
+  REQUIRE(a);
+  CHECK(a->type == core::GradientType::kLinear);
+  CHECK(a->start.x == Approx(15));
+  CHECK(a->end.x == Approx(115));
+  REQUIRE(a->stops.size() == 3);  // Inherited through href.
+  CHECK(a->stops[1].offset == Approx(0.5));
+  CHECK(a->stops[1].opacity == Approx(0.5));
+  // Radial in the 200 x 50 box: centre (100, 75), radius 100 across, 25
+  // down (aspect 0.25), the highlight a quarter of the way in.
+  const auto b = gradient("b");
+  REQUIRE(b);
+  CHECK(b->type == core::GradientType::kRadial);
+  CHECK(b->start.x == Approx(100));
+  CHECK(b->start.y == Approx(75));
+  CHECK(b->end.x == Approx(200));
+  CHECK(b->aspect == Approx(0.25));
+  REQUIRE(b->focal);
+  CHECK(b->focal->x == Approx(50));
+}
+
+TEST_CASE("SVG opacity masks: clip, invert and isolated groups come back") {
+  const core::Document original = render::MakeShowcaseDocument();
+  const auto again = io::ImportSvg(io::ExportSvg(original));
+  REQUIRE(again.document);
+  // The masked objects come back inside a group that carries the mask.
+  std::vector<core::OpacityMask> masks;
+  core::VisitObjects(*again.document, [&](const core::Object& o) {
+    if (const auto& mask = core::CommonOf(o).mask) masks.push_back(*mask);
+  });
+  REQUIRE(masks.size() == 3);
+  CHECK((masks[0].clip && !masks[0].invert));
+  CHECK((!masks[1].clip && !masks[1].invert));
+  CHECK((masks[2].clip && masks[2].invert));
+  for (const auto& row : again.report.rows) CHECK(row.kind.find("mask") == std::string::npos);
+
+  const auto isolated = io::ImportSvg(R"(<svg xmlns="http://www.w3.org/2000/svg" width="10"
+      height="10"><g id="g" style="isolation:isolate"><rect width="5" height="5"/></g></svg>)");
+  REQUIRE(isolated.document);
+  CHECK(std::get<core::GroupObject>(*isolated.document->FindObject("g")).isolated);
+}
+
+TEST_CASE("SVG masks from other programs: user-space content, element transform") {
+  const auto result = io::ImportSvg(R"svg(<svg xmlns="http://www.w3.org/2000/svg" width="100"
+      height="100"><defs><mask id="m"><circle cx="10" cy="10" r="5" fill="white"/></mask></defs>
+      <rect id="r" x="0" y="0" width="20" height="20" transform="translate(30 0)"
+      mask="url(#m)"/><rect id="s" width="5" height="5" mask="url(#missing)"/></svg>)svg");
+  REQUIRE(result.document);
+  const core::Object* r = result.document->FindObject("r");
+  REQUIRE(r);
+  const auto& mask = core::CommonOf(*r).mask;
+  REQUIRE(mask);
+  // In the parent's coordinates, like the rectangle itself.
+  const core::Rect bounds = geometry::Bounds(*mask->art);
+  CHECK(bounds.left == Approx(35));
+  CHECK(bounds.right == Approx(45));
+  CHECK(HasRow(result.report, "mask (missing", io::ReportAction::kDiscarded));
+}
+
+// Writes the showcase as SVG and PNG for comparing in a browser:
+// LEINWAND_TEST_OUTPUT_DIR/svg/showcase.svg and .png.
+TEST_CASE("Showcase as SVG for a browser", "[.][showcase-svg]") {
+  const core::Document showcase = render::MakeShowcaseDocument();
+  const std::filesystem::path path =
+      std::filesystem::path(LEINWAND_TEST_OUTPUT_DIR) / "svg" / "showcase.svg";
+  std::filesystem::create_directories(path.parent_path());
+  std::ofstream(path, std::ios::binary) << io::ExportSvg(showcase);
+  Dump(showcase, "svg/showcase.png");
+}
+
+TEST_CASE("SVG text: written as text with tspans, read back as point text") {
+  core::CharacterStyle style;
+  style.size = 20;
+  core::Story story = core::MakeStory("s", U"日本語 Text\n二行目", style);
+  story = core::WithCharacterStyle(
+      story, 4, 8, [](core::CharacterStyle& s) { s.font = {"Source Sans 3", "Bold", {}}; });
+  core::TextObject text;
+  text.common.id = "t";
+  text.common.appearance = {core::Fill{core::RgbColor{1, 0, 0}}};
+  text.story = std::make_shared<const core::Story>(story);
+  text.transform = core::Matrix::Translate(20, 40);
+  core::Layer layer;
+  layer.id = "l";
+  layer.children = {core::MakeObject(text)};
+  core::Document document;
+  document.artboards = {{"ab", "Artboard 1", core::Rect::FromXYWH(0, 0, 200, 100), {}, 0}};
+  document.layers = {core::MakeLayer(std::move(layer))};
+
+  const std::string svg = io::ExportSvg(document);
+  CHECK(svg.find("<text") != std::string::npos);
+  CHECK(svg.find("font-family=\"'Source Sans 3'\"") != std::string::npos);
+  CHECK(svg.find("font-weight=\"700\"") != std::string::npos);
+  const auto again = io::ImportSvg(svg);
+  REQUIRE(again.document);
+  const core::TextObject* back = nullptr;
+  core::VisitObjects(*again.document, [&](const core::Object& o) {
+    if (const auto* t = std::get_if<core::TextObject>(&o)) back = t;
+  });
+  REQUIRE(back);
+  CHECK(back->story->text == story.text);
+  CHECK(core::StyleAt(*back->story, 5).font.style == "Bold");
+  CHECK(core::StyleAt(*back->story, 0).font.family == core::DefaultFont().family);
+  // And it looks the same.
+  int w = 0, h = 0, w2 = 0, h2 = 0;
+  const auto before = Render(document, &w, &h);
+  const auto after = Render(*again.document, &w2, &h2);
+  REQUIRE(w == w2);
+  CHECK(testing::DifferingFraction(before, after) < 0.002);
+}
+
+TEST_CASE("SVG text from other programs: anchors, inherited fonts, text on a path kept") {
+  const auto result = io::ImportSvg(R"svg(<svg xmlns="http://www.w3.org/2000/svg" width="200"
+      height="100"><g font-family="Arial, sans-serif" font-size="12"><text id="a" x="100" y="20"
+      text-anchor="middle" font-weight="bold">  centred
+      text </text></g><defs><path id="p" d="M0 0 H100"/></defs>
+      <text id="b"><textPath href="#p">on a path</textPath></text></svg>)svg");
+  REQUIRE(result.document);
+  const auto* a = std::get_if<core::TextObject>(result.document->FindObject("a"));
+  REQUIRE(a);
+  CHECK(a->story->text == U"centred text");  // White space collapsed.
+  CHECK(a->story->paragraphs[0].align == core::TextAlign::kCenter);
+  CHECK(core::StyleAt(*a->story, 0).size == 12);
+  CHECK(std::holds_alternative<core::PreservedObject>(*result.document->FindObject("b")));
 }

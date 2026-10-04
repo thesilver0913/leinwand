@@ -4,6 +4,8 @@
 #include <cmath>
 #include <variant>
 
+#include "text/layout.h"
+
 namespace leinwand::geometry {
 
 using core::Point;
@@ -75,6 +77,7 @@ Rect Bounds(const core::Object& object) {
     for (const auto& child : group->children) bounds = bounds.Union(Bounds(*child));
     return MapRect(bounds, group->transform);
   }
+  if (const auto* text = std::get_if<core::TextObject>(&object)) return text::BoundsOf(*text);
   Rect bounds;
   for (const auto& subpath : core::OutlineOf(object)) bounds = bounds.Union(Bounds(subpath));
   return bounds;

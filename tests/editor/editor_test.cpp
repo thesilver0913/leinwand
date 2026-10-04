@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "editor/editor.h"
 
+#include <algorithm>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <string>
 #include <variant>
+
+#include "geometry/bezier.h"
 
 using namespace leinwand;
 using Catch::Approx;
@@ -226,4 +229,59 @@ TEST_CASE("The overlay shows the bounding box, and the marquee while dragging on
   CHECK(editor.overlay().marquee == Rect{600, 300, 650, 350});
   editor.PointerUp({650, 350}, kNone);
   CHECK_FALSE(editor.overlay().marquee);
+}
+
+TEST_CASE("Copy and paste: centred, in place, in front and in back, with fresh ids") {
+  core::Layer layer;
+  layer.id = "l1";
+  auto square = [](const std::string& id, double x) {
+    core::PathObject path;
+    path.common.id = id;
+    path.path.anchors = {{{x, 0}}, {{x + 10, 0}}, {{x + 10, 10}}, {{x, 10}}};
+    path.path.closed = true;
+    return core::MakeObject(std::move(path));
+  };
+  layer.children = {square("a", 0), square("b", 100)};
+  core::Document document;
+  document.layers = {core::MakeLayer(std::move(layer))};
+  editor::Editor editor(document);
+  editor.Select({"a"});
+  const auto copied = editor.CopySelection();
+  REQUIRE(copied.size() == 1);
+
+  editor.Paste(copied, editor::Editor::PasteMode::kCentre, {500, 500});
+  REQUIRE(editor.selection().size() == 1);
+  const std::string centred = *editor.selection().begin();
+  CHECK(centred != "a");
+  const core::Rect bounds = geometry::Bounds(*editor.document().FindObject(centred));
+  CHECK(bounds.left == Catch::Approx(495));
+
+  editor.Select({"b"});
+  editor.Paste(copied, editor::Editor::PasteMode::kBack);
+  const std::string behind = *editor.selection().begin();
+  // Just behind b, at a's place.
+  const auto& children = editor.document().layers[0]->children;
+  std::vector<std::string> order;
+  for (const auto& child : children)
+    order.push_back(core::CommonOf(*std::get<core::ObjectPtr>(child)).id);
+  const auto at_b = std::find(order.begin(), order.end(), "b");
+  REQUIRE(at_b != order.begin());
+  CHECK(*(at_b - 1) == behind);
+  CHECK(geometry::Bounds(*editor.document().FindObject(behind)).left == Catch::Approx(0));
+  editor.Undo();
+  CHECK(!editor.document().FindObject(behind));
+}
+
+TEST_CASE("Ungrouping a group with a mask or blend mode is flagged") {
+  core::GroupObject group;
+  group.common.id = "g";
+  group.common.blend_mode = core::BlendMode::kMultiply;
+  core::Layer layer;
+  layer.id = "l1";
+  layer.children = {core::MakeObject(group)};
+  core::Document document;
+  document.layers = {core::MakeLayer(std::move(layer))};
+  editor::Editor editor(document);
+  editor.Select({"g"});
+  CHECK(editor.UngroupChangesLook());
 }

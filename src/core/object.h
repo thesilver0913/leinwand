@@ -14,12 +14,14 @@
 #include "core/appearance.h"
 #include "core/path.h"
 #include "core/shape.h"
+#include "core/text.h"
 #include "core/types.h"
 
 namespace leinwand::core {
 
 struct Object;
 using ObjectPtr = std::shared_ptr<const Object>;
+struct OpacityMask;
 
 // Fields every object has (spec 3.2, "オブジェクトの共通フィールド").
 struct ObjectCommon {
@@ -30,6 +32,8 @@ struct ObjectCommon {
   double opacity = 1.0;
   BlendMode blend_mode = BlendMode::kNormal;
   Appearance appearance;
+  // The opacity mask (spec 7.2, the Transparency panel), or none.
+  std::shared_ptr<const OpacityMask> mask;
   // Fields of a newer file version this one does not know, as JSON object
   // text; written back unchanged (spec 3.3, "未知のフィールド").
   std::string unknown_fields;
@@ -53,7 +57,12 @@ struct GroupObject {
   // Clipping group: the frontmost child (children.back()) is the clipping
   // path and is not painted itself, as in Illustrator.
   bool clipped = false;
+  // Isolate blending: the children's blend modes act within the group only.
+  bool isolated = false;
   Matrix transform;
+  // Create Outlines keeps the text it came from (spec 7.5), in the group's
+  // coordinates, so that it can be turned back into text. Not drawn.
+  ObjectPtr outlined_text;
 };
 
 // A live shape (spec 4.1): parameters plus a transform that places the
@@ -62,6 +71,20 @@ struct GroupObject {
 struct ShapeObject {
   ObjectCommon common;
   ShapeParams shape;
+  Matrix transform;
+};
+
+// Text (spec 5). Point text starts at the transform's origin, on the first
+// line's baseline, and does not wrap; lines follow downwards. The transform
+// holds the position and any rotation, scaling or shear of the whole text.
+enum class TextKind { kPoint };
+enum class TextOrientation { kHorizontal };
+
+struct TextObject {
+  ObjectCommon common;
+  TextKind kind = TextKind::kPoint;
+  TextOrientation orientation = TextOrientation::kHorizontal;
+  StoryPtr story;
   Matrix transform;
 };
 
@@ -78,11 +101,22 @@ struct PreservedObject {
   Matrix transform;
 };
 
-struct Object
-    : std::variant<PathObject, CompoundPathObject, GroupObject, ShapeObject, PreservedObject> {
+struct Object : std::variant<PathObject, CompoundPathObject, GroupObject, ShapeObject,
+                             PreservedObject, TextObject> {
   using variant::variant;
   // std::visit on classes derived from std::variant needs C++23 (P2162).
   const variant& base() const { return *this; }
+};
+
+// An opacity mask: the art's luminance becomes the masked object's opacity
+// (white shows, black hides). The art is in the same coordinates as the
+// masked object (its parent's) and moves with it.
+struct OpacityMask {
+  ObjectPtr art;
+  // Outside the art the object is hidden (Illustrator's "Clip"); otherwise
+  // it shows there.
+  bool clip = true;
+  bool invert = false;  // Dark shows, light hides.
 };
 
 template <typename T>
@@ -104,6 +138,14 @@ ObjectPtr Expanded(const ObjectPtr& object);
 
 inline const ObjectCommon& CommonOf(const Object& object) {
   return std::visit([](const auto& o) -> const ObjectCommon& { return o.common; }, object.base());
+}
+
+// For one kind of object directly. Without it, a TextObject (say) would be
+// copied into a temporary Object and the reference returned would dangle.
+template <typename T>
+  requires requires(const T& t) { t.common; }
+inline const ObjectCommon& CommonOf(const T& object) {
+  return object.common;
 }
 
 }  // namespace leinwand::core

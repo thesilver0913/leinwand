@@ -5,6 +5,8 @@
 #include <optional>
 #include <variant>
 
+#include "core/gradient.h"
+
 namespace leinwand::core {
 
 namespace {
@@ -89,6 +91,33 @@ PathData Transformed(const PathData& path, const Matrix& matrix) {
   return result;
 }
 
+namespace {
+
+// Gradients are in the path's coordinates, so they move with it.
+void TransformGradients(Appearance& appearance, const Matrix& matrix) {
+  for (AppearanceItem& item : appearance) {
+    if (auto* fill = std::get_if<Fill>(&item); fill && fill->gradient) {
+      fill->gradient = Transformed(*fill->gradient, matrix);
+    } else if (auto* stroke = std::get_if<Stroke>(&item); stroke && stroke->gradient) {
+      stroke->gradient = Transformed(*stroke->gradient, matrix);
+    }
+  }
+}
+
+}  // namespace
+
+namespace {
+
+// The opacity mask moves with its object.
+void TransformMask(ObjectCommon& common, const Matrix& matrix) {
+  if (!common.mask || !common.mask->art) return;
+  OpacityMask mask = *common.mask;
+  mask.art = Transformed(mask.art, matrix);
+  common.mask = std::make_shared<const OpacityMask>(std::move(mask));
+}
+
+}  // namespace
+
 ObjectPtr Transformed(const ObjectPtr& object, const Matrix& matrix) {
   if (matrix.IsIdentity()) return object;
   return std::visit(
@@ -97,15 +126,27 @@ ObjectPtr Transformed(const ObjectPtr& object, const Matrix& matrix) {
         T copy = o;
         if constexpr (std::is_same_v<T, PathObject>) {
           copy.path = Transformed(o.path, matrix);
+          TransformGradients(copy.common.appearance, matrix);
         } else if constexpr (std::is_same_v<T, CompoundPathObject>) {
           for (auto& subpath : copy.subpaths) subpath = Transformed(subpath, matrix);
+          TransformGradients(copy.common.appearance, matrix);
         } else if constexpr (std::is_same_v<T, ShapeObject>) {
-          if (auto shape = TransformedShape(o, matrix * o.transform)) return MakeObject(*shape);
+          if (auto shape = TransformedShape(o, matrix * o.transform)) {
+            TransformGradients(shape->common.appearance, matrix);
+            TransformMask(shape->common, matrix);
+            return MakeObject(*shape);
+          }
           // Shear or uneven scale: becomes a plain path (spec 4.1).
           return Transformed(Expanded(object), matrix);
         } else {
           copy.transform = matrix * o.transform;
+          // Text is drawn in its parent's coordinates, like paths, so its
+          // gradients live there too.
+          if constexpr (std::is_same_v<T, TextObject>) {
+            TransformGradients(copy.common.appearance, matrix);
+          }
         }
+        TransformMask(copy.common, matrix);
         return MakeObject(std::move(copy));
       },
       object->base());

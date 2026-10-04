@@ -14,7 +14,7 @@ Window {
     id: root
     width: 720
     height: 480
-    minimumWidth: 600
+    minimumWidth: 660
     minimumHeight: 400
     title: qsTr("Preferences")
     color: Spectrum.backgroundLayer2Color
@@ -25,14 +25,21 @@ Window {
         qsTr("User Interface"), qsTr("Performance"), qsTr("File Handling")
     ]
 
-    // A labelled row.
+    // A labelled row. Long labels wrap rather than being cut off.
     component Row2: RowLayout {
         property alias label: label.text
         default property alias content: holder.data
         spacing: 12
         Layout.fillWidth: true
-        SpLabel { id: label; Layout.preferredWidth: 200; subdued: false }
-        RowLayout { id: holder; spacing: 6 }
+        SpLabel {
+            id: label
+            Layout.preferredWidth: 200
+            Layout.alignment: Qt.AlignVCenter
+            subdued: false
+            wrapMode: Text.Wrap
+            elide: Text.ElideNone
+        }
+        RowLayout { id: holder; spacing: 6; Layout.fillWidth: true }
     }
 
     RowLayout {
@@ -41,7 +48,7 @@ Window {
 
         Rectangle {
             Layout.fillHeight: true
-            implicitWidth: 200
+            implicitWidth: 180
             color: Spectrum.backgroundLayer1Color
             ListView {
                 anchors { fill: parent; margins: 8 }
@@ -65,8 +72,11 @@ Window {
         }
 
         ColumnLayout {
+            // Takes the width there is; the pages' own widths do not push
+            // the window's contents (and the buttons) out of sight.
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.preferredWidth: 1
             Layout.margins: 20
             spacing: 12
 
@@ -91,6 +101,10 @@ Window {
                     Row2 {
                         label: qsTr("Pen rubber band")
                         SpCheckBox { checked: Preferences.rubberBand; onClicked: Preferences.rubberBand = checked }
+                    }
+                    Row2 {
+                        label: qsTr("Use Japanese crop marks")
+                        SpCheckBox { checked: Preferences.japaneseTrimMarks; onClicked: Preferences.japaneseTrimMarks = checked }
                     }
                     Row2 {
                         label: qsTr("Show the welcome screen at startup")
@@ -204,7 +218,10 @@ Window {
                         }
                     }
                     SpLabel {
-                        text: qsTr("Drawing always uses the GPU (Vulkan) in this version.")
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        elide: Text.ElideNone
+                        text: qsTr("Drawing always uses the GPU (Vulkan, or Metal on macOS) in this version.")
                     }
                     Item { Layout.fillHeight: true }
                 }
@@ -225,7 +242,8 @@ Window {
                     Row2 {
                         label: qsTr("Recovery data folder")
                         SpTextField {
-                            Layout.preferredWidth: 240
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 120
                             text: Preferences.recoveryFolder
                             placeholderText: qsTr("Default")
                             onEditingFinished: Preferences.recoveryFolder = text

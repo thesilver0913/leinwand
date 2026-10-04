@@ -5,6 +5,7 @@
 
 #include <QColor>
 #include <QObject>
+#include <QPrinter>
 #include <QTimer>
 #include <QUrl>
 #include <QVariantList>
@@ -56,6 +57,19 @@ class Session : public QObject {
   // "strokeWidth", "cap", "join", "miterLimit", "align", "dashed", "dashes",
   // "hasStroke", "opacity", "opacityMixed".
   Q_PROPERTY(QVariantMap style READ style NOTIFY documentChanged)
+  // Transparency panel: "selected", "opacity", "opacityMixed", "blendMode"
+  // (core::BlendMode order), "blendMixed", "hasMask", "maskClip",
+  // "maskInvert", "hasGroup", "isolated".
+  Q_PROPERTY(QVariantMap transparency READ transparency NOTIFY documentChanged)
+  // Character and Paragraph panels (spec 7.2): the styles in the text
+  // selection, the selected text objects, or for new text. Each value has a
+  // "...Mixed" flag when the styles differ.
+  Q_PROPERTY(bool textEditing READ textEditing NOTIFY documentChanged)
+  // Something to paste: copied objects, or text while editing text.
+  Q_PROPERTY(bool canPaste READ canPaste NOTIFY clipboardChanged)
+  Q_PROPERTY(QVariantMap characterStyle READ characterStyle NOTIFY documentChanged)
+  Q_PROPERTY(QVariantMap paragraphStyle READ paragraphStyle NOTIFY documentChanged)
+  Q_PROPERTY(QStringList fontFamilies READ fontFamilies CONSTANT)
   // Which of fill and stroke the Color and Swatches panels edit (X).
   Q_PROPERTY(bool fillActive READ fillActive WRITE setFillActive NOTIFY documentChanged)
   // The document's swatches: {id, name, color, spot}.
@@ -110,8 +124,19 @@ class Session : public QObject {
   bool viewTool() const { return view_tool_ >= 0; }  // Hand or zoom: handled by the canvas.
   // Ctrl: the last selection tool; Alt with the pen: the anchor point tool.
   void UpdateTemporaryTool(Qt::KeyboardModifiers modifiers);
+  // The editor changed its tool itself (double-clicking text).
+  void NotifyToolChanged() {
+    emit toolChanged();
+    Changed();
+  }
   QVariantMap selectionInfo() const;
   QVariantMap style() const;
+  QVariantMap transparency() const;
+  bool textEditing() const { return editor_ && editor_->text_editing(); }
+  bool canPaste() const;
+  QVariantMap characterStyle() const;
+  QVariantMap paragraphStyle() const;
+  QStringList fontFamilies() const;
   bool fillActive() const { return editor_->fill_active(); }
   void setFillActive(bool fill);
   QVariantList swatches() const;
@@ -143,6 +168,23 @@ class Session : public QObject {
   Q_INVOKABLE bool exportSvg(const QUrl& url);
   // The active artboard, or every artboard to its own file (the name gets
   // the artboard's name after a hyphen).
+  // PDF (spec 6.2): every artboard or the active one, text as text or as
+  // outlines, trim marks (0 none, 1 Japanese, 2 Western).
+  Q_INVOKABLE bool exportPdf(const QUrl& url, bool all_artboards, bool outline_text, int marks);
+
+  // Printing (spec 7.4, session_print.cpp). Settings: "printer", "paper"
+  // ("printer", "A4", "A3", "B4", "B5", "Letter", "Legal"), "orientation"
+  // (0 auto, 1 portrait, 2 landscape), "range" (0 all artboards, 1 active,
+  // 2 all artwork on one page), "scaling" (0 actual, 1 fit, 2 "percent"),
+  // "position" (0..8, 4 the middle), "marks" (0 none, 1 Japanese, 2
+  // Western), "copies", "collate", and "output" (a PDF file instead).
+  Q_INVOKABLE QStringList printers() const;
+  Q_INVOKABLE QString defaultPrinter() const;
+  Q_INVOKABLE void printerSetup(const QString& printer);  // The OS's dialog.
+  // The first sheet: "pages", "paperWidth", "paperHeight", "x", "y",
+  // "width", "height" (points) and "image" (a data URL).
+  Q_INVOKABLE QVariantMap printPreview(const QVariantMap& settings);
+  Q_INVOKABLE bool print(const QVariantMap& settings);
   Q_INVOKABLE bool exportPng(const QUrl& url, double scale, bool transparent,
                              bool all_artboards = false);
   // Opens a recovery file as an unsaved document; it is deleted once the
@@ -200,6 +242,39 @@ class Session : public QObject {
   Q_INVOKABLE void setArtboardBounds(int index, double x, double y, double width, double height);
   Q_INVOKABLE void makeCompoundPath();     // Ctrl+8
   Q_INVOKABLE void releaseCompoundPath();  // Alt+Shift+Ctrl+8
+  Q_INVOKABLE void createTrimMarks();      // Japanese or Western, by preference.
+  // Edit > Cut, Copy, Paste (Ctrl+X, C, V), Paste in Front (Ctrl+F), in
+  // Back (Ctrl+B), in Place (Shift+Ctrl+V). Objects stay in Leinwand's own
+  // clipboard (across documents); while editing text, text goes through the
+  // system clipboard.
+  Q_INVOKABLE void cut();
+  Q_INVOKABLE void copy();
+  Q_INVOKABLE void paste(int mode = 0);  // 0 centre, 1 in place, 2 in front, 3 in back.
+  // Ungrouping would drop a group's mask, blend mode or isolated blending.
+  Q_INVOKABLE bool ungroupChangesLook() const;
+  // Preflight (spec 7.5): rows {"check" (editor::PreflightCheck), "ids"}
+  // for the checks turned on in `checks` (one flag per check), with strokes
+  // thinner than `min_stroke_mm` reported.
+  Q_INVOKABLE QVariantList preflight(double min_stroke_mm, const QVariantList& checks) const;
+  Q_INVOKABLE void makeClippingMask();     // Ctrl+7
+  Q_INVOKABLE void releaseClippingMask();  // Alt+Ctrl+7
+  Q_INVOKABLE void makeOpacityMask();
+  Q_INVOKABLE void releaseOpacityMask();
+  Q_INVOKABLE void setBlendMode(int mode);
+  Q_INVOKABLE void setIsolated(bool isolated);
+  Q_INVOKABLE void setMaskClip(bool clip);
+  Q_INVOKABLE void setMaskInvert(bool invert);
+  Q_INVOKABLE QStringList fontStyles(const QString& family) const;
+  Q_INVOKABLE void setFont(const QString& family, const QString& style);
+  // "size", "leading" (0 or less: auto), "tracking", "baselineShift",
+  // "horizontalScale" and "verticalScale" (1 = 100%), "rotation", "kerning"
+  // (0 metrics, 1 none).
+  Q_INVOKABLE void setCharacterValue(const QString& key, double value);
+  // "align" (0 left, 1 center, 2 right), "leftIndent", "rightIndent",
+  // "firstLineIndent", "spaceBefore", "spaceAfter".
+  Q_INVOKABLE void setParagraphValue(const QString& key, double value);
+  Q_INVOKABLE void createOutlines();  // Shift+Ctrl+O
+  Q_INVOKABLE void revertOutlines();
 
   // Transform panel edits; each is one undo step.
   Q_INVOKABLE void setBounds(double x, double y, double width, double height);
@@ -227,6 +302,19 @@ class Session : public QObject {
   // Dash and gap lengths, alternating; empty for a solid line.
   Q_INVOKABLE void setDashes(const QVariantList& dashes);
   Q_INVOKABLE void setOpacity(double opacity);  // 0..1
+  // Gradient panel (spec 7.2). style()["gradient"] holds the active side's
+  // gradient: "type" (0 linear, 1 radial), "angle", "aspect" and "stops"
+  // ({"offset", "color", "opacity", "midpoint"}); style()["gradientStop"]
+  // is the selected stop, whose color the color controls then set.
+  Q_INVOKABLE void applyGradient(int type);
+  Q_INVOKABLE void setGradientAngle(double degrees);
+  Q_INVOKABLE void setGradientAspect(double aspect);
+  Q_INVOKABLE void selectGradientStop(int index);
+  Q_INVOKABLE int addGradientStop(double offset);
+  Q_INVOKABLE void removeGradientStop(int index);
+  Q_INVOKABLE int moveGradientStop(int index, double offset);
+  Q_INVOKABLE void setGradientStopOpacity(int index, double opacity);  // 0..1
+  Q_INVOKABLE void setGradientStopMidpoint(int index, double midpoint);
   // Edits between these make one undo step (slider drags, spec 7.2).
   Q_INVOKABLE void beginGesture();
   Q_INVOKABLE void endGesture();
@@ -241,6 +329,7 @@ class Session : public QObject {
   Q_INVOKABLE double evaluateNumber(const QString& text) const;
 
  signals:
+  void clipboardChanged();
   void documentChanged();
   void toolChanged();
   void settingsChanged();
@@ -262,6 +351,9 @@ class Session : public QObject {
 
   leinwand::render::SkiaPathOps path_ops_;  // Before editor_, which points to it.
   std::unique_ptr<leinwand::editor::Editor> editor_;
+  QPrinter& Printer();
+  std::unique_ptr<QPrinter> printer_;                 // Kept for the OS dialog's settings.
+  std::vector<leinwand::core::ObjectPtr> clipboard_;  // Copied objects, document coordinates.
   std::unique_ptr<LayersModel> layers_;
   int object_count_ = 0;
   int view_tool_ = -1;  // 12 hand, 13 zoom; -1: an editor tool.

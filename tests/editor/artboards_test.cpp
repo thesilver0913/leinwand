@@ -4,6 +4,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <variant>
 
+#include "core/style.h"
 #include "editor/editor.h"
 #include "geometry/bezier.h"
 
@@ -131,4 +132,29 @@ TEST_CASE("SetCover lays the cover out again in one undo step") {
   CHECK(boards[0].bounds.width() == Catch::Approx(220));
   editor.Undo();
   CHECK(editor.document().artboards[0].bounds.width() == Catch::Approx(210));
+}
+
+TEST_CASE("Create Trim Marks: around the selection, or the active artboard with its bleed") {
+  Editor editor(Sample());
+  editor.CreateTrimMarks(core::TrimMarkStyle::kJapanese);
+  REQUIRE(editor.selection().size() == 1);
+  const auto* marks =
+      std::get_if<core::GroupObject>(editor.document().FindObject(*editor.selection().begin()));
+  REQUIRE(marks);
+  CHECK(marks->children.size() == 24);
+  for (const auto& child : marks->children) {
+    const auto* stroke = core::FrontStroke(core::CommonOf(*child).appearance);
+    REQUIRE(stroke);
+    CHECK(stroke->width == Catch::Approx(core::kTrimMarkWidth));
+  }
+  // Around a selected object: within reach of it.
+  editor.Select({"on1"});
+  editor.CreateTrimMarks(core::TrimMarkStyle::kWestern);
+  const auto* around =
+      std::get_if<core::GroupObject>(editor.document().FindObject(*editor.selection().begin()));
+  REQUIRE(around);
+  CHECK(around->children.size() == 8);
+  const core::Rect bounds =
+      geometry::Bounds(*editor.document().FindObject(*editor.selection().begin()));
+  CHECK(bounds.left >= 10 - core::TrimMarkReach(core::kDefaultBleed) - 1e-6);
 }
