@@ -28,6 +28,7 @@ endif()
 
 add_subdirectory(src/core)
 add_subdirectory(src/text)
+add_subdirectory(src/platform)
 add_subdirectory(src/geometry)
 add_subdirectory(src/render)
 add_subdirectory(src/io)

@@ -190,7 +190,7 @@ TEST_CASE("Saving replaces the file only after the new one reads back") {
   std::filesystem::remove(path);
   std::string error;
   REQUIRE(io::SaveLwd(path, render::MakeShowcaseDocument(), "test", {}, &error));
-  CHECK_FALSE(std::filesystem::exists(dir / "doc.lwd.saving"));
+  CHECK_FALSE(std::filesystem::exists(dir / "~doc.lwd.tmp"));
   const auto loaded = io::LoadLwd(path);
   REQUIRE(loaded.document);
   CHECK(loaded.document->layers.size() == 2);
@@ -357,4 +357,15 @@ TEST_CASE("Showcase as .lwd", "[.][showcase-lwd]") {
   const auto path = std::filesystem::path(LEINWAND_TEST_OUTPUT_DIR) / "showcase.lwd";
   std::filesystem::create_directories(path.parent_path());
   CHECK(io::SaveLwd(path, render::MakeShowcaseDocument(), "test", {}, nullptr));
+}
+
+TEST_CASE("Saving works under a Japanese file name, without leaving the temporary file") {
+  const auto dir = std::filesystem::temp_directory_path() / "leinwand-io-test";
+  std::filesystem::create_directories(dir);
+  const std::filesystem::path path = dir / std::filesystem::path(u8"図面 テスト.lwd");
+  std::filesystem::remove(path);
+  std::string error;
+  REQUIRE(io::SaveLwd(path, render::MakeShowcaseDocument(), "test", {}, &error));
+  CHECK(io::LoadLwd(path).document);
+  CHECK_FALSE(std::filesystem::exists(dir / std::filesystem::path(u8"~図面 テスト.lwd.tmp")));
 }

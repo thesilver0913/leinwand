@@ -10,6 +10,7 @@
 #include <filesystem>
 
 #include "io/lwd.h"
+#include "platform/files.h"
 
 IconProvider::IconProvider() : QQuickImageProvider(QQuickImageProvider::Image) {}
 
@@ -48,7 +49,14 @@ ThumbnailProvider::ThumbnailProvider() : QQuickImageProvider(QQuickImageProvider
 QImage ThumbnailProvider::requestImage(const QString& id, QSize* size,
                                        const QSize& requested_size) {
   const QString path = QUrl::fromPercentEncoding(id.toUtf8());
-  const auto png = leinwand::io::ReadLwdThumbnail(std::filesystem::path(path.toStdWString()));
+  const std::filesystem::path file(path.toStdWString());
+  // A cloud file that is not on this computer would be downloaded just for
+  // its thumbnail: the welcome screen shows the plain icon instead.
+  if (!leinwand::platform::IsLocal(file)) {
+    if (size) *size = QSize();
+    return {};
+  }
+  const auto png = leinwand::io::ReadLwdThumbnail(file);
   QImage image = QImage::fromData(png.data(), static_cast<int>(png.size()), "PNG");
   if (!image.isNull() && requested_size.isValid()) {
     image = image.scaled(requested_size, Qt::KeepAspectRatio, Qt::SmoothTransformation);

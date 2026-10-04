@@ -7,6 +7,8 @@
 #include <iterator>
 #include <string>
 
+#include "platform/files.h"
+
 using namespace leinwand;
 
 namespace {
@@ -47,4 +49,13 @@ TEST_CASE("Backups copy the file before it is replaced and keep the newest") {
   // Keeping none makes no copy.
   CHECK(io::BackUp(file, dir / "none", "20261004-100009-000", 0));
   CHECK(!std::filesystem::exists(dir / "none"));
+}
+
+TEST_CASE("Files on this computer count as local; missing ones do not") {
+  const auto dir = std::filesystem::path(LEINWAND_TEST_OUTPUT_DIR) / "platform";
+  std::filesystem::create_directories(dir);
+  const auto file = dir / "here.txt";
+  std::ofstream(file) << "here";
+  CHECK(platform::IsLocal(file));
+  CHECK_FALSE(platform::IsLocal(dir / "missing.txt"));
 }

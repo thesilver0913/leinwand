@@ -103,7 +103,7 @@ add_executable(io_tests
 )
 target_include_directories(io_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(io_tests PRIVATE
-  io render unofficial::skia::skia nlohmann_json::nlohmann_json Catch2::Catch2WithMain
+  io render platform unofficial::skia::skia nlohmann_json::nlohmann_json Catch2::Catch2WithMain
 )
 target_compile_definitions(io_tests PRIVATE
   LEINWAND_TESTDATA_DIR="${PROJECT_SOURCE_DIR}/testdata"

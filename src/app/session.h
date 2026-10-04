@@ -4,6 +4,8 @@
 #include <QtQml/qqmlregistration.h>
 
 #include <QColor>
+#include <QDateTime>
+#include <QFileSystemWatcher>
 #include <QObject>
 #include <QPrinter>
 #include <QTimer>
@@ -16,6 +18,8 @@
 #include "core/document.h"
 #include "editor/editor.h"
 #include "io/import_report.h"
+#include "io/lwd.h"
+#include "io/svg.h"
 #include "render/skia_path_ops.h"
 
 class LayersModel;
@@ -84,6 +88,12 @@ class Session : public QObject {
   Q_PROPERTY(QString filePath READ filePath NOTIFY fileChanged)
   Q_PROPERTY(QString displayName READ displayName NOTIFY fileChanged)
   Q_PROPERTY(bool dirty READ dirty NOTIFY documentChanged)
+  // A file being read on another thread (it may be downloaded first).
+  Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
+  Q_PROPERTY(QString loadingName READ loadingName NOTIFY loadingChanged)
+  // The open file was changed elsewhere (another computer through a cloud
+  // folder, another program); saving waits for keepMine or reloadFromDisk.
+  Q_PROPERTY(bool externalChange READ externalChange NOTIFY externalChangeChanged)
   // False until a document is created or opened (spec 9: the main window
   // can start empty, behind the welcome screen).
   Q_PROPERTY(bool hasDocument READ hasDocument NOTIFY fileChanged)
@@ -161,7 +171,14 @@ class Session : public QObject {
   Q_INVOKABLE void closeDocument();
   Q_INVOKABLE bool open(const QUrl& url);          // .lwd, or .svg (imported).
   Q_INVOKABLE bool openPath(const QString& path);  // A command-line argument.
-  Q_INVOKABLE bool save();                         // To filePath; false if there is none.
+  // After an external change: keep this window's version (the next save
+  // overwrites the file), or read the file again (unsaved changes go).
+  Q_INVOKABLE void keepMine();
+  Q_INVOKABLE void reloadFromDisk();
+  bool loading() const { return loading_; }
+  QString loadingName() const { return loading_name_; }
+  bool externalChange() const { return external_change_; }
+  Q_INVOKABLE bool save();  // To filePath; false if there is none.
   Q_INVOKABLE bool saveAs(const QUrl& url);
   // Export the first artboard (spec 6.1, 6 "PNG").
   Q_INVOKABLE QVariantList svgExportIssues() const;
@@ -343,6 +360,8 @@ class Session : public QObject {
   // A new document was loaded (the canvas fits it into view).
   void documentReplaced();
   void fileChanged();
+  void loadingChanged();
+  void externalChangeChanged();
   void importReportChanged();
   void errorChanged();
 
@@ -361,6 +380,27 @@ class Session : public QObject {
   void AutosaveToFile();
   static QString BackupFolder(const QString& file);
   std::uint64_t document_generation_ = 0;
+  // Opening on another thread.
+  void FinishOpenLwd(const QString& path, leinwand::io::LoadResult& result);
+  void FinishOpenSvg(const QString& path, bool readable, leinwand::io::SvgImport& result);
+  void EndLoading();
+  bool loading_ = false;
+  QString loading_name_;
+  // Changes made elsewhere.
+  struct FileStamp {
+    QString path;
+    bool exists = false;
+    qint64 size = 0;
+    QDateTime modified;
+  };
+  void RecordFileStamp();
+  bool FileChangedOnDisk() const;
+  void ReportExternalChange();
+  void FileWatched(const QString& path);
+  FileStamp file_stamp_;
+  QFileSystemWatcher* watcher_ = nullptr;
+  bool external_change_ = false;
+  bool autosave_writing_ = false;
   bool autosave_override_ = false;     // Changes whenever a document is opened or made.
   std::unique_ptr<QPrinter> printer_;  // Kept for the OS dialog's settings.
   std::vector<leinwand::core::ObjectPtr> clipboard_;  // Copied objects, document coordinates.

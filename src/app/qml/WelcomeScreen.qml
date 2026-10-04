@@ -242,10 +242,9 @@ Window {
                         id: fileArea
                         anchors.fill: parent
                         hoverEnabled: true
-                        onClicked: root.guard(() => {
-                            if (Session.openPath(file.modelData))
-                                root.close();
-                        })
+                        // The window closes once the file has been read (it
+                        // may be downloaded from a cloud folder first).
+                        onClicked: root.guard(() => Session.openPath(file.modelData))
                     }
                 }
             }

@@ -2,10 +2,12 @@
 // The .lwd ZIP container and safe saving (spec 3.1, 3.3).
 #include <miniz.h>
 
+#include <chrono>
 #include <cstring>
 #include <fstream>
 #include <iterator>
 #include <system_error>
+#include <thread>
 
 #include "io/lwd.h"
 
@@ -107,9 +109,15 @@ bool SaveLwd(const std::filesystem::path& path, const core::Document& document,
   const std::vector<std::uint8_t> bytes = WriteLwd(document, app_version, thumbnail_png);
   if (bytes.empty()) return fail("could not build the file");
 
-  // 1. Write a temporary file next to the target (same volume for the rename).
-  std::filesystem::path temp = path;
-  temp += ".saving";
+  // 1. Write a temporary file next to the target (same volume for the
+  // rename). Named "~name.lwd.tmp", a pattern sync clients (Dropbox and
+  // others) leave alone, so that it is not uploaded or copied as a conflict.
+  // Native strings: file names may be Japanese, which string() would mangle
+  // on Windows.
+  using Native = std::filesystem::path::string_type;
+  const std::filesystem::path temp =
+      path.parent_path() /
+      (Native(1, '~') + path.filename().native() + std::filesystem::path(".tmp").native());
   if (!WriteFile(temp, bytes)) return fail("could not write " + temp.string());
 
   // 2. Read it back: the ZIP and the JSON must load.
@@ -121,9 +129,16 @@ bool SaveLwd(const std::filesystem::path& path, const core::Document& document,
     return fail("the written file did not read back");
   }
 
-  // 3. Replace the original; until here it was left as it was.
+  // 3. Replace the original; until here it was left as it was. A sync
+  // client or a virus scanner may hold the file for a moment: try again for
+  // a few seconds before giving up.
   std::error_code ec;
-  std::filesystem::rename(temp, path, ec);
+  for (int attempt = 0; attempt < 10; ++attempt) {
+    ec.clear();
+    std::filesystem::rename(temp, path, ec);
+    if (!ec) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(100 * (attempt + 1)));
+  }
   if (ec) {
     std::error_code ignored;
     std::filesystem::remove(temp, ignored);

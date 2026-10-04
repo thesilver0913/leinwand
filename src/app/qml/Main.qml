@@ -588,6 +588,98 @@ ApplicationWindow {
 
     PrintDialog { id: printDialog }
 
+    // Reading a file on another thread (spec 3.3): a cloud file may be
+    // downloaded first.
+    Popup {
+        anchors.centerIn: parent
+        modal: true
+        closePolicy: Popup.NoAutoClose
+        visible: Session.loading
+        padding: 16
+        background: Rectangle {
+            color: Spectrum.backgroundLayer2Color
+            radius: Spectrum.cornerRadiusSmallDefault
+            border.color: Spectrum.gray300
+        }
+        contentItem: RowLayout {
+            spacing: 12
+            BusyIndicator {
+                running: Session.loading
+                implicitWidth: 28
+                implicitHeight: 28
+            }
+            SpLabel {
+                text: qsTr("Opening %1...").arg(Session.loadingName)
+                subdued: false
+            }
+        }
+    }
+
+    // The open file was changed elsewhere (spec 3.3): saving waits for an
+    // answer rather than overwrite it.
+    Dialog {
+        id: externalChangeDialog
+        title: qsTr("Changed Elsewhere")
+        anchors.centerIn: parent
+        modal: true
+        closePolicy: Popup.NoAutoClose
+        width: 460
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 12
+            SpLabel {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                subdued: false
+                text: qsTr("%1 was changed outside this window, by another computer (through a cloud folder) or another program.").arg(Session.displayName)
+            }
+            SpLabel {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                text: Session.dirty
+                      ? qsTr("Read the file again (your unsaved changes here are lost), keep your version (the next save overwrites the file), or save yours under another name.")
+                      : qsTr("Read the file again to see the changes, or keep this version (the next save overwrites the file).")
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                spacing: 8
+                SpActionButton {
+                    quiet: false
+                    text: qsTr("Save As...")
+                    onClicked: {
+                        externalChangeDialog.close();
+                        saveAsDialog.open();
+                    }
+                }
+                SpActionButton {
+                    quiet: false
+                    text: qsTr("Keep Mine")
+                    onClicked: {
+                        Session.keepMine();
+                        externalChangeDialog.close();
+                    }
+                }
+                SpActionButton {
+                    quiet: false
+                    text: qsTr("Read Again")
+                    onClicked: {
+                        externalChangeDialog.close();
+                        Session.reloadFromDisk();
+                    }
+                }
+            }
+        }
+    }
+    Connections {
+        target: Session
+        function onExternalChangeChanged() {
+            if (Session.externalChange)
+                externalChangeDialog.open();
+            else
+                externalChangeDialog.close();
+        }
+    }
+
     // PDF export options (spec 6.2, "書き出しの設定").
     Dialog {
         id: pdfOptions

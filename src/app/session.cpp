@@ -8,6 +8,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QFileSystemWatcher>
 #include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -136,6 +137,8 @@ QVariantList ReportRows(const leinwand::io::ImportReport& report) {
 
 Session::Session(QObject* parent) : QObject(parent), layers_(std::make_unique<LayersModel>(this)) {
   g_instance = this;
+  watcher_ = new QFileSystemWatcher(this);
+  connect(watcher_, &QFileSystemWatcher::fileChanged, this, &Session::FileWatched);
   // Recovery files from earlier sessions that did not close normally.
   const QDir dir(RecoveryDir());
   const auto entries = dir.entryInfoList({QStringLiteral("*.lwd")}, QDir::Files, QDir::Time);
@@ -191,6 +194,9 @@ void Session::AddRecent(const QString& path) {
 void Session::SetDocument(leinwand::core::Document document) {
   has_document_ = true;
   ++document_generation_;
+  // A new document has no file to watch until it is opened or saved.
+  if (!watcher_->files().isEmpty()) watcher_->removePaths(watcher_->files());
+  file_stamp_ = {};
   const bool guides = editor_ ? editor_->smart_guides() : true;
   editor_ = std::make_unique<leinwand::editor::Editor>(std::move(document));
   editor_->SetSmartGuides(guides);
@@ -267,52 +273,150 @@ void Session::newDocument(double width, double height, double bleed) {
   emit fileChanged();
 }
 
+// Opening reads the file on another thread (spec 3.3): a file in a cloud
+// folder that is not on this computer is downloaded first, which can take
+// a while, and the window keeps answering meanwhile. The document replaces
+// the current one when it has been read.
 bool Session::open(const QUrl& url) {
-  const QString path = LocalPath(url);
-  const QFileInfo info(path);
-  if (info.suffix().compare(QStringLiteral("svg"), Qt::CaseInsensitive) == 0) {
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) return Fail(tr("Could not read %1.").arg(info.fileName()));
-    const QByteArray xml = file.readAll();
-    auto result = leinwand::io::ImportSvg(std::string_view(xml.constData(), xml.size()));
-    if (!result.document) {
-      return Fail(tr("%1 is not a readable SVG file (%2).")
-                      .arg(info.fileName(), QString::fromStdString(result.error)));
+  if (loading_) return false;
+  const QString path = QFileInfo(LocalPath(url)).absoluteFilePath();
+  loading_ = true;
+  loading_name_ = QFileInfo(path).fileName();
+  emit loadingChanged();
+  const bool svg =
+      QFileInfo(path).suffix().compare(QStringLiteral("svg"), Qt::CaseInsensitive) == 0;
+  QThreadPool::globalInstance()->start([this, path, svg] {
+    if (svg) {
+      QFile file(path);
+      const bool readable = file.open(QIODevice::ReadOnly);
+      const QByteArray xml = readable ? file.readAll() : QByteArray();
+      auto result = std::make_shared<leinwand::io::SvgImport>(
+          leinwand::io::ImportSvg(std::string_view(xml.constData(), xml.size())));
+      QMetaObject::invokeMethod(
+          this, [this, path, readable, result] { FinishOpenSvg(path, readable, *result); },
+          Qt::QueuedConnection);
+    } else {
+      auto result = std::make_shared<leinwand::io::LoadResult>(leinwand::io::LoadLwd(FsPath(path)));
+      QMetaObject::invokeMethod(
+          this, [this, path, result] { FinishOpenLwd(path, *result); }, Qt::QueuedConnection);
     }
-    RemoveRecovery();
-    SetDocument(std::move(*result.document));
-    // Imported: saving asks for a .lwd file name.
-    file_path_.clear();
-    display_name_ = info.fileName();
-    emit fileChanged();
-    SetReport(result.report);
-    AddRecent(info.absoluteFilePath());
-    return true;
+  });
+  return true;
+}
+
+void Session::EndLoading() {
+  loading_ = false;
+  loading_name_.clear();
+  emit loadingChanged();
+}
+
+void Session::FinishOpenSvg(const QString& path, bool readable, leinwand::io::SvgImport& result) {
+  EndLoading();
+  const QFileInfo info(path);
+  if (!readable) {
+    Fail(tr("Could not read %1.").arg(info.fileName()));
+    return;
   }
-  auto result = leinwand::io::LoadLwd(FsPath(path));
+  if (!result.document) {
+    Fail(tr("%1 is not a readable SVG file (%2).")
+             .arg(info.fileName(), QString::fromStdString(result.error)));
+    return;
+  }
+  RemoveRecovery();
+  SetDocument(std::move(*result.document));
+  // Imported: saving asks for a .lwd file name.
+  file_path_.clear();
+  display_name_ = info.fileName();
+  RecordFileStamp();
+  emit fileChanged();
+  SetReport(result.report);
+  AddRecent(info.absoluteFilePath());
+}
+
+void Session::FinishOpenLwd(const QString& path, leinwand::io::LoadResult& result) {
+  EndLoading();
+  const QFileInfo info(path);
   switch (result.error) {
     case leinwand::io::LoadError::kNone:
       break;
     case leinwand::io::LoadError::kNotFound:
-      return Fail(tr("Could not read %1.").arg(info.fileName()));
+      Fail(tr("Could not read %1.").arg(info.fileName()));
+      return;
     case leinwand::io::LoadError::kNotLeinwand:
-      return Fail(tr("%1 is not a Leinwand document.").arg(info.fileName()));
+      Fail(tr("%1 is not a Leinwand document.").arg(info.fileName()));
+      return;
     case leinwand::io::LoadError::kNewerVersion:
-      return Fail(tr("%1 was made with a newer version of Leinwand (format %2). Update Leinwand "
-                     "to open it.")
-                      .arg(info.fileName(), QString::fromStdString(result.message)));
+      Fail(tr("%1 was made with a newer version of Leinwand (format %2). Update Leinwand "
+              "to open it.")
+               .arg(info.fileName(), QString::fromStdString(result.message)));
+      return;
     case leinwand::io::LoadError::kCorrupt:
-      return Fail(tr("%1 is damaged and cannot be opened (%2).")
-                      .arg(info.fileName(), QString::fromStdString(result.message)));
+      Fail(tr("%1 is damaged and cannot be opened (%2).")
+               .arg(info.fileName(), QString::fromStdString(result.message)));
+      return;
   }
   RemoveRecovery();
   SetDocument(std::move(*result.document));
   file_path_ = info.absoluteFilePath();
   display_name_ = info.fileName();
+  RecordFileStamp();
   emit fileChanged();
   SetReport(result.report);
   AddRecent(file_path_);
-  return true;
+}
+
+// --- Changes made elsewhere (spec 3.3) --------------------------------------
+// Another computer saving the same file through a cloud folder, or another
+// program: the file's size and time are kept when it is opened or saved,
+// and a save, an autosave or the file watcher that finds them changed asks
+// what to do rather than overwrite.
+
+void Session::RecordFileStamp() {
+  const QStringList watched = watcher_->files();
+  if (!watched.isEmpty()) watcher_->removePaths(watched);
+  file_stamp_ = {};
+  if (file_path_.isEmpty()) return;
+  const QFileInfo info(file_path_);
+  file_stamp_ = {file_path_, info.exists(), info.size(), info.lastModified()};
+  if (info.exists()) watcher_->addPath(file_path_);
+  if (external_change_) {
+    external_change_ = false;
+    emit externalChangeChanged();
+  }
+}
+
+bool Session::FileChangedOnDisk() const {
+  if (file_path_.isEmpty() || file_stamp_.path != file_path_ || !file_stamp_.exists) return false;
+  const QFileInfo info(file_path_);
+  return !info.exists() || info.size() != file_stamp_.size ||
+         info.lastModified() != file_stamp_.modified;
+}
+
+void Session::ReportExternalChange() {
+  if (external_change_) return;
+  external_change_ = true;
+  emit externalChangeChanged();
+}
+
+void Session::FileWatched(const QString& path) {
+  if (path != file_path_) return;
+  // A replaced file drops out of some watchers: watch it again.
+  if (!watcher_->files().contains(path) && QFileInfo::exists(path)) watcher_->addPath(path);
+  if (autosave_writing_) return;  // Our own autosave; its end records the file.
+  if (FileChangedOnDisk()) ReportExternalChange();
+}
+
+void Session::keepMine() {
+  // The next save overwrites what is on disk now.
+  RecordFileStamp();
+}
+
+void Session::reloadFromDisk() {
+  if (file_path_.isEmpty()) return;
+  external_change_ = false;
+  emit externalChangeChanged();
+  saved_revision_ = editor_->history().revision();  // Unsaved changes go.
+  openPath(file_path_);
 }
 
 bool Session::openPath(const QString& path) {
@@ -321,6 +425,10 @@ bool Session::openPath(const QString& path) {
 
 bool Session::save() {
   if (file_path_.isEmpty()) return false;
+  if (FileChangedOnDisk()) {
+    ReportExternalChange();
+    return false;
+  }
   return saveAs(QUrl::fromLocalFile(file_path_));
 }
 
@@ -338,6 +446,7 @@ bool Session::saveAs(const QUrl& url) {
   file_path_ = QFileInfo(path).absoluteFilePath();
   display_name_ = QFileInfo(path).fileName();
   saved_revision_ = editor_->history().revision();
+  RecordFileStamp();
   RemoveRecovery();  // Saved: nothing to recover.
   AddRecent(file_path_);
   emit fileChanged();
@@ -480,6 +589,7 @@ void Session::AutosaveToFile() {
   const int keep =
       static_cast<int>(Preferences::instance()->Number(QStringLiteral("autosaveBackups")));
   const std::uint64_t generation = document_generation_;
+  autosave_writing_ = true;
   QThreadPool::globalInstance()->start([this, snapshot, path, folder, stamp, keep, revision,
                                         generation] {
     std::string error;
@@ -492,6 +602,7 @@ void Session::AutosaveToFile() {
     QMetaObject::invokeMethod(
         this,
         [this, ok, error, path, revision, generation] {
+          autosave_writing_ = false;
           // The document may have been closed or saved elsewhere meanwhile.
           if (generation != document_generation_ || path != file_path_) return;
           if (!ok) {
@@ -500,6 +611,7 @@ void Session::AutosaveToFile() {
             return;
           }
           saved_revision_ = revision;
+          RecordFileStamp();
           discardRecovery(recovery_path_);  // The file itself is current now.
           emit documentChanged();
         },
@@ -518,8 +630,12 @@ void Session::Autosave() {
       autosave_override_ || Preferences::instance()->Flag(QStringLiteral("autosaveToFile"));
   if (to_file && !file_path_.isEmpty() &&
       file_path_.endsWith(QStringLiteral(".lwd"), Qt::CaseInsensitive)) {
-    AutosaveToFile();
-    return;
+    if (!FileChangedOnDisk()) {
+      AutosaveToFile();
+      return;
+    }
+    // Changed elsewhere: ask, and keep the work in the recovery file.
+    ReportExternalChange();
   }
   autosaved_revision_ = editor_->history().revision();
   QDir().mkpath(RecoveryDir());

@@ -150,7 +150,7 @@ qt_add_resources(leinwand spectrum_icons
 
 # QRhi (rhi/qrhi.h) is only reachable through GuiPrivate in Qt 6.8.
 target_link_libraries(leinwand PRIVATE
-  editor render io Qt6::Gui Qt6::GuiPrivate Qt6::Quick Qt6::QuickControls2 Qt6::Svg
+  editor render io platform Qt6::Gui Qt6::GuiPrivate Qt6::Quick Qt6::QuickControls2 Qt6::Svg
   Qt6::Widgets Qt6::PrintSupport
   KDAB::kddockwidgets
 )
