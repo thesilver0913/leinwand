@@ -24,7 +24,7 @@ jobs:
             preset: macos-release
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Linux packages
         if: runner.os == 'Linux'
@@ -48,7 +48,7 @@ jobs:
           cache: true
 
       - name: Restore vcpkg binary cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .vcpkg-cache
           key: vcpkg-${{ matrix.os }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json') }}
@@ -78,7 +78,7 @@ jobs:
       - name: Package (macOS)
         if: runner.os == 'macOS'
         run: sh tools/package-macos.sh build/${{ matrix.preset }} dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: runner.os == 'macOS'
         with:
           name: leinwand-macos-arm64
@@ -88,7 +88,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Pinned to the version developers use locally (LLVM 23.1.2): releases
       # format some constructs differently, which the runner's own
       # clang-format (18) disagreed with.
