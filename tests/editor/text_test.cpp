@@ -212,6 +212,13 @@ TEST_CASE("Panels used while typing show through, and selecting elsewhere ends e
   editor.SetFill(core::Color{core::RgbColor{0, 0, 1}});
   const core::Fill* fill = core::FrontFill(core::CommonOf(*OnlyText(editor)).appearance);
   REQUIRE(fill);
+  // Diagnostics for a failure seen only on Linux and macOS.
+  UNSCOPED_INFO("paint index " << fill->paint.index() << ", items "
+                               << core::CommonOf(*OnlyText(editor)).appearance.size()
+                               << ", undo '" << editor.history().undo_action() << "'");
+  if (const auto* rgb = std::get_if<core::RgbColor>(&fill->paint)) {
+    UNSCOPED_INFO("rgb " << rgb->r << " " << rgb->g << " " << rgb->b);
+  }
   CHECK(fill->paint == core::Color{core::RgbColor{0, 0, 1}});
   CHECK(TextOf(editor) == U"abc");           // The composition stays out of the document,
   CHECK(ShownTextOf(editor) == U"abcにほ");  // and still shows.
