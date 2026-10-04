@@ -8,6 +8,7 @@
 #include <variant>
 
 #include "geometry/bezier.h"
+#include "text/layout.h"
 
 namespace leinwand::geometry {
 
@@ -102,6 +103,11 @@ std::optional<std::string> HitObject(const core::Object& object, Point p, double
     return std::nullopt;
   }
 
+  if (const auto* text = std::get_if<core::TextObject>(&object)) {
+    // On a line of text, as in Illustrator's bounding-box picking for type.
+    if (text::Hits(*text, p, tolerance)) return common.id;
+    return std::nullopt;
+  }
   double stroke_reach;
   bool filled;
   PaintExtent(object, &stroke_reach, &filled);
@@ -131,6 +137,7 @@ bool Touches(const core::Object& object, const Rect& rect, double tolerance) {
     return false;
   }
   if (!Bounds(object).Intersects(rect)) return false;
+  if (std::holds_alternative<core::TextObject>(object)) return true;
   bool touched = false;
   ForEachEdge(core::OutlineOf(object), tolerance, false,
               [&](Point a, Point b) { touched = touched || SegmentTouchesRect(a, b, rect); });

@@ -20,21 +20,22 @@ Window {
     property string message
 
     readonly property var groups: ({
-        file: qsTr("File"), edit: qsTr("Edit"), object: qsTr("Object"), select: qsTr("Select"),
+        file: qsTr("File"), edit: qsTr("Edit"), object: qsTr("Object"), type: qsTr("Type"),
+        select: qsTr("Select"),
         view: qsTr("View"), window: qsTr("Window"), tools: qsTr("Tools"),
         paint: qsTr("Fill and Stroke")
     })
     readonly property var names: ({
         fileNew: qsTr("New"), fileOpen: qsTr("Open"), fileSave: qsTr("Save"),
         fileSaveAs: qsTr("Save As"), fileExportSvg: qsTr("Export as SVG"),
-        fileExportPng: qsTr("Export as PNG"), fileClose: qsTr("Close"), fileQuit: qsTr("Exit"),
+        fileExportPng: qsTr("Export as PNG"), fileExportPdf: qsTr("Export as PDF"), filePrint: qsTr("Print"), fileClose: qsTr("Close"), fileQuit: qsTr("Exit"),
         editUndo: qsTr("Undo"), editRedo: qsTr("Redo"), editClear: qsTr("Clear"),
         editPreferences: qsTr("Preferences"), editShortcuts: qsTr("Keyboard Shortcuts"),
         objectBringToFront: qsTr("Bring to Front"), objectBringForward: qsTr("Bring Forward"),
         objectSendBackward: qsTr("Send Backward"), objectSendToBack: qsTr("Send to Back"),
         objectGroup: qsTr("Group"), objectUngroup: qsTr("Ungroup"), objectJoin: qsTr("Join"),
         objectCompoundMake: qsTr("Make Compound Path"), objectCompoundRelease: qsTr("Release Compound Path"),
-        windowPathfinder: qsTr("Pathfinder"), windowArtboards: qsTr("Artboards"),
+        windowPathfinder: qsTr("Pathfinder"), windowGradient: qsTr("Gradient"), editCut: qsTr("Cut"), editCopy: qsTr("Copy"), editPaste: qsTr("Paste"), editPasteInFront: qsTr("Paste in Front"), editPasteInBack: qsTr("Paste in Back"), editPasteInPlace: qsTr("Paste in Place"), windowTransparency: qsTr("Transparency"), windowCharacter: qsTr("Character"), windowParagraph: qsTr("Paragraph"), toolType: qsTr("Type Tool"), typeCreateOutlines: qsTr("Create Outlines"), typeRevertOutlines: qsTr("Revert Outlines to Text"), objectClipMake: qsTr("Make Clipping Mask"), objectClipRelease: qsTr("Release Clipping Mask"), toolGradient: qsTr("Gradient Tool"), windowArtboards: qsTr("Artboards"),
         viewFitAll: qsTr("Fit All in Window"), toolArtboard: qsTr("Artboard Tool"), windowAlign: qsTr("Align"), objectAverage: qsTr("Average"),
         selectAll: qsTr("All"), selectDeselect: qsTr("Deselect"),
         viewOutline: qsTr("Outline"), viewZoomIn: qsTr("Zoom In"), viewZoomOut: qsTr("Zoom Out"),

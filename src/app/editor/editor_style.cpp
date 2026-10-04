@@ -4,9 +4,11 @@
 #include <limits>
 #include <variant>
 
+#include "core/gradient.h"
 #include "core/layers.h"
 #include "core/style.h"
 #include "editor/editor.h"
+#include "geometry/bezier.h"
 #include "geometry/hit_test.h"
 
 namespace leinwand::editor {
@@ -87,6 +89,21 @@ StyleState Editor::Style() const {
   std::vector<const core::Appearance*> stacks = LeafAppearances(document(), selection());
   if (stacks.empty()) stacks = {&new_style_};
   state.fill = FillPaint(*stacks[0]);
+  // The Gradient panel shows the first gradient among the selected objects.
+  for (const auto* a : stacks) {
+    for (const auto& item : *a) {
+      if (fill_active_) {
+        if (const auto* f = std::get_if<core::Fill>(&item)) {
+          state.gradient = f->gradient;
+          break;
+        }
+      } else if (const auto* st = std::get_if<core::Stroke>(&item)) {
+        state.gradient = st->gradient;
+        break;
+      }
+    }
+    if (state.gradient) break;
+  }
   state.stroke = StrokePaint(*stacks[0]);
   for (const auto* a : stacks) {
     if (!state.stroke_style) {
@@ -117,10 +134,25 @@ void Editor::ApplyStyle(const std::string& action,
 }
 
 void Editor::SetFill(const std::optional<core::Color>& paint) {
+  // With a gradient stop selected, the color goes to the stop (spec 7.2).
+  if (paint && fill_active_ && gradient_stop() >= 0 && Style().gradient) {
+    const int stop = gradient_stop();
+    EditGradient("gradient stop", [&](core::Gradient& g) {
+      if (stop < static_cast<int>(g.stops.size())) g.stops[size_t(stop)].color = *paint;
+    });
+    return;
+  }
   ApplyStyle("fill", [&](core::Appearance& a) { core::SetFillPaint(a, paint); });
 }
 
 void Editor::SetStroke(const std::optional<core::Color>& paint) {
+  if (paint && !fill_active_ && gradient_stop() >= 0 && Style().gradient) {
+    const int stop = gradient_stop();
+    EditGradient("gradient stop", [&](core::Gradient& g) {
+      if (stop < static_cast<int>(g.stops.size())) g.stops[size_t(stop)].color = *paint;
+    });
+    return;
+  }
   ApplyStyle("stroke", [&](core::Appearance& a) { core::SetStrokePaint(a, paint); });
 }
 
@@ -180,11 +212,40 @@ void Editor::RemoveSwatch(const std::string& id) {
 
 void Editor::Select(const core::IdSet& ids) {
   anchors_.clear();
+  // Selecting something else (the Layers panel) ends editing text.
+  if (text_editing() && ids != core::IdSet{text_.id}) EndTextEdit();
   SetSelection(StillSelectable(document(), ids));
 }
 
 core::Document Editor::WithNewObject(const core::Document& document, core::ObjectPtr object) const {
   const std::string id = core::CommonOf(*object).id;
+  // Gradients from the new-object style are fitted to the new object, at
+  // their angle (as Illustrator does).
+  const auto& appearance = core::CommonOf(*object).appearance;
+  if (std::any_of(appearance.begin(), appearance.end(), [](const core::AppearanceItem& item) {
+        const auto* f = std::get_if<core::Fill>(&item);
+        const auto* s = std::get_if<core::Stroke>(&item);
+        return (f && f->gradient) || (s && s->gradient);
+      })) {
+    core::Object copy = *object;
+    const core::Rect bounds = geometry::Bounds(copy);
+    auto fit = [&](core::Gradient& g) {
+      core::Gradient fitted = core::DefaultGradient(g.type, bounds, core::Color{}, core::Color{});
+      fitted = core::WithAngle(fitted, core::GradientAngle(g));
+      g.start = fitted.start;
+      g.end = fitted.end;
+      g.focal.reset();
+    };
+    std::visit(
+        [&](auto& o) {
+          for (auto& item : o.common.appearance) {
+            if (auto* f = std::get_if<core::Fill>(&item); f && f->gradient) fit(*f->gradient);
+            if (auto* st = std::get_if<core::Stroke>(&item); st && st->gradient) fit(*st->gradient);
+          }
+        },
+        copy);
+    object = std::make_shared<const core::Object>(std::move(copy));
+  }
   core::Document result = core::AddObject(document, std::move(object), "layer-" + id);
   if (!active_layer_.empty() && core::LayerAcceptsArt(result, active_layer_)) {
     result = core::MoveItem(result, id, active_layer_, std::numeric_limits<int>::max());

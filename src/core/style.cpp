@@ -66,7 +66,9 @@ void SetFillPaint(Appearance& appearance, const std::optional<Color>& paint) {
   if (!paint) {
     if (it != appearance.end()) appearance.erase(it);
   } else if (it != appearance.end()) {
+    // A solid color replaces a gradient.
     std::get<Fill>(*it).paint = *paint;
+    std::get<Fill>(*it).gradient.reset();
   } else {
     appearance.push_back(Fill{*paint});
   }
@@ -78,6 +80,7 @@ void SetStrokePaint(Appearance& appearance, const std::optional<Color>& paint) {
     if (it != appearance.end()) appearance.erase(it);
   } else if (it != appearance.end()) {
     std::get<Stroke>(*it).paint = *paint;
+    std::get<Stroke>(*it).gradient.reset();
   } else {
     appearance.insert(appearance.begin(), Stroke{*paint});
   }
@@ -88,8 +91,17 @@ void SwapFillAndStroke(Appearance& appearance) {
   const Stroke* stroke = FrontStroke(appearance);
   const std::optional<Color> fill_paint = fill ? std::optional{fill->paint} : std::nullopt;
   const std::optional<Color> stroke_paint = stroke ? std::optional{stroke->paint} : std::nullopt;
+  const std::optional<Gradient> fill_gradient = fill ? fill->gradient : std::nullopt;
+  const std::optional<Gradient> stroke_gradient = stroke ? stroke->gradient : std::nullopt;
   SetFillPaint(appearance, stroke_paint);
   SetStrokePaint(appearance, fill_paint);
+  // Gradients swap with their colors.
+  if (auto it = FindFront<Fill>(appearance); it != appearance.end()) {
+    std::get<Fill>(*it).gradient = stroke_gradient;
+  }
+  if (auto it = FindFront<Stroke>(appearance); it != appearance.end()) {
+    std::get<Stroke>(*it).gradient = fill_gradient;
+  }
 }
 
 Document EditAppearance(const Document& document, const IdSet& ids,

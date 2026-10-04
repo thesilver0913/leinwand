@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "session.h"
 
+#include <QClipboard>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QQmlEngine>
@@ -16,16 +18,20 @@
 #include <cmath>
 #include <filesystem>
 #include <limits>
+#include <set>
 #include <variant>
 
+#include "core/gradient.h"
 #include "core/style.h"
 #include "editor/number_input.h"
+#include "editor/preflight.h"
 #include "io/lwd.h"
 #include "io/svg.h"
 #include "layers_model.h"
 #include "preferences.h"
 #include "render/document_renderer.h"
 #include "render/test_document.h"
+#include "text/font.h"
 
 namespace {
 
@@ -36,7 +42,8 @@ using leinwand::editor::Tool;
 constexpr int kHand = 12;
 constexpr int kZoom = 13;
 // Editor tools after the eyedropper come after the view tools in QML's
-// numbering: QML's 14 is the editor's kScissors, 15 its kArtboard.
+// numbering: QML's 14 is the editor's kScissors, 15 its kArtboard, 16 its
+// kGradient, 17 its kType.
 constexpr int kAfterView = 2;
 
 Session* g_instance = nullptr;
@@ -186,6 +193,7 @@ void Session::SetDocument(leinwand::core::Document document) {
   editor_->SetSmartGuides(guides);
   editor_->SetPathOpsEngine(&path_ops_);
   editor_->SetArtboardNamePrefix(tr("Artboard").toStdString());
+  editor_->SetTrimMarksName(tr("Trim Marks").toStdString());
   view_tool_ = -1;
   ApplyPreferences();
   saved_revision_ = autosaved_revision_ = editor_->history().revision();
@@ -219,7 +227,26 @@ bool Session::Fail(const QString& message) {
 }
 
 void Session::SetReport(const leinwand::io::ImportReport& report) {
-  import_report_ = ReportRows(report);
+  // Fonts the document names that are not here (spec 5.2): shown with a
+  // substitute until they are installed.
+  leinwand::io::ImportReport full = report;
+  if (editor_) {
+    leinwand::core::VisitObjects(editor_->document(), [&](const leinwand::core::Object& object) {
+      const auto* text = std::get_if<leinwand::core::TextObject>(&object);
+      if (!text || !text->story) return;
+      std::set<std::string> reported;
+      for (const auto& run : text->story->characters) {
+        const auto& font = run.style.font;
+        if (leinwand::text::IsAvailable(font)) continue;
+        const std::string name = font.family + " " + font.style;
+        if (reported.insert(name).second) {
+          full.Add("missing font \"" + name + "\" (shown with a substitute)",
+                   leinwand::io::ReportAction::kApproximated, leinwand::core::CommonOf(object).id);
+        }
+      }
+    });
+  }
+  import_report_ = ReportRows(full);
   emit importReportChanged();
 }
 
@@ -325,6 +352,25 @@ bool Session::exportSvg(const QUrl& url) {
   if (!WriteBytes(path, std::vector<std::uint8_t>(svg.begin(), svg.end()))) {
     return Fail(tr("Could not write %1.").arg(QFileInfo(path).fileName()));
   }
+  return true;
+}
+
+bool Session::exportPdf(const QUrl& url, bool all_artboards, bool outline_text, int marks) {
+  QString path = LocalPath(url);
+  if (QFileInfo(path).suffix().isEmpty()) path += QStringLiteral(".pdf");
+  const auto& document = editor_->document();
+  if (document.artboards.empty()) return Fail(tr("The document has no artboard to export."));
+  leinwand::render::PdfOptions options;
+  if (!all_artboards) options.artboards = {editor_->active_artboard()};
+  options.outline_text = outline_text;
+  if (marks == 1) options.marks = leinwand::core::TrimMarkStyle::kJapanese;
+  if (marks == 2) options.marks = leinwand::core::TrimMarkStyle::kWestern;
+  options.title = display_name_.toStdString();
+  options.creator = std::string("Leinwand ") + LEINWAND_VERSION;
+  const auto pdf = leinwand::render::DocumentRenderer::ExportPdf(document, options);
+  if (pdf.empty()) return Fail(tr("Could not make the PDF."));
+  if (!WriteBytes(path, pdf))
+    return Fail(tr("Could not write %1.").arg(QFileInfo(path).fileName()));
   return true;
 }
 
@@ -458,7 +504,7 @@ void Session::setTool(int tool) {
     view_tool_ = tool;
   } else {
     if (tool > kZoom) tool -= kAfterView;
-    if (tool < 0 || tool > static_cast<int>(Tool::kArtboard)) return;
+    if (tool < 0 || tool > static_cast<int>(Tool::kType)) return;
     if (view_tool_ < 0 && tool == static_cast<int>(editor_->chosen_tool()) &&
         tool == this->tool()) {
       return;
@@ -521,6 +567,12 @@ LEINWAND_COMMAND(cutAtAnchor, CutAtSelectedAnchor)
 LEINWAND_COMMAND(joinEnds, JoinSelectedEnds)
 LEINWAND_COMMAND(makeCompoundPath, MakeCompoundPath)
 LEINWAND_COMMAND(releaseCompoundPath, ReleaseCompoundPath)
+LEINWAND_COMMAND(makeClippingMask, MakeClippingMask)
+LEINWAND_COMMAND(createOutlines, CreateOutlines)
+LEINWAND_COMMAND(revertOutlines, RevertOutlines)
+LEINWAND_COMMAND(releaseClippingMask, ReleaseClippingMask)
+LEINWAND_COMMAND(makeOpacityMask, MakeOpacityMask)
+LEINWAND_COMMAND(releaseOpacityMask, ReleaseOpacityMask)
 LEINWAND_COMMAND(swapFillAndStroke, SwapFillAndStroke)
 LEINWAND_COMMAND(defaultFillAndStroke, DefaultFillAndStroke)
 #undef LEINWAND_COMMAND
@@ -707,6 +759,19 @@ QVariantMap Session::selectionInfo() const {
   map["width"] = info->bounds.width();
   map["height"] = info->bounds.height();
   map["rotation"] = info->rotation;
+  // What a single selected object is, for the control bar.
+  if (editor_->selection().size() == 1) {
+    using namespace leinwand::core;
+    if (const Object* o = editor_->document().FindObject(*editor_->selection().begin())) {
+      map["kind"] = std::holds_alternative<TextObject>(*o) ? QStringLiteral("text")
+                    : std::holds_alternative<CompoundPathObject>(*o)
+                        ? QStringLiteral("compoundPath")
+                    : std::holds_alternative<GroupObject>(*o)
+                        ? (std::get<GroupObject>(*o).clipped ? QStringLiteral("clipGroup")
+                                                             : QStringLiteral("group"))
+                        : QStringLiteral("path");
+    }
+  }
   if (!info->shape) {
     map["shape"] = QString();
     return map;
@@ -821,7 +886,325 @@ QVariantMap Session::style() const {
   map["dashes"] = dashes;
   map["opacity"] = state.opacity;
   map["opacityMixed"] = state.opacity_mixed;
+  if (state.gradient) {
+    const leinwand::core::Gradient& g = *state.gradient;
+    QVariantMap gradient;
+    gradient["type"] = static_cast<int>(g.type);
+    gradient["angle"] = leinwand::core::GradientAngle(g);
+    gradient["aspect"] = g.aspect;
+    QVariantList stops;
+    for (const auto& stop : g.stops) {
+      QVariantMap s;
+      s["offset"] = stop.offset;
+      s["color"] = ToQColor(stop.color, document);
+      s["opacity"] = stop.opacity;
+      s["midpoint"] = stop.midpoint;
+      stops.append(s);
+    }
+    gradient["stops"] = stops;
+    map["gradient"] = gradient;
+    const int selected = editor_->gradient_stop();
+    map["gradientStop"] = selected < static_cast<int>(g.stops.size()) ? selected : -1;
+  } else {
+    map["gradientStop"] = -1;
+  }
   return map;
+}
+
+QVariantList Session::preflight(double min_stroke_mm, const QVariantList& checks) const {
+  leinwand::editor::PreflightSettings settings;
+  settings.min_stroke = std::max(min_stroke_mm, 0.0) * 72.0 / 25.4;
+  for (int i = 0; i < leinwand::editor::kPreflightCheckCount && i < checks.size(); ++i) {
+    settings.enabled[i] = checks[i].toBool();
+  }
+  QVariantList rows;
+  for (const auto& issue : leinwand::editor::Preflight(editor_->document(), settings)) {
+    QVariantList ids;
+    for (const auto& id : issue.ids) ids.append(QString::fromStdString(id));
+    rows.append(QVariantMap{{"check", static_cast<int>(issue.check)}, {"ids", ids}});
+  }
+  return rows;
+}
+
+bool Session::canPaste() const {
+  return !clipboard_.empty() || (textEditing() && !QGuiApplication::clipboard()->text().isEmpty());
+}
+
+void Session::copy() {
+  if (editor_->text_editing()) {
+    const std::u32string selected = editor_->SelectedText();
+    if (!selected.empty())
+      QGuiApplication::clipboard()->setText(QString::fromStdU32String(selected));
+    emit clipboardChanged();
+    return;
+  }
+  auto objects = editor_->CopySelection();
+  if (objects.empty()) return;
+  clipboard_ = std::move(objects);
+  emit clipboardChanged();
+}
+
+void Session::cut() {
+  if (editor_->text_editing()) {
+    copy();
+    editor_->DeleteForward();
+    Changed();
+    return;
+  }
+  if (editor_->selection().empty()) return;
+  copy();
+  editor_->Delete();
+  Changed();
+}
+
+void Session::paste(int mode) {
+  if (editor_->text_editing()) {
+    editor_->InsertText(QGuiApplication::clipboard()->text().toStdU32String());
+    Changed();
+    return;
+  }
+  if (clipboard_.empty()) return;
+  using Mode = leinwand::editor::Editor::PasteMode;
+  const Mode modes[] = {Mode::kCentre, Mode::kInPlace, Mode::kFront, Mode::kBack};
+  QPointF centre;
+  if (canvas_) {
+    QMetaObject::invokeMethod(canvas_, "documentCentre", Qt::DirectConnection,
+                              Q_RETURN_ARG(QPointF, centre));
+  }
+  editor_->Paste(clipboard_, modes[std::clamp(mode, 0, 3)], {centre.x(), centre.y()});
+  Changed();
+}
+
+bool Session::ungroupChangesLook() const { return editor_->UngroupChangesLook(); }
+
+void Session::createTrimMarks() {
+  const bool japanese = Preferences::instance()->Flag(QStringLiteral("japaneseTrimMarks"));
+  editor_->CreateTrimMarks(japanese ? leinwand::core::TrimMarkStyle::kJapanese
+                                    : leinwand::core::TrimMarkStyle::kWestern);
+  Changed();
+}
+
+QVariantMap Session::characterStyle() const {
+  const auto state = editor_->TextStyle();
+  const auto& styles = state.characters;
+  const leinwand::core::CharacterStyle& first = styles.front();
+  auto mixed = [&](auto field) {
+    return std::any_of(styles.begin(), styles.end(),
+                       [&](const auto& s) { return field(s) != field(first); });
+  };
+  QVariantMap map;
+  map["editing"] = state.editing;
+  map["selectedText"] = state.selected_text;
+  map["family"] = QString::fromStdString(first.font.family);
+  map["style"] = QString::fromStdString(first.font.style);
+  map["familyMixed"] = mixed([](const auto& s) { return s.font.family; });
+  map["styleMixed"] = mixed([](const auto& s) { return s.font.style; });
+  map["missing"] = !leinwand::text::IsAvailable(first.font);
+  map["size"] = first.size;
+  map["sizeMixed"] = mixed([](const auto& s) { return s.size; });
+  map["autoLeading"] = !first.leading.has_value();
+  map["leading"] = leinwand::core::LeadingOf(first);
+  map["leadingMixed"] = mixed([](const auto& s) { return leinwand::core::LeadingOf(s); });
+  map["tracking"] = first.tracking;
+  map["trackingMixed"] = mixed([](const auto& s) { return s.tracking; });
+  map["baselineShift"] = first.baseline_shift;
+  map["baselineShiftMixed"] = mixed([](const auto& s) { return s.baseline_shift; });
+  map["horizontalScale"] = first.horizontal_scale;
+  map["horizontalScaleMixed"] = mixed([](const auto& s) { return s.horizontal_scale; });
+  map["verticalScale"] = first.vertical_scale;
+  map["verticalScaleMixed"] = mixed([](const auto& s) { return s.vertical_scale; });
+  map["rotation"] = first.rotation;
+  map["rotationMixed"] = mixed([](const auto& s) { return s.rotation; });
+  map["kerning"] = static_cast<int>(first.kerning);
+  map["kerningMixed"] = mixed([](const auto& s) { return s.kerning; });
+  return map;
+}
+
+QVariantMap Session::paragraphStyle() const {
+  const auto state = editor_->TextStyle();
+  const auto& styles = state.paragraphs;
+  const leinwand::core::ParagraphStyle& first = styles.front();
+  auto mixed = [&](auto field) {
+    return std::any_of(styles.begin(), styles.end(),
+                       [&](const auto& s) { return field(s) != field(first); });
+  };
+  QVariantMap map;
+  map["align"] = static_cast<int>(first.align);
+  map["alignMixed"] = mixed([](const auto& s) { return s.align; });
+  map["leftIndent"] = first.left_indent;
+  map["leftIndentMixed"] = mixed([](const auto& s) { return s.left_indent; });
+  map["rightIndent"] = first.right_indent;
+  map["rightIndentMixed"] = mixed([](const auto& s) { return s.right_indent; });
+  map["firstLineIndent"] = first.first_line_indent;
+  map["firstLineIndentMixed"] = mixed([](const auto& s) { return s.first_line_indent; });
+  map["spaceBefore"] = first.space_before;
+  map["spaceBeforeMixed"] = mixed([](const auto& s) { return s.space_before; });
+  map["spaceAfter"] = first.space_after;
+  map["spaceAfterMixed"] = mixed([](const auto& s) { return s.space_after; });
+  return map;
+}
+
+QStringList Session::fontFamilies() const {
+  static const QStringList families = [] {
+    QStringList list;
+    for (const auto& family : leinwand::text::Families()) {
+      list.append(QString::fromStdString(family.name));
+    }
+    return list;
+  }();
+  return families;
+}
+
+QStringList Session::fontStyles(const QString& family) const {
+  const std::string name = family.toStdString();
+  for (const auto& f : leinwand::text::Families()) {
+    if (f.name != name) continue;
+    QStringList styles;
+    for (const auto& style : f.styles) styles.append(QString::fromStdString(style));
+    return styles;
+  }
+  return {};
+}
+
+void Session::setFont(const QString& family, const QString& style) {
+  QString chosen = style;
+  const QStringList styles = fontStyles(family);
+  if (!styles.isEmpty() && !styles.contains(chosen)) {
+    // Keep the style when the new family has it; else its regular one.
+    chosen =
+        styles.contains(QStringLiteral("Regular")) ? QStringLiteral("Regular") : styles.front();
+  }
+  leinwand::core::FontRef font{family.toStdString(), chosen.toStdString(), {}};
+  // The PostScript name too: family names can be localized (游ゴシック /
+  // Yu Gothic), the PostScript name is the same everywhere.
+  if (const auto face = leinwand::text::FindFace(font))
+    font.postscript_name = face->postscript_name();
+  editor_->EditCharacterStyle([&](leinwand::core::CharacterStyle& s) { s.font = font; });
+  Changed();
+}
+
+void Session::setCharacterValue(const QString& key, double value) {
+  using leinwand::core::CharacterStyle;
+  editor_->EditCharacterStyle([&](CharacterStyle& s) {
+    if (key == "size") s.size = std::clamp(value, 0.1, 1296.0);
+    if (key == "leading") {
+      if (value <= 0) {
+        s.leading.reset();
+      } else {
+        s.leading = std::min(value, 5000.0);
+      }
+    }
+    if (key == "tracking") s.tracking = std::clamp(value, -1000.0, 10000.0);
+    if (key == "baselineShift") s.baseline_shift = value;
+    if (key == "horizontalScale") s.horizontal_scale = std::clamp(value, 0.01, 100.0);
+    if (key == "verticalScale") s.vertical_scale = std::clamp(value, 0.01, 100.0);
+    if (key == "rotation") s.rotation = value;
+    if (key == "kerning") {
+      s.kerning =
+          value >= 1 ? leinwand::core::KerningMode::kNone : leinwand::core::KerningMode::kMetrics;
+    }
+  });
+  Changed();
+}
+
+void Session::setParagraphValue(const QString& key, double value) {
+  using leinwand::core::ParagraphStyle;
+  editor_->EditParagraphStyle([&](ParagraphStyle& p) {
+    if (key == "align") {
+      p.align = static_cast<leinwand::core::TextAlign>(std::clamp(static_cast<int>(value), 0, 2));
+    }
+    if (key == "leftIndent") p.left_indent = value;
+    if (key == "rightIndent") p.right_indent = value;
+    if (key == "firstLineIndent") p.first_line_indent = value;
+    if (key == "spaceBefore") p.space_before = value;
+    if (key == "spaceAfter") p.space_after = value;
+  });
+  Changed();
+}
+
+QVariantMap Session::transparency() const {
+  const auto state = editor_->Transparency();
+  QVariantMap map;
+  map["selected"] = state.selected;
+  map["opacity"] = state.opacity;
+  map["opacityMixed"] = state.opacity_mixed;
+  map["blendMode"] = static_cast<int>(state.blend_mode);
+  map["blendMixed"] = state.blend_mixed;
+  map["hasMask"] = state.mask.has_value();
+  map["maskClip"] = state.mask ? state.mask->clip : true;
+  map["maskInvert"] = state.mask ? state.mask->invert : false;
+  map["hasGroup"] = state.has_group;
+  map["isolated"] = state.isolated;
+  return map;
+}
+
+void Session::setBlendMode(int mode) {
+  if (mode < 0 || mode > static_cast<int>(leinwand::core::BlendMode::kLuminosity)) return;
+  editor_->SetBlendMode(static_cast<leinwand::core::BlendMode>(mode));
+  Changed();
+}
+
+void Session::setIsolated(bool isolated) {
+  editor_->SetIsolated(isolated);
+  Changed();
+}
+
+void Session::setMaskClip(bool clip) {
+  editor_->SetMaskClip(clip);
+  Changed();
+}
+
+void Session::setMaskInvert(bool invert) {
+  editor_->SetMaskInvert(invert);
+  Changed();
+}
+
+void Session::applyGradient(int type) {
+  editor_->ApplyGradient(type == 1 ? leinwand::core::GradientType::kRadial
+                                   : leinwand::core::GradientType::kLinear);
+  Changed();
+}
+
+void Session::setGradientAngle(double degrees) {
+  editor_->SetGradientAngle(degrees);
+  Changed();
+}
+
+void Session::setGradientAspect(double aspect) {
+  editor_->SetGradientAspect(aspect);
+  Changed();
+}
+
+void Session::selectGradientStop(int index) {
+  editor_->SelectGradientStop(index);
+  Changed();
+}
+
+int Session::addGradientStop(double offset) {
+  const int added = editor_->AddGradientStop(offset);
+  Changed();
+  return added;
+}
+
+void Session::removeGradientStop(int index) {
+  editor_->RemoveGradientStop(index);
+  Changed();
+}
+
+int Session::moveGradientStop(int index, double offset) {
+  const int moved = editor_->MoveGradientStop(index, offset);
+  Changed();
+  return moved;
+}
+
+void Session::setGradientStopOpacity(int index, double opacity) {
+  editor_->SetGradientStopOpacity(index, opacity);
+  Changed();
+}
+
+void Session::setGradientStopMidpoint(int index, double midpoint) {
+  editor_->SetGradientStopMidpoint(index, midpoint);
+  Changed();
 }
 
 void Session::setFillColor(const QColor& color) {

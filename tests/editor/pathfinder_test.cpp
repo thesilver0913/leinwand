@@ -246,3 +246,31 @@ TEST_CASE("Make Compound Path joins paths with the backmost appearance") {
   }
   CHECK(editor.selection().size() == 2);
 }
+
+TEST_CASE("A group holding text is not consumed by the pathfinder") {
+  core::GroupObject group;
+  group.common.id = "g";
+  core::TextObject text;
+  text.common.id = "t";
+  text.story = std::make_shared<const core::Story>(core::MakeStory("s", U"A"));
+  group.children = {core::MakeObject(text)};
+  core::Layer layer;
+  layer.id = "l";
+  core::PathObject a;
+  a.common.id = "a";
+  a.common.appearance = {core::Fill{core::RgbColor{1, 0, 0}}};
+  a.path.anchors = {{{0, 0}}, {{10, 0}}, {{10, 10}}, {{0, 10}}};
+  a.path.closed = true;
+  core::PathObject b = a;
+  b.common.id = "b";
+  for (auto& anchor : b.path.anchors) anchor.position.x += 5;
+  layer.children = {core::MakeObject(a), core::MakeObject(b), core::MakeObject(group)};
+  core::Document document;
+  document.layers = {core::MakeLayer(std::move(layer))};
+  editor::Editor editor(document);
+  render::SkiaPathOps engine;
+  editor.SetPathOpsEngine(&engine);
+  editor.SelectAll();
+  editor.ApplyPathfinder(geometry::Pathfinder::kUnite);
+  CHECK(editor.document().FindObject("t"));
+}

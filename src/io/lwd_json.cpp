@@ -5,11 +5,13 @@
 #include <cmath>
 #include <deque>
 #include <initializer_list>
+#include <map>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <variant>
 
 #include "io/lwd.h"
+#include "text/layout.h"
 
 namespace leinwand::io {
 
@@ -123,6 +125,10 @@ constexpr Names<CornerKind, 3> kCornerKinds{{{{CornerKind::kRound, "round"},
                                               {CornerKind::kChamfer, "chamfer"}}}};
 constexpr Names<FillRule, 2> kFillRules{
     {{{FillRule::kNonZero, "nonZero"}, {FillRule::kEvenOdd, "evenOdd"}}}};
+constexpr Names<TextAlign, 3> kTextAligns{
+    {{{TextAlign::kLeft, "left"}, {TextAlign::kCenter, "center"}, {TextAlign::kRight, "right"}}}};
+constexpr Names<KerningMode, 2> kKerningModes{
+    {{{KerningMode::kMetrics, "metrics"}, {KerningMode::kNone, "none"}}}};
 
 // Reading one JSON object: known keys are taken out as they are read; what
 // is left at the end is kept as unknown fields. An enumeration value this
@@ -245,6 +251,61 @@ ProcessColor ProcessColorOf(const Json& j) {
   throw Corrupt("a swatch must hold a process color");
 }
 
+// --- Gradients ---------------------------------------------------------------
+
+// {"type": "linear"|"radial", "start": [x, y], "end": [x, y], "stops": [...]},
+// with "aspect" and "focal" for radial gradients when not the defaults.
+Json GradientJson(const Gradient& g) {
+  Json j;
+  j["type"] = g.type == GradientType::kRadial ? "radial" : "linear";
+  j["start"] = Pair(g.start.x, g.start.y);
+  j["end"] = Pair(g.end.x, g.end.y);
+  if (g.type == GradientType::kRadial) {
+    if (g.aspect != 1.0) j["aspect"] = Num(g.aspect);
+    if (g.focal) j["focal"] = Pair(g.focal->x, g.focal->y);
+  }
+  Json stops = Json::array();
+  for (const GradientStop& s : g.stops) {
+    Json stop;
+    stop["offset"] = Num(s.offset);
+    stop["color"] = ColorJson(s.color);
+    if (s.opacity != 1.0) stop["opacity"] = Num(s.opacity);
+    if (s.midpoint != 0.5) stop["midpoint"] = Num(s.midpoint);
+    stops.push_back(std::move(stop));
+  }
+  j["stops"] = std::move(stops);
+  AppendUnknown(j, g.unknown_fields);
+  return j;
+}
+
+Gradient GradientOf(const Json& j) {
+  Reader r(j);
+  Gradient g;
+  g.type = r.String("type", "linear") == "radial" ? GradientType::kRadial : GradientType::kLinear;
+  const Json* start = r.Take("start");
+  const Json* end = r.Take("end");
+  if (!start || !end) throw Corrupt("a gradient needs \"start\" and \"end\"");
+  g.start = PointOf(*start);
+  g.end = PointOf(*end);
+  g.aspect = r.Number("aspect", 1.0);
+  if (const Json* focal = r.Take("focal")) g.focal = PointOf(*focal);
+  const Json* stops = r.Take("stops");
+  if (!stops || !stops->is_array()) throw Corrupt("a gradient needs \"stops\"");
+  for (const auto& s : *stops) {
+    Reader sr(s);
+    GradientStop stop;
+    stop.offset = sr.Number("offset", 0.0);
+    const Json* color = sr.Take("color");
+    if (!color) throw Corrupt("a gradient stop needs \"color\"");
+    stop.color = ColorOf(*color);
+    stop.opacity = sr.Number("opacity", 1.0);
+    stop.midpoint = sr.Number("midpoint", 0.5);
+    g.stops.push_back(std::move(stop));
+  }
+  g.unknown_fields = r.Unknown();
+  return g;
+}
+
 // --- Appearance --------------------------------------------------------------
 
 Json AppearanceJson(const Appearance& appearance) {
@@ -254,6 +315,7 @@ Json AppearanceJson(const Appearance& appearance) {
       Json j;
       j["type"] = "fill";
       j["paint"] = ColorJson(fill->paint);
+      if (fill->gradient) j["gradient"] = GradientJson(*fill->gradient);
       if (fill->opacity != 1.0) j["opacity"] = Num(fill->opacity);
       if (fill->blend_mode != BlendMode::kNormal) j["blendMode"] = kBlendModes.Of(fill->blend_mode);
       AppendUnknown(j, fill->unknown_fields);
@@ -262,6 +324,7 @@ Json AppearanceJson(const Appearance& appearance) {
       Json j;
       j["type"] = "stroke";
       j["paint"] = ColorJson(stroke->paint);
+      if (stroke->gradient) j["gradient"] = GradientJson(*stroke->gradient);
       j["width"] = Num(stroke->width);
       if (stroke->cap != StrokeCap::kButt) j["cap"] = kCaps.Of(stroke->cap);
       if (stroke->join != StrokeJoin::kMiter) j["join"] = kJoins.Of(stroke->join);
@@ -298,6 +361,7 @@ Appearance AppearanceOf(const Json& j, ImportReport& report, const std::string& 
       const Json* paint = r.Take("paint");
       if (!paint) throw Corrupt("a fill needs \"paint\"");
       fill.paint = ColorOf(*paint);
+      if (const Json* gradient = r.Take("gradient")) fill.gradient = GradientOf(*gradient);
       fill.opacity = r.Number("opacity", 1.0);
       fill.blend_mode = r.Enum("blendMode", kBlendModes, BlendMode::kNormal);
       fill.unknown_fields = r.Unknown();
@@ -309,6 +373,7 @@ Appearance AppearanceOf(const Json& j, ImportReport& report, const std::string& 
       const Json* paint = r.Take("paint");
       if (!paint) throw Corrupt("a stroke needs \"paint\"");
       stroke.paint = ColorOf(*paint);
+      if (const Json* gradient = r.Take("gradient")) stroke.gradient = GradientOf(*gradient);
       stroke.width = r.Number("width", 1.0);
       stroke.cap = r.Enum("cap", kCaps, StrokeCap::kButt);
       stroke.join = r.Enum("join", kJoins, StrokeJoin::kMiter);
@@ -459,6 +524,139 @@ std::optional<ShapeParams> ShapeOf(const Json& j) {
 
 Json ObjectJson(const ObjectPtr& object);
 
+// --- Text ------------------------------------------------------------------
+
+// Stories are written once at the top level (spec 3.2, "stories") and
+// referred to by id; these collect them while writing and look them up
+// while reading.
+thread_local std::map<std::string, StoryPtr>* written_stories = nullptr;
+thread_local const std::map<std::string, StoryPtr>* read_stories = nullptr;
+
+Json CharacterStyleJson(const CharacterStyle& s) {
+  Json j;
+  Json font = {{"family", s.font.family}, {"style", s.font.style}};
+  if (!s.font.postscript_name.empty()) font["postscriptName"] = s.font.postscript_name;
+  j["font"] = std::move(font);
+  j["size"] = Num(s.size);
+  if (s.leading) j["leading"] = Num(*s.leading);
+  if (s.tracking != 0) j["tracking"] = Num(s.tracking);
+  if (s.baseline_shift != 0) j["baselineShift"] = Num(s.baseline_shift);
+  if (s.horizontal_scale != 1) j["horizontalScale"] = Num(s.horizontal_scale);
+  if (s.vertical_scale != 1) j["verticalScale"] = Num(s.vertical_scale);
+  if (s.rotation != 0) j["rotation"] = Num(s.rotation);
+  if (s.kerning != KerningMode::kMetrics) j["kerning"] = kKerningModes.Of(s.kerning);
+  AppendUnknown(j, s.unknown_fields);
+  return j;
+}
+
+CharacterStyle CharacterStyleOf(Reader& r) {
+  CharacterStyle s;
+  if (const Json* font = r.Take("font")) {
+    if (!font->is_object()) throw Corrupt("\"font\" must be an object");
+    s.font.family = font->value("family", "");
+    s.font.style = font->value("style", "");
+    s.font.postscript_name = font->value("postscriptName", "");
+  }
+  s.size = r.Number("size", s.size);
+  if (const Json* leading = r.Take("leading")) s.leading = NumberOf(*leading);
+  s.tracking = r.Number("tracking", 0);
+  s.baseline_shift = r.Number("baselineShift", 0);
+  s.horizontal_scale = r.Number("horizontalScale", 1);
+  s.vertical_scale = r.Number("verticalScale", 1);
+  s.rotation = r.Number("rotation", 0);
+  s.kerning = r.Enum("kerning", kKerningModes, KerningMode::kMetrics);
+  return s;
+}
+
+Json ParagraphStyleJson(const ParagraphStyle& p) {
+  Json j = Json::object();
+  if (p.align != TextAlign::kLeft) j["align"] = kTextAligns.Of(p.align);
+  if (p.left_indent != 0) j["leftIndent"] = Num(p.left_indent);
+  if (p.right_indent != 0) j["rightIndent"] = Num(p.right_indent);
+  if (p.first_line_indent != 0) j["firstLineIndent"] = Num(p.first_line_indent);
+  if (p.space_before != 0) j["spaceBefore"] = Num(p.space_before);
+  if (p.space_after != 0) j["spaceAfter"] = Num(p.space_after);
+  AppendUnknown(j, p.unknown_fields);
+  return j;
+}
+
+ParagraphStyle ParagraphStyleOf(Reader& r) {
+  ParagraphStyle p;
+  p.align = r.Enum("align", kTextAligns, TextAlign::kLeft);
+  p.left_indent = r.Number("leftIndent", 0);
+  p.right_indent = r.Number("rightIndent", 0);
+  p.first_line_indent = r.Number("firstLineIndent", 0);
+  p.space_before = r.Number("spaceBefore", 0);
+  p.space_after = r.Number("spaceAfter", 0);
+  return p;
+}
+
+// Run lengths are code points (spec 5.1); paragraphs carry their length
+// too, break included, so that other readers need not count breaks.
+Json StoryJson(const Story& story) {
+  Json j;
+  j["id"] = story.id;
+  j["text"] = ToUtf8(story.text);
+  Json characters = Json::array();
+  for (const CharacterRun& run : story.characters) {
+    Json c = CharacterStyleJson(run.style);
+    c["length"] = run.length;
+    characters.push_back(std::move(c));
+  }
+  j["characters"] = std::move(characters);
+  Json paragraphs = Json::array();
+  for (std::size_t p = 0; p < story.paragraphs.size(); ++p) {
+    Json para = ParagraphStyleJson(story.paragraphs[p]);
+    const std::size_t end = ParagraphEnd(story, p);
+    para["length"] = end - ParagraphStart(story, p) + (end < story.text.size() ? 1 : 0);
+    paragraphs.push_back(std::move(para));
+  }
+  j["paragraphs"] = std::move(paragraphs);
+  AppendUnknown(j, story.unknown_fields);
+  return j;
+}
+
+StoryPtr StoryOf(const Json& j) {
+  Reader r(j);
+  Story story;
+  story.id = r.String("id");
+  if (story.id.empty()) throw Corrupt("a story without \"id\"");
+  story.text = FromUtf8(r.String("text"));
+  story.characters.clear();
+  if (const Json* characters = r.Take("characters")) {
+    if (!characters->is_array()) throw Corrupt("\"characters\" must be a list");
+    for (const auto& c : *characters) {
+      Reader cr(c);
+      CharacterRun run;
+      const double length = cr.Number("length", 0);
+      if (!(length >= 0) || length > 1e9) throw Corrupt("a bad character run length");
+      run.length = static_cast<std::size_t>(length);
+      run.style = CharacterStyleOf(cr);
+      run.style.unknown_fields = cr.Unknown();
+      story.characters.push_back(std::move(run));
+    }
+  }
+  if (story.characters.empty()) story.characters.push_back({story.text.size(), {}});
+  story.paragraphs.clear();
+  if (const Json* paragraphs = r.Take("paragraphs")) {
+    if (!paragraphs->is_array()) throw Corrupt("\"paragraphs\" must be a list");
+    for (const auto& p : *paragraphs) {
+      Reader pr(p);
+      pr.Take("length");  // Follows from the text.
+      ParagraphStyle style = ParagraphStyleOf(pr);
+      style.unknown_fields = pr.Unknown();
+      story.paragraphs.push_back(std::move(style));
+    }
+  }
+  if (story.paragraphs.empty()) {
+    const auto breaks = std::count(story.text.begin(), story.text.end(), U'\n');
+    story.paragraphs.assign(static_cast<std::size_t>(breaks) + 1, ParagraphStyle{});
+  }
+  story.unknown_fields = r.Unknown();
+  if (!IsConsistent(story)) throw Corrupt("story \"" + story.id + "\" does not match its text");
+  return std::make_shared<const Story>(std::move(story));
+}
+
 Json PreservedJson(const PreservedObject& o) {
   if (o.format != "lwd") {
     // Foreign content (an SVG element): a type of its own.
@@ -522,21 +720,61 @@ Json ObjectJson(const ObjectPtr& object) {
         } else if constexpr (std::is_same_v<T, GroupObject>) {
           WriteCommon(j, o.common, "group");
           if (o.clipped) j["clipped"] = true;
+          if (o.isolated) j["isolated"] = true;
           if (!o.transform.IsIdentity()) j["transform"] = MatrixJson(o.transform);
           Json children = Json::array();
           for (const auto& child : o.children) children.push_back(ObjectJson(child));
           j["children"] = std::move(children);
+          if (o.outlined_text) j["outlinedText"] = ObjectJson(o.outlined_text);
+        } else if constexpr (std::is_same_v<T, TextObject>) {
+          WriteCommon(j, o.common, "text");
+          if (!o.story) throw Corrupt("text without a story");
+          // Two different stories under one id (which editing never makes,
+          // but a merged document might) are written under separate ids,
+          // so that neither text takes the other's characters.
+          std::string story_id = o.story->id;
+          if (written_stories) {
+            for (int n = 2;; ++n) {
+              const auto it = written_stories->find(story_id);
+              if (it == written_stories->end() || it->second == o.story ||
+                  *it->second == *o.story) {
+                break;
+              }
+              story_id = o.story->id + "-" + std::to_string(n);
+            }
+            if (story_id == o.story->id) {
+              (*written_stories)[story_id] = o.story;
+            } else {
+              Story renamed = *o.story;
+              renamed.id = story_id;
+              (*written_stories)[story_id] = std::make_shared<const Story>(std::move(renamed));
+            }
+          }
+          j["story"] = story_id;
+          if (!o.transform.IsIdentity()) j["transform"] = MatrixJson(o.transform);
+          // For versions without text: a frame where it is.
+          j["bounds"] = RectJson(text::BoundsOf(o));
         } else {
           WriteCommon(j, o.common, "shape");
           j["shape"] = ShapeJson(o.shape);
           if (!o.transform.IsIdentity()) j["transform"] = MatrixJson(o.transform);
         }
         if (!o.common.appearance.empty()) j["appearance"] = AppearanceJson(o.common.appearance);
+        if (o.common.mask && o.common.mask->art) {
+          // The opacity mask (format 1.3).
+          Json mask;
+          mask["object"] = ObjectJson(o.common.mask->art);
+          if (!o.common.mask->clip) mask["clip"] = false;
+          if (o.common.mask->invert) mask["invert"] = true;
+          j["mask"] = std::move(mask);
+        }
         AppendUnknown(j, o.common.unknown_fields);
         return j;
       },
       object->base());
 }
+
+ObjectPtr ObjectOf(const Json& j, ImportReport& report);
 
 ObjectCommon CommonOf(Reader& r, ImportReport& report) {
   ObjectCommon common;
@@ -549,6 +787,16 @@ ObjectCommon CommonOf(Reader& r, ImportReport& report) {
   common.blend_mode = r.Enum("blendMode", kBlendModes, BlendMode::kNormal);
   if (const Json* appearance = r.Take("appearance")) {
     common.appearance = AppearanceOf(*appearance, report, common.id);
+  }
+  if (const Json* mask = r.Take("mask")) {
+    if (!mask->is_object() || !mask->contains("object")) {
+      throw Corrupt("an opacity mask needs \"object\"");
+    }
+    OpacityMask m;
+    m.art = ObjectOf((*mask)["object"], report);
+    m.clip = mask->value("clip", true);
+    m.invert = mask->value("invert", false);
+    common.mask = std::make_shared<const OpacityMask>(std::move(m));
   }
   return common;
 }
@@ -586,7 +834,12 @@ ObjectPtr ObjectOf(const Json& j, ImportReport& report) {
     o.common.unknown_fields = r.Unknown();
     return MakeObject(std::move(o));  // Reported when it was first imported.
   }
-  if (type != "path" && type != "compoundPath" && type != "group" && type != "shape") {
+  if (type == "text" && (j.value("kind", "point") != "point" ||
+                         j.value("orientation", "horizontal") != "horizontal")) {
+    return Preserved(j, report, "text kind \"" + j.value("kind", "") + "\"");
+  }
+  if (type != "path" && type != "compoundPath" && type != "group" && type != "shape" &&
+      type != "text") {
     return Preserved(j, report, "object type \"" + type + "\"");
   }
   if (type == "shape" && j.contains("shape") && !ShapeOf(j["shape"])) {
@@ -624,11 +877,33 @@ ObjectPtr ObjectOf(const Json& j, ImportReport& report) {
   if (type == "group") {
     GroupObject o;
     o.clipped = r.Bool("clipped", false);
+    o.isolated = r.Bool("isolated", false);
     if (const Json* m = r.Take("transform")) o.transform = MatrixOf(*m);
     if (const Json* children = r.Take("children")) {
       if (!children->is_array()) throw Corrupt("\"children\" must be a list");
       for (const auto& child : *children) o.children.push_back(ObjectOf(child, report));
     }
+    if (const Json* outlined = r.Take("outlinedText")) {
+      o.outlined_text = ObjectOf(*outlined, report);
+      if (!std::holds_alternative<TextObject>(*o.outlined_text)) o.outlined_text = nullptr;
+    }
+    o.common = std::move(common);
+    o.common.unknown_fields = r.Unknown();
+    return MakeObject(std::move(o));
+  }
+  if (type == "text") {
+    TextObject o;
+    r.Take("kind");
+    r.Take("orientation");
+    r.Take("bounds");  // Written for older versions; recomputed here.
+    const std::string story = r.String("story");
+    const auto found = read_stories ? read_stories->find(story)
+                                    : std::map<std::string, StoryPtr>::const_iterator{};
+    if (!read_stories || found == read_stories->end()) {
+      throw Corrupt("text \"" + common.id + "\" refers to a missing story");
+    }
+    o.story = found->second;
+    if (const Json* m = r.Take("transform")) o.transform = MatrixOf(*m);
     o.common = std::move(common);
     o.common.unknown_fields = r.Unknown();
     return MakeObject(std::move(o));
@@ -727,8 +1002,21 @@ std::string WriteDocumentJson(const Document& document, std::string_view app_ver
   j["swatches"] = std::move(swatches);
 
   Json layers = Json::array();
-  for (const auto& layer : document.layers) layers.push_back(LayerJson(*layer));
+  std::map<std::string, StoryPtr> stories;
+  written_stories = &stories;
+  try {
+    for (const auto& layer : document.layers) layers.push_back(LayerJson(*layer));
+  } catch (...) {
+    written_stories = nullptr;
+    throw;
+  }
+  written_stories = nullptr;
   j["layers"] = std::move(layers);
+  if (!stories.empty()) {
+    Json list = Json::array();
+    for (const auto& [id, story] : stories) list.push_back(StoryJson(*story));
+    j["stories"] = std::move(list);
+  }
   if (document.cover) {
     const CoverSpec& c = *document.cover;
     Json cover = {{"width", Num(c.width)},
@@ -803,9 +1091,24 @@ LoadResult ReadDocumentJson(std::string_view text) {
         document.swatches.push_back(std::move(swatch));
       }
     }
+    std::map<std::string, StoryPtr> stories;
+    if (const Json* list = r.Take("stories")) {
+      if (!list->is_array()) throw Corrupt("\"stories\" must be a list");
+      for (const auto& s : *list) {
+        StoryPtr story = StoryOf(s);
+        stories[story->id] = std::move(story);
+      }
+    }
     if (const Json* layers = r.Take("layers")) {
       if (!layers->is_array()) throw Corrupt("\"layers\" must be a list");
-      for (const auto& layer : *layers) document.layers.push_back(LayerOf(layer, result.report));
+      read_stories = &stories;
+      try {
+        for (const auto& layer : *layers) document.layers.push_back(LayerOf(layer, result.report));
+      } catch (...) {
+        read_stories = nullptr;
+        throw;
+      }
+      read_stories = nullptr;
     }
     if (const Json* cover = r.Take("coverTemplate")) {
       Reader c(*cover);

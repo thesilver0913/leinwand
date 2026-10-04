@@ -14,16 +14,26 @@
 #include "include/core/SkBlurTypes.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkColor.h"
+#include "include/core/SkColorFilter.h"
 #include "include/core/SkData.h"
+#include "include/core/SkFont.h"
 #include "include/core/SkImageInfo.h"
 #include "include/core/SkMaskFilter.h"
+#include "include/core/SkMatrix.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkPathBuilder.h"
+#include "include/core/SkScalar.h"
 #include "include/core/SkStream.h"
 #include "include/core/SkSurface.h"
+#include "include/docs/SkPDFDocument.h"
+#include "include/docs/SkPDFJpegHelpers.h"
 #include "include/effects/SkDashPathEffect.h"
+#include "include/effects/SkGradient.h"
+#include "include/effects/SkLumaColorFilter.h"
 #include "include/encode/SkPngEncoder.h"
 #include "render/document_renderer_impl.h"
+#include "render/skia_typeface.h"
+#include "text/layout.h"
 
 namespace leinwand::render {
 
@@ -99,7 +109,12 @@ void AppendPath(SkPathBuilder& builder, const core::PathData& path) {
 
 SkPath ToSkPath(const core::Object& object) {
   SkPathBuilder builder;
-  for (const auto& subpath : core::OutlineOf(object)) AppendPath(builder, subpath);
+  // Text is drawn as its glyph outlines, so it paints like any path (fills,
+  // strokes, gradients) and looks the same as when outlined.
+  const auto* text = std::get_if<core::TextObject>(&object);
+  for (const auto& subpath : text ? text::OutlineOf(*text) : core::OutlineOf(object)) {
+    AppendPath(builder, subpath);
+  }
   builder.setFillType(core::FillRuleOf(object) == core::FillRule::kEvenOdd
                           ? SkPathFillType::kEvenOdd
                           : SkPathFillType::kWinding);
@@ -134,6 +149,62 @@ bool SetPaintColor(SkPaint& paint, const core::Color& color, double opacity,
   if (!rgb) return false;
   paint.setColor4f({static_cast<float>(rgb->r), static_cast<float>(rgb->g),
                     static_cast<float>(rgb->b), static_cast<float>(opacity)});
+  return true;
+}
+
+// A gradient as a shader (spec 7, "グラデーション"). Each stop's midpoint
+// becomes an extra stop where the neighbours mix half and half, so a moved
+// midpoint bends the ramp as in Illustrator. False when a stop's color
+// cannot be shown or there are fewer than two stops.
+bool SetPaintGradient(SkPaint& paint, const core::Gradient& gradient, double opacity,
+                      const core::Document& document) {
+  if (gradient.stops.size() < 2) return false;
+  std::vector<SkColor4f> colors;
+  std::vector<float> positions;
+  for (size_t i = 0; i < gradient.stops.size(); ++i) {
+    const core::GradientStop& stop = gradient.stops[i];
+    const auto rgb = core::ToRgb(stop.color, document);
+    if (!rgb) return false;
+    const SkColor4f color{float(rgb->r), float(rgb->g), float(rgb->b), float(stop.opacity)};
+    if (i > 0) {
+      const core::GradientStop& prev = gradient.stops[i - 1];
+      if (std::abs(prev.midpoint - 0.5) > 1e-6) {
+        const SkColor4f a = colors.back();
+        positions.push_back(
+            float(prev.offset + (stop.offset - prev.offset) * std::clamp(prev.midpoint, 0.0, 1.0)));
+        colors.push_back({(a.fR + color.fR) / 2, (a.fG + color.fG) / 2, (a.fB + color.fB) / 2,
+                          (a.fA + color.fA) / 2});
+      }
+    }
+    colors.push_back(color);
+    positions.push_back(float(std::clamp(stop.offset, 0.0, 1.0)));
+  }
+  const SkGradient ramp(SkGradient::Colors(colors, positions, SkTileMode::kClamp),
+                        SkGradient::Interpolation{});
+  const SkPoint start = ToSk(gradient.start), end = ToSk(gradient.end);
+  sk_sp<SkShader> shader;
+  if (gradient.type == core::GradientType::kLinear) {
+    const SkPoint points[2] = {start, end};
+    shader = SkShaders::LinearGradient(points, ramp);
+  } else {
+    const float radius = SkPoint::Distance(start, end);
+    if (radius <= 0) return false;
+    // The ellipse: squashed across its axis by the aspect.
+    const float degrees = SkRadiansToDegrees(std::atan2(end.y() - start.y(), end.x() - start.x()));
+    SkMatrix local;
+    local.setRotate(-degrees, start.x(), start.y());
+    local.postScale(1, float(gradient.aspect), start.x(), start.y());
+    local.postRotate(degrees, start.x(), start.y());
+    if (gradient.focal && ToSk(*gradient.focal) != start) {
+      shader =
+          SkShaders::TwoPointConicalGradient(ToSk(*gradient.focal), 0, start, radius, ramp, &local);
+    } else {
+      shader = SkShaders::RadialGradient(start, radius, ramp, &local);
+    }
+  }
+  if (!shader) return false;
+  paint.setShader(std::move(shader));
+  paint.setAlphaf(float(opacity));
   return true;
 }
 
@@ -184,6 +255,12 @@ const DocumentRenderer::Impl::CacheEntry& DocumentRenderer::Impl::Entry(
         }
       }
       entry.bounds = geometry::Bounds(o).Outset(outset);
+      if (std::holds_alternative<core::TextObject>(o) && !entry.path.isEmpty()) {
+        // Glyphs may reach past the lines' boxes.
+        const SkRect ink = entry.path.getBounds();
+        entry.bounds = entry.bounds.Union(
+            Rect{ink.left(), ink.top(), ink.right(), ink.bottom()}.Outset(outset));
+      }
     }
   }
   entry.last_used = frame_;
@@ -250,9 +327,22 @@ void DocumentRenderer::Impl::Draw(SkCanvas* canvas, const core::Document& docume
   PruneCache();
 }
 
+void DocumentRenderer::Impl::DrawArtwork(SkCanvas* canvas, const core::Document& document,
+                                         const Rect& visible) {
+  ++frame_;
+  stats = {};
+  document_ = &document;
+  outline_ = false;
+  for (const auto& layer : document.layers) DrawLayer(canvas, *layer, visible);
+  document_ = nullptr;
+  PruneCache();
+}
+
 void DocumentRenderer::Impl::DrawLayer(SkCanvas* canvas, const core::Layer& layer,
                                        const Rect& visible) {
   if (!layer.visible) return;
+  // Non-printing layers stay out of exports and printing.
+  if (settings.artwork_only && !layer.printable) return;
   for (const auto& child : layer.children) {
     if (const auto* object = std::get_if<core::ObjectPtr>(&child)) {
       DrawObject(canvas, *object, visible);
@@ -273,10 +363,14 @@ void DocumentRenderer::Impl::DrawObject(SkCanvas* canvas, const core::ObjectPtr&
   }
   ++stats.drawn;
 
-  // Object opacity and blending apply to the object as a whole, so it is
-  // composited from its own layer.
+  // Object opacity, blending and the opacity mask apply to the object as a
+  // whole, so it is composited from its own layer. So is a group with
+  // isolated blending.
+  const auto* as_group = std::get_if<core::GroupObject>(object.get());
+  const bool masked = !outline_ && common.mask && common.mask->art;
   const bool isolate =
-      !outline_ && (common.opacity < 1.0 || common.blend_mode != core::BlendMode::kNormal);
+      !outline_ && (common.opacity < 1.0 || common.blend_mode != core::BlendMode::kNormal ||
+                    masked || (as_group && as_group->isolated));
   if (isolate) {
     SkPaint layer_paint;
     layer_paint.setAlphaf(static_cast<float>(common.opacity));
@@ -316,11 +410,138 @@ void DocumentRenderer::Impl::DrawObject(SkCanvas* canvas, const core::ObjectPtr&
     line.setStrokeWidth(0);  // Hairline.
     line.setAntiAlias(true);
     canvas->drawPath(entry.path, line);
+  } else if (const auto* text = std::get_if<core::TextObject>(object.get()); text && glyph_text) {
+    DrawText(canvas, *text);
   } else {
     DrawShape(canvas, *object, entry.path);
   }
 
+  if (masked) DrawMask(canvas, *common.mask, ToSk(entry.bounds), visible);
   if (isolate) canvas->restore();
+}
+
+// Keeps what is drawn so far in the layer where the mask art is light
+// (spec 7.2, "不透明マスク"): the art's luminance becomes alpha, composited
+// with destination-in.
+void DocumentRenderer::Impl::DrawMask(SkCanvas* canvas, const core::OpacityMask& mask,
+                                      const SkRect& bounds, const Rect& visible) {
+  sk_sp<SkColorFilter> filter = SkLumaColorFilter::Make();
+  if (mask.invert) {
+    // alpha' = 1 - alpha
+    const float invert[20] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 1};
+    filter = SkColorFilters::Compose(SkColorFilters::Matrix(invert), filter);
+  }
+  SkPaint layer_paint;
+  layer_paint.setColorFilter(std::move(filter));
+  layer_paint.setBlendMode(SkBlendMode::kDstIn);
+  canvas->saveLayer(&bounds, &layer_paint);
+  // Without "Clip" the object shows where there is no mask art: the art
+  // goes over white instead of nothing.
+  if (!mask.clip) canvas->drawColor(SK_ColorWHITE);
+  DrawObject(canvas, mask.art, visible);
+  canvas->restore();
+}
+
+// Text as glyphs with its fonts (PDF: real text, searchable, the font
+// embedded). Runs Skia cannot set as plain glyphs (rotated or vertically
+// scaled characters, unreadable fonts) are drawn as outlines.
+void DocumentRenderer::Impl::DrawText(SkCanvas* canvas, const core::TextObject& text) {
+  if (!text.story) return;
+  const text::LayoutPtr layout = text::LayoutOf(text.story);
+  const std::u32string& chars = text.story->text;
+  canvas->save();
+  canvas->concat(ToSk(text.transform));
+  // Gradients are in the parent's coordinates, like the text's outlines.
+  SkMatrix to_local;
+  if (!ToSk(text.transform).invert(&to_local)) to_local.reset();
+
+  // Each run's characters, for the PDF's text (copy and search).
+  struct RunText {
+    std::string utf8;
+    std::vector<std::uint32_t> clusters;
+  };
+  std::vector<RunText> texts(layout->runs.size());
+  for (std::size_t r = 0; r < layout->runs.size(); ++r) {
+    const text::GlyphRun& run = layout->runs[r];
+    if (run.clusters.empty()) continue;
+    const std::size_t start = *std::min_element(run.clusters.begin(), run.clusters.end());
+    const std::size_t line = text::LineOf(*layout, start);
+    std::size_t end = layout->lines[line].end;
+    if (r + 1 < layout->runs.size() && !layout->runs[r + 1].clusters.empty()) {
+      const std::size_t next = *std::min_element(layout->runs[r + 1].clusters.begin(),
+                                                 layout->runs[r + 1].clusters.end());
+      if (text::LineOf(*layout, next) == line) end = std::min(end, next);
+    }
+    std::vector<std::uint32_t> offsets;
+    for (std::size_t i = start; i < end; ++i) {
+      offsets.push_back(static_cast<std::uint32_t>(texts[r].utf8.size()));
+      texts[r].utf8 += core::ToUtf8(std::u32string_view(chars).substr(i, 1));
+    }
+    offsets.push_back(static_cast<std::uint32_t>(texts[r].utf8.size()));
+    for (std::size_t cluster : run.clusters) {
+      const std::size_t k = std::min(cluster - start, offsets.size() - 1);
+      texts[r].clusters.push_back(offsets[k]);
+    }
+  }
+
+  const core::Appearance& appearance = text.common.appearance;
+  for (auto it = appearance.rbegin(); it != appearance.rend(); ++it) {
+    SkPaint paint;
+    paint.setAntiAlias(true);
+    const auto* fill = std::get_if<core::Fill>(&*it);
+    const auto* stroke = std::get_if<core::Stroke>(&*it);
+    if (fill) {
+      if (fill->gradient ? !SetPaintGradient(paint, *fill->gradient, fill->opacity, *document_)
+                         : !SetPaintColor(paint, fill->paint, fill->opacity, *document_)) {
+        continue;
+      }
+      paint.setBlendMode(ToSk(fill->blend_mode));
+    } else if (stroke) {
+      if (stroke->width <= 0.0) continue;
+      if (stroke->gradient
+              ? !SetPaintGradient(paint, *stroke->gradient, stroke->opacity, *document_)
+              : !SetPaintColor(paint, stroke->paint, stroke->opacity, *document_)) {
+        continue;
+      }
+      paint.setBlendMode(ToSk(stroke->blend_mode));
+      paint.setStyle(SkPaint::kStroke_Style);
+      paint.setStrokeWidth(static_cast<float>(stroke->width));
+      paint.setStrokeCap(ToSk(stroke->cap));
+      paint.setStrokeJoin(ToSk(stroke->join));
+      paint.setStrokeMiter(static_cast<float>(stroke->miter_limit));
+    } else {
+      continue;
+    }
+    if (paint.getShader()) paint.setShader(paint.refShader()->makeWithLocalMatrix(to_local));
+
+    for (std::size_t r = 0; r < layout->runs.size(); ++r) {
+      const text::GlyphRun& run = layout->runs[r];
+      if (run.glyphs.empty()) continue;
+      sk_sp<SkTypeface> typeface = run.face ? TypefaceOf(*run.face) : nullptr;
+      if (!typeface || run.rotation != 0 || run.vertical_scale != 1) {
+        SkPathBuilder builder;
+        for (std::size_t g = 0; g < run.glyphs.size(); ++g) {
+          for (const auto& path : text::RunGlyphOutline(run, g)) AppendPath(builder, path);
+        }
+        canvas->drawPath(builder.detach(), paint);
+        continue;
+      }
+      SkFont font(typeface, static_cast<float>(run.size));
+      font.setScaleX(static_cast<float>(run.horizontal_scale));
+      font.setLinearMetrics(true);
+      font.setSubpixel(true);
+      font.setHinting(SkFontHinting::kNone);
+      font.setEdging(SkFont::Edging::kAntiAlias);
+      std::vector<SkPoint> positions;
+      for (const auto& p : run.positions) positions.push_back(ToSk(p));
+      canvas->drawGlyphs(
+          SkSpan<const SkGlyphID>(run.glyphs.data(), run.glyphs.size()),
+          SkSpan<const SkPoint>(positions.data(), positions.size()),
+          SkSpan<const std::uint32_t>(texts[r].clusters.data(), texts[r].clusters.size()),
+          SkSpan<const char>(texts[r].utf8.data(), texts[r].utf8.size()), {0, 0}, font, paint);
+    }
+  }
+  canvas->restore();
 }
 
 void DocumentRenderer::Impl::DrawShape(SkCanvas* canvas, const core::Object& object,
@@ -331,7 +552,10 @@ void DocumentRenderer::Impl::DrawShape(SkCanvas* canvas, const core::Object& obj
     SkPaint paint;
     paint.setAntiAlias(true);
     if (const auto* fill = std::get_if<core::Fill>(&*it)) {
-      if (!SetPaintColor(paint, fill->paint, fill->opacity, *document_)) continue;
+      if (fill->gradient ? !SetPaintGradient(paint, *fill->gradient, fill->opacity, *document_)
+                         : !SetPaintColor(paint, fill->paint, fill->opacity, *document_)) {
+        continue;
+      }
       paint.setBlendMode(ToSk(fill->blend_mode));
       canvas->drawPath(path, paint);
       continue;
@@ -340,7 +564,10 @@ void DocumentRenderer::Impl::DrawShape(SkCanvas* canvas, const core::Object& obj
     if (!stroke_item) continue;  // Unknown items (from a newer version) are not drawn.
     const auto& stroke = *stroke_item;
     if (stroke.width <= 0.0) continue;
-    if (!SetPaintColor(paint, stroke.paint, stroke.opacity, *document_)) continue;
+    if (stroke.gradient ? !SetPaintGradient(paint, *stroke.gradient, stroke.opacity, *document_)
+                        : !SetPaintColor(paint, stroke.paint, stroke.opacity, *document_)) {
+      continue;
+    }
     paint.setBlendMode(ToSk(stroke.blend_mode));
     paint.setStyle(SkPaint::kStroke_Style);
     paint.setStrokeCap(ToSk(stroke.cap));
@@ -430,6 +657,77 @@ void DocumentRenderer::Impl::DrawOverlay(SkCanvas* canvas, const core::Document&
     canvas->drawRect(ToSk(*overlay.key_object), key);
   }
 
+  // Live corner widgets: a ring with a dot, as in Illustrator.
+  for (const core::Point& w : overlay.corner_widgets) {
+    SkPaint ring;
+    ring.setAntiAlias(true);
+    ring.setColor(SK_ColorWHITE);
+    canvas->drawCircle(ToSk(w), 3.5f * px, ring);
+    ring.setColor(kSelection);
+    ring.setStyle(SkPaint::kStroke_Style);
+    ring.setStrokeWidth(px);
+    canvas->drawCircle(ToSk(w), 3.5f * px, ring);
+    ring.setStyle(SkPaint::kFill_Style);
+    canvas->drawCircle(ToSk(w), 1.2f * px, ring);
+  }
+
+  // Text editing: the selected text, the IME composition's underline and
+  // the caret.
+  if (!overlay.text_selection.empty()) {
+    SkPaint fill;
+    fill.setColor(SkColorSetA(kSelection, 0x60));
+    fill.setAntiAlias(true);
+    for (const auto& q : overlay.text_selection) {
+      SkPathBuilder quad;
+      quad.moveTo(ToSk(q[0])).lineTo(ToSk(q[1])).lineTo(ToSk(q[2])).lineTo(ToSk(q[3])).close();
+      canvas->drawPath(quad.detach(), fill);
+    }
+  }
+  for (const auto& [a, b] : overlay.text_underlines) {
+    SkPaint underline;
+    underline.setColor(SK_ColorBLACK);
+    underline.setStyle(SkPaint::kStroke_Style);
+    underline.setStrokeWidth(1.5f * px);
+    underline.setAntiAlias(true);
+    canvas->drawLine(ToSk(a), ToSk(b), underline);
+  }
+  if (overlay.text_caret) {
+    SkPaint caret;
+    caret.setColor(SK_ColorBLACK);
+    caret.setStyle(SkPaint::kStroke_Style);
+    caret.setStrokeWidth(1.0f * px);
+    caret.setAntiAlias(true);
+    canvas->drawLine(ToSk(overlay.text_caret->first), ToSk(overlay.text_caret->second), caret);
+  }
+
+  if (overlay.gradient_line) {
+    // The gradient annotator (spec 7.2): a dark line under a light one so it
+    // shows on any color, a round start and a square end.
+    const SkPoint a = ToSk(overlay.gradient_line->first);
+    const SkPoint b = ToSk(overlay.gradient_line->second);
+    SkPaint under;
+    under.setAntiAlias(true);
+    under.setColor(SkColorSetARGB(0x99, 0, 0, 0));
+    under.setStyle(SkPaint::kStroke_Style);
+    under.setStrokeWidth(3 * px);
+    canvas->drawLine(a, b, under);
+    SkPaint line = under;
+    line.setColor(SK_ColorWHITE);
+    line.setStrokeWidth(px);
+    canvas->drawLine(a, b, line);
+    SkPaint fill;
+    fill.setAntiAlias(true);
+    fill.setColor(SK_ColorWHITE);
+    SkPaint edge = line;
+    edge.setColor(kSelection);
+    const float r = 4.5f * px;
+    canvas->drawCircle(a, r, fill);
+    canvas->drawCircle(a, r, edge);
+    const SkRect end = SkRect::MakeLTRB(b.x() - r, b.y() - r, b.x() + r, b.y() + r);
+    canvas->drawRect(end, fill);
+    canvas->drawRect(end, edge);
+  }
+
   const float anchor_half = static_cast<float>(overlay.anchor_size / 2 * overlay.pixel_ratio);
   for (const auto& edited : overlay.paths) DrawEditedPath(canvas, edited, px, anchor_half);
 
@@ -460,6 +758,33 @@ void DocumentRenderer::Impl::DrawOutline(SkCanvas* canvas, const core::ObjectPtr
     canvas->save();
     canvas->concat(ToSk(group->transform));
     for (const auto& child : group->children) DrawOutline(canvas, child, anchor_half);
+    canvas->restore();
+    return;
+  }
+  if (const auto* text = std::get_if<core::TextObject>(object.get())) {
+    // Selected text shows its baselines and its anchor, as in Illustrator.
+    const text::LayoutPtr layout = text::LayoutOf(text->story);
+    const SkMatrix ctm = canvas->getTotalMatrix();
+    canvas->save();
+    canvas->resetMatrix();
+    SkPaint line;
+    line.setColor(kSelection);
+    line.setStyle(SkPaint::kStroke_Style);
+    line.setStrokeWidth(anchor_half / 2);
+    line.setAntiAlias(true);
+    const SkMatrix m = SkMatrix::Concat(ctm, ToSk(text->transform));
+    for (const text::Line& l : layout->lines) {
+      SkPoint ends[2] = {{float(l.left), float(l.baseline)}, {float(l.right), float(l.baseline)}};
+      m.mapPoints(ends);
+      canvas->drawLine(ends[0], ends[1], line);
+    }
+    SkPoint origin[1] = {{0, 0}};
+    m.mapPoints(origin);
+    SkPaint anchor;
+    anchor.setColor(kSelection);
+    canvas->drawRect(SkRect::MakeLTRB(origin[0].x() - anchor_half, origin[0].y() - anchor_half,
+                                      origin[0].x() + anchor_half, origin[0].y() + anchor_half),
+                     anchor);
     canvas->restore();
     return;
   }
@@ -595,6 +920,120 @@ std::vector<std::uint8_t> DocumentRenderer::ExportPng(const core::Document& docu
   if (!surface->peekPixels(&pixmap)) return {};
   SkDynamicMemoryWStream stream;
   if (!SkPngEncoder::Encode(&stream, pixmap, {})) return {};
+  const sk_sp<SkData> data = stream.detachAsData();
+  const auto* bytes = static_cast<const std::uint8_t*>(data->data());
+  return {bytes, bytes + data->size()};
+}
+
+Page DocumentRenderer::ArtboardPage(const core::Artboard& artboard,
+                                    std::optional<core::TrimMarkStyle> marks) {
+  Page page;
+  PdfOptions options;
+  options.marks = marks;
+  page.area = PdfPageArea(artboard, options);
+  page.artwork = artboard.bounds;
+  if (marks) {
+    const double bleed = artboard.bleed > 0 ? artboard.bleed : core::kDefaultBleed;
+    page.artwork = artboard.bounds.Outset(bleed);
+    page.marks = core::TrimMarks(artboard.bounds, bleed, *marks);
+  }
+  return page;
+}
+
+std::vector<std::uint8_t> DocumentRenderer::RenderPage(const core::Document& document,
+                                                       const Page& page, double scale, int top_row,
+                                                       int width, int height) {
+  if (width <= 0 || height <= 0 || width > 32767 || height > 32767 ||
+      static_cast<double>(width) * height > 1.5e8) {
+    return {};
+  }
+  const SkImageInfo info =
+      SkImageInfo::Make(width, height, kRGBA_8888_SkColorType, kPremul_SkAlphaType);
+  std::vector<std::uint8_t> pixels(info.computeMinByteSize());
+  std::unique_ptr<SkCanvas> canvas =
+      SkCanvas::MakeRasterDirect(info, pixels.data(), info.minRowBytes());
+  if (!canvas) return {};
+  canvas->clear(SK_ColorWHITE);
+  canvas->translate(0, static_cast<float>(-top_row));
+  canvas->scale(static_cast<float>(scale), static_cast<float>(scale));
+  canvas->translate(static_cast<float>(-page.area.left), static_cast<float>(-page.area.top));
+  const bool artwork_only = impl_->settings.artwork_only;
+  impl_->settings.artwork_only = true;  // Non-printing layers stay out.
+  canvas->save();
+  canvas->clipRect(ToSk(page.artwork));
+  impl_->DrawArtwork(canvas.get(), document, page.artwork);
+  canvas->restore();
+  impl_->settings.artwork_only = artwork_only;
+  SkPaint mark;
+  mark.setAntiAlias(true);
+  mark.setColor(SK_ColorBLACK);
+  mark.setStyle(SkPaint::kStroke_Style);
+  mark.setStrokeWidth(static_cast<float>(core::kTrimMarkWidth));
+  for (const auto& line : page.marks) {
+    if (line.anchors.size() == 2) {
+      canvas->drawLine(ToSk(line.anchors[0].position), ToSk(line.anchors[1].position), mark);
+    }
+  }
+  return pixels;
+}
+
+core::Rect DocumentRenderer::PdfPageArea(const core::Artboard& artboard,
+                                         const PdfOptions& options) {
+  if (!options.marks) return artboard.bounds;
+  const double bleed = artboard.bleed > 0 ? artboard.bleed : core::kDefaultBleed;
+  // Whole points: Skia writes page sizes rounded.
+  return artboard.bounds.Outset(std::ceil(core::TrimMarkReach(bleed) + 6));
+}
+
+std::vector<std::uint8_t> DocumentRenderer::ExportPdf(const core::Document& document,
+                                                      const PdfOptions& options) {
+  std::vector<int> boards = options.artboards;
+  if (boards.empty()) {
+    for (int i = 0; i < static_cast<int>(document.artboards.size()); ++i) boards.push_back(i);
+  }
+  std::erase_if(boards,
+                [&](int i) { return i < 0 || i >= static_cast<int>(document.artboards.size()); });
+  if (boards.empty()) return {};
+
+  SkDynamicMemoryWStream stream;
+  SkPDF::Metadata metadata = SkPDF::JPEG::MetadataWithCallbacks();
+  metadata.fTitle = SkString(options.title.c_str());
+  metadata.fCreator = SkString(options.creator.c_str());
+  metadata.fProducer = SkString("Leinwand (Skia PDF)");
+  sk_sp<SkDocument> pdf = SkPDF::MakeDocument(&stream, metadata);
+  if (!pdf) return {};
+
+  RenderSettings settings;
+  settings.artwork_only = true;
+  settings.transparent = true;
+  DocumentRenderer renderer(settings);
+  renderer.impl_->glyph_text = !options.outline_text;
+  for (int index : boards) {
+    const core::Artboard& board = document.artboards[static_cast<std::size_t>(index)];
+    const Rect page = PdfPageArea(board, options);
+    SkCanvas* canvas =
+        pdf->beginPage(static_cast<SkScalar>(page.width()), static_cast<SkScalar>(page.height()));
+    canvas->translate(static_cast<float>(-page.left), static_cast<float>(-page.top));
+    // The artwork up to the bleed when there are marks, else the artboard.
+    const double bleed = board.bleed > 0 ? board.bleed : core::kDefaultBleed;
+    const Rect shown = options.marks ? board.bounds.Outset(bleed) : board.bounds;
+    canvas->save();
+    canvas->clipRect(ToSk(shown));
+    renderer.impl_->DrawArtwork(canvas, document, shown);
+    canvas->restore();
+    if (options.marks) {
+      SkPaint mark;
+      mark.setAntiAlias(true);
+      mark.setColor(SK_ColorBLACK);
+      mark.setStyle(SkPaint::kStroke_Style);
+      mark.setStrokeWidth(static_cast<float>(core::kTrimMarkWidth));
+      for (const auto& line : core::TrimMarks(board.bounds, bleed, *options.marks)) {
+        canvas->drawLine(ToSk(line.anchors[0].position), ToSk(line.anchors[1].position), mark);
+      }
+    }
+    pdf->endPage();
+  }
+  pdf->close();
   const sk_sp<SkData> data = stream.detachAsData();
   const auto* bytes = static_cast<const std::uint8_t*>(data->data());
   return {bytes, bytes + data->size()};

@@ -2,6 +2,7 @@
 // The Pathfinder panel's commands (spec 4.3): the selected objects become
 // filled regions, the operation runs on them, and the pieces replace them.
 #include <algorithm>
+#include <functional>
 #include <map>
 
 #include "core/style.h"
@@ -45,7 +46,18 @@ std::optional<Input> ToInput(const core::Object& object, const Matrix& to_docume
         &object};
   }
   if (const auto* group = std::get_if<core::GroupObject>(&object)) {
-    // A group counts as the union of its members.
+    // A group counts as the union of its members. One holding text or kept
+    // content is left alone: replacing it would lose them.
+    std::function<bool(const core::Object&)> keeps = [&](const core::Object& o) {
+      if (std::holds_alternative<core::TextObject>(o) ||
+          std::holds_alternative<core::PreservedObject>(o)) {
+        return true;
+      }
+      const auto* g = std::get_if<core::GroupObject>(&o);
+      return g && std::any_of(g->children.begin(), g->children.end(),
+                              [&](const ObjectPtr& c) { return keeps(*c); });
+    };
+    if (keeps(object)) return std::nullopt;
     std::optional<Input> merged;
     for (const ObjectPtr& child : group->children) {
       auto part = ToInput(*child, to_document * group->transform, engine);

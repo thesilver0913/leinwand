@@ -4,6 +4,7 @@
 // is undoable; which one is active is not.
 #include <algorithm>
 
+#include "core/marks.h"
 #include "editor/editor.h"
 #include "editor/tool_math.h"
 #include "geometry/bezier.h"
@@ -206,6 +207,38 @@ void Editor::ArtboardDrag() {
       return;
   }
   drag_.preview = core::EditorState{std::move(result), base.selection};
+}
+
+// Object > Create Trim Marks (spec 7.5): around the selection, or the
+// active artboard (with its bleed) when nothing is selected. A group of
+// 0.3 pt black lines, which can be moved and edited like any artwork.
+void Editor::CreateTrimMarks(core::TrimMarkStyle style) {
+  core::Rect trim;
+  double bleed = core::kDefaultBleed;
+  if (const auto bounds = SelectionBounds()) {
+    trim = *bounds;
+  } else {
+    const int active = active_artboard();
+    if (active < 0) return;
+    const core::Artboard& board = document().artboards[std::size_t(active)];
+    trim = board.bounds;
+    if (board.bleed > 0) bleed = board.bleed;
+  }
+  core::GroupObject group;
+  group.common.id = ids_.Next();
+  group.common.name = trim_marks_name_;
+  core::Stroke line{core::RgbColor{0, 0, 0}};
+  line.width = core::kTrimMarkWidth;
+  for (core::PathData& mark : core::TrimMarks(trim, bleed, style)) {
+    core::PathObject path;
+    path.common.id = ids_.Next();
+    path.common.appearance = {line};
+    path.path = std::move(mark);
+    group.children.push_back(core::MakeObject(std::move(path)));
+  }
+  const std::string id = group.common.id;
+  Commit("create trim marks",
+         {WithNewObject(document(), core::MakeObject(std::move(group))), {id}});
 }
 
 }  // namespace leinwand::editor

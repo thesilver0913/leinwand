@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-find_package(Qt6 6.8 REQUIRED COMPONENTS Gui Quick QuickControls2 Svg LinguistTools)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Gui Quick QuickControls2 Svg LinguistTools Widgets
+  PrintSupport)
 qt_standard_project_setup(REQUIRES 6.8)
 
 qt_add_executable(leinwand WIN32 MACOSX_BUNDLE
@@ -49,6 +50,7 @@ qt_add_qml_module(leinwand
   QML_FILES
     qml/Main.qml
     qml/PreferencesDialog.qml
+    qml/PrintDialog.qml
     qml/ShortcutsDialog.qml
     qml/Splash.qml
     qml/WelcomeScreen.qml
@@ -72,15 +74,20 @@ qt_add_qml_module(leinwand
     qml/controls/SpSlider.qml
     qml/controls/SpSwatch.qml
     qml/controls/SpTextField.qml
+    qml/panels/CharacterPanel.qml
     qml/panels/ColorPanel.qml
+    qml/panels/GradientPanel.qml
     qml/panels/ImportReportPanel.qml
     qml/panels/AlignPanel.qml
     qml/panels/ArtboardsPanel.qml
     qml/panels/LayersPanel.qml
+    qml/panels/ParagraphPanel.qml
     qml/panels/PathfinderPanel.qml
+    qml/panels/PreflightPanel.qml
     qml/panels/PropertiesPanel.qml
     qml/panels/StrokePanel.qml
     qml/panels/SwatchesPanel.qml
+    qml/panels/TransparencyPanel.qml
     qml/panels/TransformFields.qml
     qml/panels/TransformPanel.qml
   SOURCES
@@ -89,7 +96,7 @@ qt_add_qml_module(leinwand
     layers_model.h layers_model.cpp
     preferences.h preferences.cpp
     shortcuts.h shortcuts.cpp
-    session.h session.cpp
+    session.h session.cpp session_print.cpp
     spectrum_theme.h spectrum_theme.cpp
 )
 
@@ -144,6 +151,7 @@ qt_add_resources(leinwand spectrum_icons
 # QRhi (rhi/qrhi.h) is only reachable through GuiPrivate in Qt 6.8.
 target_link_libraries(leinwand PRIVATE
   editor render io Qt6::Gui Qt6::GuiPrivate Qt6::Quick Qt6::QuickControls2 Qt6::Svg
+  Qt6::Widgets Qt6::PrintSupport
   KDAB::kddockwidgets
 )
 target_compile_definitions(leinwand PRIVATE LEINWAND_VERSION="${LEINWAND_VERSION_STRING}")

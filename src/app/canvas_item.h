@@ -52,6 +52,8 @@ class CanvasItem : public QQuickRhiItem {
 
   // The render thread's view of the state, read during synchronize().
   const leinwand::core::Document& document() const;
+  // With new text and IME compositions, for drawing.
+  const leinwand::core::Document& shownDocument() const;
   const leinwand::render::View& view() const { return view_; }
   leinwand::render::Overlay overlay(double pixel_ratio) const;
 
@@ -60,6 +62,8 @@ class CanvasItem : public QQuickRhiItem {
   Q_INVOKABLE void actualSize();   // Ctrl+1
   Q_INVOKABLE void zoomIn();       // Ctrl+=
   Q_INVOKABLE void zoomOut();      // Ctrl+-
+  // The middle of the view in document points (where Paste puts things).
+  Q_INVOKABLE QPointF documentCentre() const;
 
   // Called from the render thread through queued invocations.
   Q_INVOKABLE void reportStats(double fps, double drawMs);
@@ -81,6 +85,10 @@ class CanvasItem : public QQuickRhiItem {
   void mouseMoveEvent(QMouseEvent* event) override;
   void mouseReleaseEvent(QMouseEvent* event) override;
   void hoverMoveEvent(QHoverEvent* event) override;
+  void mouseDoubleClickEvent(QMouseEvent* event) override;
+  bool event(QEvent* event) override;
+  QVariant inputMethodQuery(Qt::InputMethodQuery query) const override;
+  void inputMethodEvent(QInputMethodEvent* event) override;
 
  private:
   leinwand::editor::Editor& editor() const;
@@ -92,6 +100,10 @@ class CanvasItem : public QQuickRhiItem {
   leinwand::core::Point ToDocument(QPointF position) const;
   double PickRadius() const;  // A few view pixels, in document points.
   leinwand::editor::Modifiers ToolModifiers() const;
+  // Keys for the text being edited; false when the key is not for it.
+  bool TextKey(QKeyEvent* event);
+  bool IsTextKey(const QKeyEvent* event) const;
+  void TextChanged();  // Redraws and tells the IME where the caret is.
 
   Session* session_;
   leinwand::render::View view_;
