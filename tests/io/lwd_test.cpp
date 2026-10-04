@@ -328,3 +328,26 @@ TEST_CASE("Text survives a JSON round trip: stories, styles and kept outlines") 
   broken.erase("stories");
   CHECK(io::ReadDocumentJson(broken.dump()).error == LoadError::kCorrupt);
 }
+
+TEST_CASE("Two different stories under one id are written apart; bad run lengths are refused") {
+  core::TextObject a;
+  a.common.id = "a";
+  a.story = std::make_shared<const core::Story>(core::MakeStory("same", U"one"));
+  core::TextObject b;
+  b.common.id = "b";
+  b.story = std::make_shared<const core::Story>(core::MakeStory("same", U"two"));
+  core::Layer layer;
+  layer.id = "l";
+  layer.children = {core::MakeObject(a), core::MakeObject(b)};
+  core::Document document;
+  document.layers = {core::MakeLayer(std::move(layer))};
+  const auto loaded = io::ReadDocumentJson(io::WriteDocumentJson(document, "test"));
+  REQUIRE(loaded.document);
+  CHECK(std::get<core::TextObject>(*loaded.document->FindObject("a")).story->text == U"one");
+  CHECK(std::get<core::TextObject>(*loaded.document->FindObject("b")).story->text == U"two");
+
+  CHECK(io::ReadDocumentJson(
+            R"({"format": {"version": "1.4"}, "stories": [{"id": "s", "text": "ab",
+            "characters": [{"length": -1}]}], "layers": []})")
+            .error == LoadError::kCorrupt);
+}

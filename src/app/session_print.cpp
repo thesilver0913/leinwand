@@ -13,6 +13,7 @@
 #include <QPrinterInfo>
 #include <algorithm>
 #include <cmath>
+#include <functional>
 
 #include "geometry/bezier.h"
 #include "render/document_renderer.h"
@@ -80,15 +81,23 @@ std::vector<Sheet> Layout(const leinwand::core::Document& document, int active,
   if (s.marks == 1) marks = leinwand::core::TrimMarkStyle::kJapanese;
   if (s.marks == 2) marks = leinwand::core::TrimMarkStyle::kWestern;
   if (s.range == 2) {
-    // All artwork on one page, artboards ignored.
+    // All artwork on one page, artboards ignored: what prints, sublayers
+    // included.
     Rect bounds;
-    for (const auto& layer : document.layers) {
-      for (const auto& child : layer->children) {
-        if (const auto* object = std::get_if<leinwand::core::ObjectPtr>(&child)) {
-          bounds = bounds.Union(leinwand::geometry::Bounds(**object));
-        }
-      }
-    }
+    std::function<void(const leinwand::core::Layer&)> add =
+        [&](const leinwand::core::Layer& layer) {
+          if (!layer.visible || !layer.printable) return;
+          for (const auto& child : layer.children) {
+            if (const auto* object = std::get_if<leinwand::core::ObjectPtr>(&child)) {
+              if (leinwand::core::CommonOf(**object).visible) {
+                bounds = bounds.Union(leinwand::geometry::Bounds(**object));
+              }
+            } else {
+              add(*std::get<leinwand::core::LayerPtr>(child));
+            }
+          }
+        };
+    for (const auto& layer : document.layers) add(*layer);
     if (bounds.IsValid() && bounds.width() > 0 && bounds.height() > 0) {
       pages.push_back({bounds, bounds, {}});
     }

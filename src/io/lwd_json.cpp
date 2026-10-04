@@ -628,7 +628,9 @@ StoryPtr StoryOf(const Json& j) {
     for (const auto& c : *characters) {
       Reader cr(c);
       CharacterRun run;
-      run.length = static_cast<std::size_t>(cr.Number("length", 0));
+      const double length = cr.Number("length", 0);
+      if (!(length >= 0) || length > 1e9) throw Corrupt("a bad character run length");
+      run.length = static_cast<std::size_t>(length);
       run.style = CharacterStyleOf(cr);
       run.style.unknown_fields = cr.Unknown();
       story.characters.push_back(std::move(run));
@@ -727,8 +729,28 @@ Json ObjectJson(const ObjectPtr& object) {
         } else if constexpr (std::is_same_v<T, TextObject>) {
           WriteCommon(j, o.common, "text");
           if (!o.story) throw Corrupt("text without a story");
-          j["story"] = o.story->id;
-          if (written_stories) (*written_stories)[o.story->id] = o.story;
+          // Two different stories under one id (which editing never makes,
+          // but a merged document might) are written under separate ids,
+          // so that neither text takes the other's characters.
+          std::string story_id = o.story->id;
+          if (written_stories) {
+            for (int n = 2;; ++n) {
+              const auto it = written_stories->find(story_id);
+              if (it == written_stories->end() || it->second == o.story ||
+                  *it->second == *o.story) {
+                break;
+              }
+              story_id = o.story->id + "-" + std::to_string(n);
+            }
+            if (story_id == o.story->id) {
+              (*written_stories)[story_id] = o.story;
+            } else {
+              Story renamed = *o.story;
+              renamed.id = story_id;
+              (*written_stories)[story_id] = std::make_shared<const Story>(std::move(renamed));
+            }
+          }
+          j["story"] = story_id;
           if (!o.transform.IsIdentity()) j["transform"] = MatrixJson(o.transform);
           // For versions without text: a frame where it is.
           j["bounds"] = RectJson(text::BoundsOf(o));

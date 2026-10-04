@@ -62,7 +62,7 @@ class CanvasRenderer : public QQuickRhiItemRenderer {
   void synchronize(QQuickRhiItem* rhi_item) override {
     auto* item = static_cast<CanvasItem*>(rhi_item);
     // A snapshot: copying the document shares all of its (immutable) nodes.
-    document_ = item->document();
+    document_ = item->shownDocument();
     const double dpr = item->window()->effectiveDevicePixelRatio();
     const View& view = item->view();
     view_ = {view.pan_x * dpr, view.pan_y * dpr, view.zoom * dpr};
@@ -194,6 +194,10 @@ QQuickRhiItemRenderer* CanvasItem::createRenderer() { return new CanvasRenderer;
 leinwand::editor::Editor& CanvasItem::editor() const { return session_->editor(); }
 
 const leinwand::core::Document& CanvasItem::document() const { return editor().document(); }
+
+const leinwand::core::Document& CanvasItem::shownDocument() const {
+  return editor().shown_document();
+}
 
 leinwand::render::Overlay CanvasItem::overlay(double pixel_ratio) const {
   leinwand::editor::Overlay o = editor().overlay();

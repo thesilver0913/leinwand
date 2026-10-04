@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <iomanip>
+#include <locale>
 #include <numbers>
 #include <sstream>
 #include <variant>
@@ -79,11 +81,14 @@ class Exporter {
   }
 
  private:
-  // A number with the chosen decimals, trailing zeros dropped.
+  // A number with the chosen decimals, trailing zeros dropped. Always with
+  // a point: snprintf would follow the C locale, which Qt sets from the
+  // environment (a comma in many European locales).
   std::string N(double v) const {
-    char buffer[64];
-    std::snprintf(buffer, sizeof buffer, "%.*f", options_.decimals, v);
-    std::string s = buffer;
+    std::ostringstream out;
+    out.imbue(std::locale::classic());
+    out << std::fixed << std::setprecision(options_.decimals) << v;
+    std::string s = out.str();
     if (s.find('.') != std::string::npos) {
       while (s.back() == '0') s.pop_back();
       if (s.back() == '.') s.pop_back();

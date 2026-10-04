@@ -52,6 +52,8 @@ class CanvasItem : public QQuickRhiItem {
 
   // The render thread's view of the state, read during synchronize().
   const leinwand::core::Document& document() const;
+  // With new text and IME compositions, for drawing.
+  const leinwand::core::Document& shownDocument() const;
   const leinwand::render::View& view() const { return view_; }
   leinwand::render::Overlay overlay(double pixel_ratio) const;
 

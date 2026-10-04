@@ -236,13 +236,16 @@ void Editor::SetShape(const core::ShapeParams& params) {
 }
 
 const core::Document& Editor::document() const {
+  return drag_.preview ? drag_.preview->document : history_.current().document;
+}
+
+const core::Document& Editor::shown_document() const {
   if (drag_.preview) return drag_.preview->document;
   return text_preview_ ? text_preview_->document : history_.current().document;
 }
 
 const core::IdSet& Editor::selection() const {
-  if (drag_.preview) return drag_.preview->selection;
-  return text_preview_ ? text_preview_->selection : history_.current().selection;
+  return drag_.preview ? drag_.preview->selection : history_.current().selection;
 }
 
 std::optional<Rect> Editor::SelectionBounds() const {
@@ -368,15 +371,20 @@ Hover Editor::HoverAt(Point p, double pick) const {
 void Editor::SetSelection(core::IdSet selection) {
   history_.SetSelection(std::move(selection));
   AdoptSelectionStyle();
+  // A preview of edited text is built on the current state; keep it so.
+  if (text_preview_) UpdateTextPreview();
 }
 
 void Editor::Commit(const std::string& action, core::EditorState state) {
   if (gesture_ && gesture_pushed_) {
     history_.Amend(action, std::move(state));
-    return;
+  } else {
+    history_.Push(action, std::move(state));
+    gesture_pushed_ = gesture_;
   }
-  history_.Push(action, std::move(state));
-  gesture_pushed_ = gesture_;
+  // Edits made while text is being edited (from the panels) must show
+  // through the text's preview, which is built on the current state.
+  if (text_preview_) UpdateTextPreview();
 }
 
 void Editor::BeginGesture() {

@@ -4,6 +4,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include "core/style.h"
 #include "editor/editor.h"
 #include "geometry/bezier.h"
 
@@ -32,6 +33,15 @@ const core::TextObject* OnlyText(const Editor& editor) {
     if (const auto* t = std::get_if<core::TextObject>(&o)) found = t;
   });
   return found;
+}
+
+// What is drawn, composition included.
+std::u32string ShownTextOf(const Editor& editor) {
+  std::u32string text;
+  core::VisitObjects(editor.shown_document(), [&](const core::Object& o) {
+    if (const auto* t = std::get_if<core::TextObject>(&o); t && t->story) text = t->story->text;
+  });
+  return text;
 }
 
 std::u32string TextOf(const Editor& editor) {
@@ -112,7 +122,8 @@ TEST_CASE("The IME's composition shows but is not part of the text until committ
   Click(editor, {10, 50});
   editor.InsertText(U"a");
   editor.SetPreedit(U"にほん", 3);
-  CHECK(TextOf(editor) == U"aにほん");  // What is shown.
+  CHECK(ShownTextOf(editor) == U"aにほん");  // Shown, not in the document yet.
+  CHECK(TextOf(editor) == U"a");
   CHECK(editor.overlay().text_underlines.size() == 1);
   CHECK(editor.CaretRect().has_value());
   editor.InsertText(U"日本");  // The IME commits.
@@ -189,4 +200,22 @@ TEST_CASE("Create Outlines keeps the text, and Revert Outlines brings it back") 
   CHECK(text->transform.Map({0, 0}).x == Approx(15));
   CHECK(text->transform.Map({0, 0}).y == Approx(60));
   CHECK(text->story->text == U"永 A");
+}
+
+TEST_CASE("Panels used while typing show through, and selecting elsewhere ends editing") {
+  Editor editor(Empty());
+  editor.SetTool(Tool::kType);
+  Click(editor, {10, 50});
+  editor.InsertText(U"abc");
+  editor.SetPreedit(U"にほ", 2);
+  // A fill change while composing reaches the document and stays visible.
+  editor.SetFill(core::Color{core::RgbColor{0, 0, 1}});
+  const core::Fill* fill = core::FrontFill(core::CommonOf(*OnlyText(editor)).appearance);
+  REQUIRE(fill);
+  CHECK(fill->paint == core::Color{core::RgbColor{0, 0, 1}});
+  CHECK(TextOf(editor) == U"abc");           // The composition stays out of the document,
+  CHECK(ShownTextOf(editor) == U"abcにほ");  // and still shows.
+  editor.Select({});
+  CHECK(!editor.text_editing());
+  CHECK(TextOf(editor) == U"abc");
 }

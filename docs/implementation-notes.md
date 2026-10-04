@@ -188,7 +188,7 @@
 ## グラデーション(M12)
 
 - **モデル**(`core/appearance.h`、`core/gradient.h`): 塗りと線の項目が `std::optional<Gradient>` を持つ。線形は始点から終点への軸、円形は始点が中心で終点までが半径。`aspect`(円形だけ)は軸と直交する方向の半径の比、`focal` はハイライトの位置(省略時は中心)。分岐点は `offset`、色、不透明度、`midpoint`(次の分岐点との中間点の位置。0.5 で中央)。座標はオブジェクトの座標系なので、変形(`core::Transformed`)で一緒に動く。単色を塗るとグラデーションは消え、Shift+X では入れ替わる。
-- **名前のないグラデーション**: 仕様書 3.2 の「共有される定義はトップレベルに置き、IDで参照する」は、スウォッチに登録したグラデーションのこととして扱い、M12 ではオブジェクトに直接書く名前のないグラデーションだけを実装した。グラデーションのスウォッチ(トップレベルの `swatches` に置いて参照する)は後で足す。
+- **グラデーションの持ち方**: 塗りと線がそれぞれ自分のグラデーションを持つ(Illustrator と同じ。仕様書 3.2、2026-10-04 決定)。グラデーションのスウォッチ(スウォッチパネルへの登録と、塗ったときのコピー)はフェーズ3で足す。
 - **描画**: Skia の `SkShaders::LinearGradient` / `RadialGradient`。中間点が 0.5 でないときは、その位置に2色の中間の色の分岐点を足して曲げる(Illustrator の見た目の近似)。縦横比は局所行列、中心からずれた焦点は `TwoPointConicalGradient`。
 - **.lwd**: 形式 1.2。`fill` と `stroke` の `gradient`(仕様書 3.2)。`paint` には先頭の分岐点の色を入れる。
 - **SVG**: 書き出しは `userSpaceOnUse` の `linearGradient` / `radialGradient` を `defs` に置く(縦横比は `gradientTransform`、中間点は足した分岐点)。読み込みは `objectBoundingBox` と `userSpaceOnUse`、`gradientTransform`、`href` での分岐点の継承、`fx`/`fy` に対応。`spreadMethod`(pad 以外)と、傾いた円形グラデーションは近似して読み込みレポートに出す。

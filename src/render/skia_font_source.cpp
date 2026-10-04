@@ -74,14 +74,30 @@ class SystemFontSource : public text::FontSource {
   }
 
   text::FacePtr Find(const core::FontRef& font) const override {
-    if (!manager_ || font.family.empty()) return nullptr;
-    sk_sp<SkFontStyleSet> set = manager_->matchFamily(font.family.c_str());
-    if (!set) return nullptr;
-    for (int j = 0; j < set->count(); ++j) {
-      SkFontStyle style;
-      SkString name;
-      set->getStyle(j, &style, &name);
-      if (SameName(name.c_str(), font.style)) return FaceOf(set->createTypeface(j));
+    if (!manager_) return nullptr;
+    if (!font.family.empty()) {
+      if (sk_sp<SkFontStyleSet> set = manager_->matchFamily(font.family.c_str())) {
+        for (int j = 0; j < set->count(); ++j) {
+          SkFontStyle style;
+          SkString name;
+          set->getStyle(j, &style, &name);
+          if (SameName(name.c_str(), font.style)) return FaceOf(set->createTypeface(j));
+        }
+      }
+    }
+    // The family under another name (localized on another system): by the
+    // PostScript name, which is the same everywhere. Slow, but the result
+    // is kept by the caller.
+    if (font.postscript_name.empty()) return nullptr;
+    for (int i = 0; i < manager_->countFamilies(); ++i) {
+      sk_sp<SkFontStyleSet> set = manager_->createStyleSet(i);
+      for (int j = 0; set && j < set->count(); ++j) {
+        sk_sp<SkTypeface> typeface = set->createTypeface(j);
+        SkString ps;
+        if (typeface && typeface->getPostScriptName(&ps) && font.postscript_name == ps.c_str()) {
+          return FaceOf(std::move(typeface));
+        }
+      }
     }
     return nullptr;
   }

@@ -212,6 +212,8 @@ void Editor::RemoveSwatch(const std::string& id) {
 
 void Editor::Select(const core::IdSet& ids) {
   anchors_.clear();
+  // Selecting something else (the Layers panel) ends editing text.
+  if (text_editing() && ids != core::IdSet{text_.id}) EndTextEdit();
   SetSelection(StillSelectable(document(), ids));
 }
 

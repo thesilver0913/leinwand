@@ -163,8 +163,11 @@ class Editor {
  public:
   explicit Editor(core::Document document);
 
-  // The document to show: the current state, or the live preview of a drag.
+  // The document to edit: the current state, or the live preview of a drag.
   const core::Document& document() const;
+  // The document to draw: as document(), with new text and the IME's
+  // composition shown while text is edited (not part of the document yet).
+  const core::Document& shown_document() const;
   const core::IdSet& selection() const;
   Overlay overlay() const;
   const core::History& history() const { return history_; }

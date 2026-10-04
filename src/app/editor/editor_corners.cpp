@@ -67,8 +67,8 @@ std::vector<Point> Editor::CornerWidgets(double pick) const {
   // Not on shapes too small to tell the widgets from the corners.
   const double scale = std::sqrt(std::abs(m.Determinant()));
   const double offset = 3.5 * pick / std::max(scale, 1e-9);
-  const core::Rect box = *SelectionBounds();
-  if (std::min(box.width(), box.height()) < 4 * 3.5 * pick) return {};
+  const auto box = SelectionBounds();
+  if (!box || std::min(box->width(), box->height()) < 4 * 3.5 * pick) return {};
   std::vector<Point> widgets;
   for (const CornerRef& c : corners) {
     widgets.push_back(m.Map(c.at + c.inward * std::max(c.radius * c.factor, offset)));

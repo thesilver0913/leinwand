@@ -57,11 +57,17 @@ struct OutlineBuilder {
     paths.back().anchors.push_back({p});
     current = p;
   }
+  // A broken font may draw without moving first: start a contour then.
+  void Begin() {
+    if (paths.empty() || paths.back().closed) MoveTo(current);
+  }
   void LineTo(core::Point p) {
+    Begin();
     paths.back().anchors.push_back({p});
     current = p;
   }
   void CubicTo(core::Point c1, core::Point c2, core::Point p) {
+    Begin();
     auto& anchors = paths.back().anchors;
     anchors.back().handle_out = c1 - anchors.back().position;
     anchors.push_back({p, c2 - p, {}});

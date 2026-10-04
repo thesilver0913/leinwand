@@ -1021,7 +1021,11 @@ void Session::setFont(const QString& family, const QString& style) {
     chosen =
         styles.contains(QStringLiteral("Regular")) ? QStringLiteral("Regular") : styles.front();
   }
-  const leinwand::core::FontRef font{family.toStdString(), chosen.toStdString(), {}};
+  leinwand::core::FontRef font{family.toStdString(), chosen.toStdString(), {}};
+  // The PostScript name too: family names can be localized (游ゴシック /
+  // Yu Gothic), the PostScript name is the same everywhere.
+  if (const auto face = leinwand::text::FindFace(font))
+    font.postscript_name = face->postscript_name();
   editor_->EditCharacterStyle([&](leinwand::core::CharacterStyle& s) { s.font = font; });
   Changed();
 }
