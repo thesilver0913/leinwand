@@ -368,6 +368,14 @@ ApplicationWindow {
         panel.setAsCurrentTab();
     }
 
+    // Ungrouping that would change the look asks first.
+    function ungroup() {
+        if (Session.ungroupChangesLook())
+            ungroupDialog.open();
+        else
+            Session.ungroup();
+    }
+
     function showWelcome() {
         welcome.show();
         welcome.raise();
@@ -482,6 +490,16 @@ ApplicationWindow {
                 window.saveDocument(action);
             else if (button === MessageDialog.Discard && action)
                 action();
+        }
+    }
+    MessageDialog {
+        id: ungroupDialog
+        text: qsTr("Ungroup and change how it looks?")
+        informativeText: qsTr("The group's opacity mask, blend mode or isolated blending cannot move to its contents and will be removed (and outlines lose the text they keep).")
+        buttons: MessageDialog.Ok | MessageDialog.Cancel
+        onButtonClicked: (button, role) => {
+            if (button === MessageDialog.Ok)
+                Session.ungroup();
         }
     }
     MessageDialog {

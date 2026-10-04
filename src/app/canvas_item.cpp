@@ -195,6 +195,11 @@ leinwand::editor::Editor& CanvasItem::editor() const { return session_->editor()
 
 const leinwand::core::Document& CanvasItem::document() const { return editor().document(); }
 
+QPointF CanvasItem::documentCentre() const {
+  const auto p = ToDocument(QPointF(width() / 2, height() / 2));
+  return {p.x, p.y};
+}
+
 const leinwand::core::Document& CanvasItem::shownDocument() const {
   return editor().shown_document();
 }

@@ -62,6 +62,8 @@ class CanvasItem : public QQuickRhiItem {
   Q_INVOKABLE void actualSize();   // Ctrl+1
   Q_INVOKABLE void zoomIn();       // Ctrl+=
   Q_INVOKABLE void zoomOut();      // Ctrl+-
+  // The middle of the view in document points (where Paste puts things).
+  Q_INVOKABLE QPointF documentCentre() const;
 
   // Called from the render thread through queued invocations.
   Q_INVOKABLE void reportStats(double fps, double drawMs);

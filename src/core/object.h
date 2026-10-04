@@ -140,4 +140,12 @@ inline const ObjectCommon& CommonOf(const Object& object) {
   return std::visit([](const auto& o) -> const ObjectCommon& { return o.common; }, object.base());
 }
 
+// For one kind of object directly. Without it, a TextObject (say) would be
+// copied into a temporary Object and the reference returned would dangle.
+template <typename T>
+  requires requires(const T& t) { t.common; }
+inline const ObjectCommon& CommonOf(const T& object) {
+  return object.common;
+}
+
 }  // namespace leinwand::core

@@ -65,6 +65,8 @@ class Session : public QObject {
   // selection, the selected text objects, or for new text. Each value has a
   // "...Mixed" flag when the styles differ.
   Q_PROPERTY(bool textEditing READ textEditing NOTIFY documentChanged)
+  // Something to paste: copied objects, or text while editing text.
+  Q_PROPERTY(bool canPaste READ canPaste NOTIFY clipboardChanged)
   Q_PROPERTY(QVariantMap characterStyle READ characterStyle NOTIFY documentChanged)
   Q_PROPERTY(QVariantMap paragraphStyle READ paragraphStyle NOTIFY documentChanged)
   Q_PROPERTY(QStringList fontFamilies READ fontFamilies CONSTANT)
@@ -131,6 +133,7 @@ class Session : public QObject {
   QVariantMap style() const;
   QVariantMap transparency() const;
   bool textEditing() const { return editor_ && editor_->text_editing(); }
+  bool canPaste() const;
   QVariantMap characterStyle() const;
   QVariantMap paragraphStyle() const;
   QStringList fontFamilies() const;
@@ -240,6 +243,15 @@ class Session : public QObject {
   Q_INVOKABLE void makeCompoundPath();     // Ctrl+8
   Q_INVOKABLE void releaseCompoundPath();  // Alt+Shift+Ctrl+8
   Q_INVOKABLE void createTrimMarks();      // Japanese or Western, by preference.
+  // Edit > Cut, Copy, Paste (Ctrl+X, C, V), Paste in Front (Ctrl+F), in
+  // Back (Ctrl+B), in Place (Shift+Ctrl+V). Objects stay in Leinwand's own
+  // clipboard (across documents); while editing text, text goes through the
+  // system clipboard.
+  Q_INVOKABLE void cut();
+  Q_INVOKABLE void copy();
+  Q_INVOKABLE void paste(int mode = 0);  // 0 centre, 1 in place, 2 in front, 3 in back.
+  // Ungrouping would drop a group's mask, blend mode or isolated blending.
+  Q_INVOKABLE bool ungroupChangesLook() const;
   // Preflight (spec 7.5): rows {"check" (editor::PreflightCheck), "ids"}
   // for the checks turned on in `checks` (one flag per check), with strokes
   // thinner than `min_stroke_mm` reported.
@@ -317,6 +329,7 @@ class Session : public QObject {
   Q_INVOKABLE double evaluateNumber(const QString& text) const;
 
  signals:
+  void clipboardChanged();
   void documentChanged();
   void toolChanged();
   void settingsChanged();
@@ -339,7 +352,8 @@ class Session : public QObject {
   leinwand::render::SkiaPathOps path_ops_;  // Before editor_, which points to it.
   std::unique_ptr<leinwand::editor::Editor> editor_;
   QPrinter& Printer();
-  std::unique_ptr<QPrinter> printer_;  // Kept for the OS dialog's settings.
+  std::unique_ptr<QPrinter> printer_;                 // Kept for the OS dialog's settings.
+  std::vector<leinwand::core::ObjectPtr> clipboard_;  // Copied objects, document coordinates.
   std::unique_ptr<LayersModel> layers_;
   int object_count_ = 0;
   int view_tool_ = -1;  // 12 hand, 13 zoom; -1: an editor tool.

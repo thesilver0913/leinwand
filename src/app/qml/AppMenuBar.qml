@@ -69,6 +69,12 @@ MenuBar {
             onTriggered: Session.redo()
         }
         MenuSeparator {}
+        Action { text: qsTr("Cu&t"); enabled: root.hasDocument; shortcut: root.key("editCut"); onTriggered: Session.cut() }
+        Action { text: qsTr("&Copy"); enabled: root.hasDocument; shortcut: root.key("editCopy"); onTriggered: Session.copy() }
+        Action { text: qsTr("&Paste"); enabled: root.hasDocument && Session.canPaste; shortcut: root.key("editPaste"); onTriggered: Session.paste(0) }
+        Action { text: qsTr("Paste in &Front"); enabled: root.hasDocument && Session.canPaste; shortcut: root.key("editPasteInFront"); onTriggered: Session.paste(2) }
+        Action { text: qsTr("Paste in &Back"); enabled: root.hasDocument && Session.canPaste; shortcut: root.key("editPasteInBack"); onTriggered: Session.paste(3) }
+        Action { text: qsTr("Paste in Pl&ace"); enabled: root.hasDocument && Session.canPaste; shortcut: root.key("editPasteInPlace"); onTriggered: Session.paste(1) }
         Action { text: qsTr("C&lear"); enabled: root.hasDocument; shortcut: root.key("editClear"); onTriggered: Session.deleteSelection() }
         MenuSeparator {}
         Action { text: qsTr("&Keyboard Shortcuts..."); shortcut: root.key("editShortcuts"); onTriggered: root.window.shortcutsDialog.show() }
@@ -86,7 +92,7 @@ MenuBar {
         }
         MenuSeparator {}
         Action { text: qsTr("&Group"); shortcut: root.key("objectGroup"); onTriggered: Session.group() }
-        Action { text: qsTr("&Ungroup"); shortcut: root.key("objectUngroup"); onTriggered: Session.ungroup() }
+        Action { text: qsTr("&Ungroup"); shortcut: root.key("objectUngroup"); onTriggered: root.window.ungroup() }
         MenuSeparator {}
         Menu {
             title: qsTr("&Path")

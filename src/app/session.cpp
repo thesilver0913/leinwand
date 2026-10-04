@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "session.h"
 
+#include <QClipboard>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QQmlEngine>
@@ -923,6 +925,57 @@ QVariantList Session::preflight(double min_stroke_mm, const QVariantList& checks
   }
   return rows;
 }
+
+bool Session::canPaste() const {
+  return !clipboard_.empty() || (textEditing() && !QGuiApplication::clipboard()->text().isEmpty());
+}
+
+void Session::copy() {
+  if (editor_->text_editing()) {
+    const std::u32string selected = editor_->SelectedText();
+    if (!selected.empty())
+      QGuiApplication::clipboard()->setText(QString::fromStdU32String(selected));
+    emit clipboardChanged();
+    return;
+  }
+  auto objects = editor_->CopySelection();
+  if (objects.empty()) return;
+  clipboard_ = std::move(objects);
+  emit clipboardChanged();
+}
+
+void Session::cut() {
+  if (editor_->text_editing()) {
+    copy();
+    editor_->DeleteForward();
+    Changed();
+    return;
+  }
+  if (editor_->selection().empty()) return;
+  copy();
+  editor_->Delete();
+  Changed();
+}
+
+void Session::paste(int mode) {
+  if (editor_->text_editing()) {
+    editor_->InsertText(QGuiApplication::clipboard()->text().toStdU32String());
+    Changed();
+    return;
+  }
+  if (clipboard_.empty()) return;
+  using Mode = leinwand::editor::Editor::PasteMode;
+  const Mode modes[] = {Mode::kCentre, Mode::kInPlace, Mode::kFront, Mode::kBack};
+  QPointF centre;
+  if (canvas_) {
+    QMetaObject::invokeMethod(canvas_, "documentCentre", Qt::DirectConnection,
+                              Q_RETURN_ARG(QPointF, centre));
+  }
+  editor_->Paste(clipboard_, modes[std::clamp(mode, 0, 3)], {centre.x(), centre.y()});
+  Changed();
+}
+
+bool Session::ungroupChangesLook() const { return editor_->UngroupChangesLook(); }
 
 void Session::createTrimMarks() {
   const bool japanese = Preferences::instance()->Flag(QStringLiteral("japaneseTrimMarks"));

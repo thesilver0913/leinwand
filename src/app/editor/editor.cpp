@@ -4,10 +4,12 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <numbers>
 #include <utility>
 #include <variant>
 
+#include "core/layers.h"
 #include "core/transform.h"
 #include "editor/tool_math.h"
 #include "geometry/bezier.h"
@@ -742,6 +744,69 @@ void Editor::Ungroup() {
   core::Document result = core::UngroupObjects(document(), groups, &released);
   released.insert(others.begin(), others.end());
   Commit("ungroup", {std::move(result), std::move(released)});
+}
+
+std::vector<core::ObjectPtr> Editor::CopySelection() const {
+  std::vector<core::ObjectPtr> objects;
+  for (const auto& found :
+       core::FindObjects(document(), core::WithoutNested(document(), selection()))) {
+    objects.push_back(core::Transformed(found.object, found.to_document));
+  }
+  return objects;
+}
+
+void Editor::Paste(const std::vector<core::ObjectPtr>& objects, PasteMode mode, Point centre) {
+  EndTextEdit();
+  if (objects.empty()) return;
+  std::vector<core::ObjectPtr> fresh;
+  for (const auto& object : objects) fresh.push_back(core::WithFreshIds(object, ids_));
+  if (mode == PasteMode::kCentre) {
+    Rect bounds;
+    for (const auto& object : fresh) bounds = bounds.Union(geometry::Bounds(*object));
+    if (bounds.IsValid()) {
+      const Matrix move = Matrix::Translate(centre.x - (bounds.left + bounds.right) / 2,
+                                            centre.y - (bounds.top + bounds.bottom) / 2);
+      for (auto& object : fresh) object = core::Transformed(object, move);
+    }
+  }
+  core::IdSet pasted;
+  for (const auto& object : fresh) pasted.insert(core::CommonOf(*object).id);
+  core::Document result = document();
+  // In front of or behind the selection, in its parent.
+  const auto selected = core::FindObjects(result, core::WithoutNested(result, selection()));
+  if ((mode == PasteMode::kFront || mode == PasteMode::kBack) && !selected.empty()) {
+    const std::string anchor =
+        core::CommonOf(
+            *(mode == PasteMode::kFront ? selected.back().object : selected.front().object))
+            .id;
+    result = core::InsertObjects(result, anchor, fresh, mode == PasteMode::kFront);
+  } else {
+    // On top of the active layer (paste in back: at its bottom).
+    int index = 0;
+    for (const auto& object : fresh) {
+      const std::string id = core::CommonOf(*object).id;
+      result = core::AddObject(result, object, "layer-" + id);
+      if (!active_layer_.empty() && core::LayerAcceptsArt(result, active_layer_)) {
+        result =
+            core::MoveItem(result, id, active_layer_,
+                           mode == PasteMode::kBack ? index++ : std::numeric_limits<int>::max());
+      }
+    }
+  }
+  anchors_.clear();
+  Commit("paste", {std::move(result), std::move(pasted)});
+}
+
+bool Editor::UngroupChangesLook() const {
+  for (const auto& found : core::FindObjects(document(), selection())) {
+    const auto* group = std::get_if<core::GroupObject>(found.object.get());
+    if (!group) continue;
+    if (group->common.mask || group->common.blend_mode != core::BlendMode::kNormal ||
+        group->isolated || group->outlined_text) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void Editor::Arrange(core::Arrange arrange) {

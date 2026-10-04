@@ -62,6 +62,15 @@ Document DuplicateObjects(const Document& document, const IdSet& ids, IdGenerato
 // "Layer 1" is added on top with `layer_id`.
 Document AddObject(const Document& document, ObjectPtr object, const std::string& layer_id);
 
+// The object with new ids for it, everything inside it, its stories and
+// its mask's art.
+ObjectPtr WithFreshIds(const ObjectPtr& object, IdGenerator& ids);
+
+// Puts `objects` (in document coordinates) directly in front of or behind
+// `anchor_id`, in its parent, in that parent's coordinates.
+Document InsertObjects(const Document& document, const std::string& anchor_id,
+                       const std::vector<ObjectPtr>& objects, bool in_front);
+
 // Every object id in the document, for IdGenerator::Reserve.
 IdSet AllObjectIds(const Document& document);
 

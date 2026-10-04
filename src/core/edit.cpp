@@ -117,6 +117,8 @@ void Walk(const Document& document, Visit&& visit) {
   for (const auto& layer : document.layers) Walk(*layer, visit);
 }
 
+}  // namespace
+
 ObjectPtr WithFreshIds(const ObjectPtr& object, IdGenerator& ids) {
   return std::visit(
       [&](const auto& o) -> ObjectPtr {
@@ -144,8 +146,6 @@ ObjectPtr WithFreshIds(const ObjectPtr& object, IdGenerator& ids) {
       },
       object->base());
 }
-
-}  // namespace
 
 std::vector<Located> FindObjects(const Document& document, const IdSet& ids) {
   std::vector<Located> found;
@@ -183,6 +183,27 @@ Document AddObject(const Document& document, ObjectPtr object, const std::string
   layer.children.push_back(std::move(object));
   result.layers.push_back(MakeLayer(std::move(layer)));
   return result;
+}
+
+Document InsertObjects(const Document& document, const std::string& anchor_id,
+                       const std::vector<ObjectPtr>& objects, bool in_front) {
+  bool done = false;
+  return Rewrite(document, [&](auto& list, const Matrix& to_document) {
+    if (done) return false;
+    using Entry = typename std::decay_t<decltype(list)>::value_type;
+    for (auto it = list.begin(); it != list.end(); ++it) {
+      const ObjectPtr* object = ObjectIn(*it);
+      if (!object || CommonOf(**object).id != anchor_id) continue;
+      // Into the anchor's parent's coordinates.
+      const Matrix to_local = to_document.Inverted().value_or(Matrix{});
+      std::vector<Entry> placed;
+      for (const ObjectPtr& o : objects) placed.push_back(Transformed(o, to_local));
+      list.insert(in_front ? it + 1 : it, placed.begin(), placed.end());
+      done = true;
+      return true;
+    }
+    return false;
+  });
 }
 
 IdSet AllObjectIds(const Document& document) {

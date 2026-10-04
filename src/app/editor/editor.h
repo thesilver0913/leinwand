@@ -271,6 +271,18 @@ class Editor {
   void Group();
   void Ungroup();
   void Arrange(core::Arrange arrange);
+  // Edit > Copy (Ctrl+C): the selection in document coordinates, front to
+  // back order kept. Paste (Ctrl+V) centres the objects on `centre` (the
+  // view's middle); in place (Shift+Ctrl+V) keeps their position; in front
+  // (Ctrl+F) and in back (Ctrl+B) also put them just in front of or behind
+  // the selection, as in Illustrator. Pasted objects get fresh ids.
+  std::vector<core::ObjectPtr> CopySelection() const;
+  enum class PasteMode { kCentre, kInPlace, kFront, kBack };
+  void Paste(const std::vector<core::ObjectPtr>& objects, PasteMode mode, core::Point centre = {});
+  // Whether ungrouping the selection would change how it looks: a group's
+  // opacity mask, blend mode or isolated blending (or the text its outlines
+  // keep) cannot move to its contents.
+  bool UngroupChangesLook() const;
   void Nudge(double dx, double dy);
   void Undo();
   void Redo();
